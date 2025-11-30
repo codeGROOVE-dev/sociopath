@@ -66,6 +66,10 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 	usernames := extractUsernames(known)
 	cfg.Logger.Debug("extracted usernames for guessing", "count", len(usernames))
 
+	// Extract names for LinkedIn slug guessing
+	names := extractNames(known)
+	cfg.Logger.Debug("extracted names for guessing", "count", len(names))
+
 	// Build set of already known URLs to avoid duplicates
 	knownURLs := make(map[string]bool)
 	knownPlatforms := make(map[string]bool)
@@ -75,7 +79,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 	}
 
 	// Generate candidate URLs
-	candidates := generateCandidates(usernames, knownURLs, knownPlatforms)
+	candidates := generateCandidates(usernames, names, knownURLs, knownPlatforms)
 	cfg.Logger.Info("generated guess candidates", "count", len(candidates))
 
 	// Fetch candidates concurrently
@@ -104,7 +108,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 			}
 
 			// Score the match against known profiles
-			confidence, matches := scoreMatch(p, known, candidate.username)
+			confidence, matches := scoreMatch(p, known, candidate)
 			if confidence < 0.3 {
 				cfg.Logger.Debug("guess candidate low confidence, skipping", "url", candidate.url, "confidence", confidence)
 				return
@@ -123,13 +127,184 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 	}
 
 	wg.Wait()
+
+	// Second round: Fetch social links and extract usernames from guessed profiles
+	// This handles cases like finding "thomrstrom" from a Mastodon link in a GitHub profile
+	if len(guessed) > 0 {
+		// First, collect all social links from guessed profiles to fetch directly
+		var socialLinksToFetch []string
+		for _, p := range guessed {
+			for _, link := range p.SocialLinks {
+				normalized := normalizeURL(link)
+				if !knownURLs[normalized] {
+					socialLinksToFetch = append(socialLinksToFetch, link)
+					knownURLs[normalized] = true  // Mark as known immediately
+				}
+			}
+			// Also check website field
+			if p.Website != "" {
+				normalized := normalizeURL(p.Website)
+				if !knownURLs[normalized] {
+					socialLinksToFetch = append(socialLinksToFetch, p.Website)
+					knownURLs[normalized] = true
+				}
+			}
+			// Mark the guessed profile itself as known
+			knownURLs[normalizeURL(p.URL)] = true
+		}
+
+		// Fetch social links directly (these are verified links, high confidence)
+		if len(socialLinksToFetch) > 0 {
+			cfg.Logger.Info("second round: fetching discovered social links", "count", len(socialLinksToFetch))
+
+			for _, link := range socialLinksToFetch {
+				if ctx.Err() != nil {
+					break
+				}
+
+				wg.Add(1)
+				go func(url string) {
+					defer wg.Done()
+
+					fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					defer cancel()
+
+					cfg.Logger.Debug("fetching discovered social link", "url", url)
+
+					p, err := cfg.Fetcher(fetchCtx, url)
+					if err != nil {
+						cfg.Logger.Debug("social link fetch failed", "url", url, "error", err)
+						return
+					}
+
+					// Score against ALL known profiles (original + first round guesses)
+					allKnown := append(known, guessed...)
+					confidence, matches := scoreMatch(p, allKnown, candidateURL{
+						url:       url,
+						username:  p.Username,
+						platform:  p.Platform,
+						matchType: "linked",  // This is a verified link
+					})
+
+					// Lower threshold for linked profiles since they were directly referenced
+					if confidence < 0.25 {
+						cfg.Logger.Debug("social link low confidence, skipping",
+							"url", url, "confidence", confidence)
+						return
+					}
+
+					p.IsGuess = true
+					p.Confidence = confidence
+					p.GuessMatch = matches
+
+					cfg.Logger.Info("found profile from social link",
+						"url", p.URL, "confidence", confidence, "matches", matches)
+
+					mu.Lock()
+					guessed = append(guessed, p)
+					mu.Unlock()
+				}(link)
+			}
+
+			wg.Wait()
+		}
+
+		// Also extract usernames for username-based guessing
+		secondRoundUsernames := extractUsernames(guessed)
+		secondRoundNames := extractNames(guessed)
+
+		// Only generate candidates for NEW usernames/names not already tried
+		newUsernames := make([]string, 0)
+		for _, u := range secondRoundUsernames {
+			alreadyTried := false
+			for _, orig := range usernames {
+				if u == orig {
+					alreadyTried = true
+					break
+				}
+			}
+			if !alreadyTried {
+				newUsernames = append(newUsernames, u)
+			}
+		}
+
+		newNames := make([]string, 0)
+		for _, n := range secondRoundNames {
+			alreadyTried := false
+			for _, orig := range names {
+				if n == orig {
+					alreadyTried = true
+					break
+				}
+			}
+			if !alreadyTried {
+				newNames = append(newNames, n)
+			}
+		}
+
+		if len(newUsernames) > 0 || len(newNames) > 0 {
+			cfg.Logger.Debug("second round: found new usernames from guessed profiles",
+				"new_usernames", len(newUsernames), "new_names", len(newNames))
+
+			secondCandidates := generateCandidates(newUsernames, newNames, knownURLs, knownPlatforms)
+			cfg.Logger.Info("generated second round candidates", "count", len(secondCandidates))
+
+			// Fetch second round candidates
+			for _, c := range secondCandidates {
+				if ctx.Err() != nil {
+					break
+				}
+
+				wg.Add(1)
+				go func(candidate candidateURL) {
+					defer wg.Done()
+
+					fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					defer cancel()
+
+					cfg.Logger.Debug("trying second round candidate", "url", candidate.url, "username", candidate.username)
+
+					p, err := cfg.Fetcher(fetchCtx, candidate.url)
+					if err != nil {
+						cfg.Logger.Debug("second round candidate failed", "url", candidate.url, "error", err)
+						return
+					}
+
+					// Score against ALL known profiles (original + first round guesses)
+					allKnown := append(known, guessed...)
+					confidence, matches := scoreMatch(p, allKnown, candidate)
+					if confidence < 0.3 {
+						cfg.Logger.Debug("second round candidate low confidence, skipping",
+							"url", candidate.url, "confidence", confidence)
+						return
+					}
+
+					p.IsGuess = true
+					p.Confidence = confidence
+					p.GuessMatch = matches
+
+					cfg.Logger.Info("found second round guessed profile",
+						"url", p.URL, "confidence", confidence, "matches", matches)
+
+					mu.Lock()
+					guessed = append(guessed, p)
+					mu.Unlock()
+				}(c)
+			}
+
+			wg.Wait()
+		}
+	}
+
 	return guessed
 }
 
 type candidateURL struct {
-	url      string
-	username string
-	platform string
+	url        string
+	username   string
+	platform   string
+	matchType  string // "username" or "name"
+	sourceName string // for name-based matches, store the original name
 }
 
 func extractUsernames(profiles []*profile.Profile) []string {
@@ -159,6 +334,68 @@ func extractUsernames(profiles []*profile.Profile) []string {
 	}
 
 	return usernames
+}
+
+// extractNames extracts full names from profiles for name-based guessing (e.g., LinkedIn slugs).
+func extractNames(profiles []*profile.Profile) []string {
+	seen := make(map[string]bool)
+	var names []string
+
+	for _, p := range profiles {
+		if p.Name == "" || !isSocialPlatform(p.Platform) {
+			continue
+		}
+
+		name := strings.TrimSpace(p.Name)
+		// Skip if too short or looks like a username (no spaces)
+		if len(name) < 3 || !strings.Contains(name, " ") {
+			continue
+		}
+
+		// Normalize and dedupe
+		nameKey := strings.ToLower(name)
+		if !seen[nameKey] {
+			seen[nameKey] = true
+			names = append(names, name)
+		}
+	}
+
+	return names
+}
+
+// slugifyName converts a name to a LinkedIn-style slug.
+// "David E Worth" -> "david-e-worth".
+// "John O'Brien" -> "john-o-brien".
+func slugifyName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+
+	// Replace spaces and common punctuation with hyphens
+	name = strings.ReplaceAll(name, " ", "-")
+	name = strings.ReplaceAll(name, ".", "-")
+
+	// Remove or replace special characters
+	var result strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			result.WriteRune(r)
+		} else if r == '\'' || r == '\u2019' {
+			// Keep apostrophes for names like O'Brien (both straight and curly quotes)
+			result.WriteRune('-')
+		}
+		// Skip other characters
+	}
+
+	slug := result.String()
+
+	// Clean up multiple consecutive hyphens
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+
+	// Trim leading/trailing hyphens
+	slug = strings.Trim(slug, "-")
+
+	return slug
 }
 
 func isSocialPlatform(platform string) bool {
@@ -231,18 +468,20 @@ func isNumeric(s string) bool {
 	return s != ""
 }
 
-func generateCandidates(usernames []string, knownURLs map[string]bool, knownPlatforms map[string]bool) []candidateURL {
+func generateCandidates(usernames []string, names []string, knownURLs map[string]bool, knownPlatforms map[string]bool) []candidateURL {
 	var candidates []candidateURL
 
+	// Generate username-based candidates
 	for _, username := range usernames {
 		// Add platform patterns
 		for _, pp := range platformPatterns {
 			url := strings.Replace(pp.pattern, "%s", username, 1)
 			if !knownURLs[normalizeURL(url)] {
 				candidates = append(candidates, candidateURL{
-					url:      url,
-					username: username,
-					platform: pp.name,
+					url:       url,
+					username:  username,
+					platform:  pp.name,
+					matchType: "username",
 				})
 			}
 		}
@@ -253,11 +492,33 @@ func generateCandidates(usernames []string, knownURLs map[string]bool, knownPlat
 				url := "https://" + server + "/@" + username
 				if !knownURLs[normalizeURL(url)] {
 					candidates = append(candidates, candidateURL{
-						url:      url,
-						username: username,
-						platform: "mastodon",
+						url:       url,
+						username:  username,
+						platform:  "mastodon",
+						matchType: "username",
 					})
 				}
+			}
+		}
+	}
+
+	// Generate name-based LinkedIn candidates
+	if !knownPlatforms["linkedin"] {
+		for _, name := range names {
+			slug := slugifyName(name)
+			if slug == "" || len(slug) < 3 {
+				continue
+			}
+
+			url := "https://www.linkedin.com/in/" + slug + "/"
+			if !knownURLs[normalizeURL(url)] {
+				candidates = append(candidates, candidateURL{
+					url:        url,
+					username:   slug,
+					platform:   "linkedin",
+					matchType:  "name",
+					sourceName: name,
+				})
 			}
 		}
 	}
@@ -278,40 +539,50 @@ func normalizeURL(url string) string {
 
 // scoreMatch calculates confidence that a guessed profile belongs to the same person.
 // Returns confidence (0.0-1.0) and list of matching criteria.
-func scoreMatch(guessed *profile.Profile, known []*profile.Profile, targetUsername string) (confidence float64, matchReasons []string) {
+func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate candidateURL) (confidence float64, matchReasons []string) {
 	var score float64
 	var matches []string
 
-	// Check username match (base match since we guessed based on username)
-	guessedUser := strings.ToLower(guessed.Username)
+	targetUsername := candidate.username
+	matchType := candidate.matchType
 
-	// Check if username has digits (more unique)
-	hasDigits := false
-	for _, c := range targetUsername {
-		if c >= '0' && c <= '9' {
-			hasDigits = true
-			break
+	// Base score depends on match type
+	if matchType == "name" {
+		// Name-based matches get slightly lower base confidence than username matches
+		score += 0.25
+		matches = append(matches, "name:slug")
+	} else {
+		// Username match scoring
+		guessedUser := strings.ToLower(guessed.Username)
+
+		// Check if username has digits (more unique)
+		hasDigits := false
+		for _, c := range targetUsername {
+			if c >= '0' && c <= '9' {
+				hasDigits = true
+				break
+			}
 		}
-	}
 
-	// Username match scoring - lower confidence for short usernames without digits
-	if guessedUser == targetUsername {
-		if len(targetUsername) < 6 && !hasDigits {
-			// Short username without digits gets minimal base score
+		// Username match scoring - lower confidence for short usernames without digits
+		if guessedUser == targetUsername {
+			if len(targetUsername) < 6 && !hasDigits {
+				// Short username without digits gets minimal base score
+				score += 0.1
+			} else {
+				score += 0.3
+			}
+			matches = append(matches, "username:exact")
+		} else if strings.Contains(guessedUser, targetUsername) || strings.Contains(targetUsername, guessedUser) {
 			score += 0.1
-		} else {
-			score += 0.3
+			matches = append(matches, "username:substring")
 		}
-		matches = append(matches, "username:exact")
-	} else if strings.Contains(guessedUser, targetUsername) || strings.Contains(targetUsername, guessedUser) {
-		score += 0.1
-		matches = append(matches, "username:substring")
 	}
 
 	// Track best signals (don't accumulate across profiles)
 	var hasLink bool
 	var bestNameScore, bestLocScore, bestBioScore float64
-	var hasWebsiteMatch bool
+	var hasWebsiteMatch, hasEmployerMatch bool
 
 	// Check against each known profile for additional signals
 	for _, k := range known {
@@ -356,6 +627,47 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, targetUserna
 				}
 			}
 		}
+
+		// Check employer/company match (high signal, especially for name-based LinkedIn guesses)
+		if !hasEmployerMatch {
+			guessedEmployer := ""
+			knownEmployer := ""
+
+			// Extract employer from guessed profile (LinkedIn uses "employer", GitHub uses "company")
+			if guessed.Fields != nil {
+				if emp := guessed.Fields["employer"]; emp != "" {
+					guessedEmployer = strings.ToLower(strings.TrimSpace(emp))
+				} else if comp := guessed.Fields["company"]; comp != "" {
+					guessedEmployer = strings.ToLower(strings.TrimSpace(comp))
+				}
+			}
+
+			// Extract employer from known profile
+			if k.Fields != nil {
+				if emp := k.Fields["employer"]; emp != "" {
+					knownEmployer = strings.ToLower(strings.TrimSpace(emp))
+				} else if comp := k.Fields["company"]; comp != "" {
+					knownEmployer = strings.ToLower(strings.TrimSpace(comp))
+				}
+			}
+
+			// Check for employer match
+			if guessedEmployer != "" && knownEmployer != "" {
+				// Remove spaces for more flexible matching (e.g., "defenseunicorns" vs "defense unicorns")
+				guessedNoSpace := strings.ReplaceAll(guessedEmployer, " ", "")
+				knownNoSpace := strings.ReplaceAll(knownEmployer, " ", "")
+
+				// Exact match or one contains the other (e.g., "Google" vs "Google LLC")
+				if guessedEmployer == knownEmployer ||
+					strings.Contains(guessedEmployer, knownEmployer) ||
+					strings.Contains(knownEmployer, guessedEmployer) ||
+					strings.Contains(guessedNoSpace, knownNoSpace) ||
+					strings.Contains(knownNoSpace, guessedNoSpace) {
+					hasEmployerMatch = true
+					matches = append(matches, "employer:"+k.Platform)
+				}
+			}
+		}
 	}
 
 	// Add best signals to score (only once, not per profile)
@@ -373,6 +685,10 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, targetUserna
 	}
 	if hasWebsiteMatch {
 		score += 0.4
+	}
+	if hasEmployerMatch {
+		// Employer match is a strong signal, especially for name-based LinkedIn guesses
+		score += 0.35
 	}
 
 	// Cap at 1.0

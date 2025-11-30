@@ -41,7 +41,7 @@ func TestGenerateCandidates_SkipsKnownURLs(t *testing.T) {
 	}
 	knownPlatforms := map[string]bool{}
 
-	candidates := generateCandidates(usernames, knownURLs, knownPlatforms)
+	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms)
 
 	// Check that no Twitter candidate was generated (because x.com normalizes to twitter.com)
 	for _, c := range candidates {
@@ -61,7 +61,7 @@ func TestGenerateCandidates_SkipsXcomWhenTwitterKnown(t *testing.T) {
 	}
 	knownPlatforms := map[string]bool{}
 
-	candidates := generateCandidates(usernames, knownURLs, knownPlatforms)
+	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms)
 
 	// Check that no Twitter candidate was generated
 	for _, c := range candidates {

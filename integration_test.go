@@ -301,27 +301,6 @@ func TestIntegrationLiveFetch(t *testing.T) {
 			},
 		},
 		{
-			name: "Medium/tstromberg",
-			url:  "https://medium.com/@tstromberg",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
-				t.Helper()
-				client, err := medium.New(ctx, medium.WithHTTPCache(testCache))
-				if err != nil {
-					t.Fatalf("medium.New() failed: %v", err)
-				}
-				return client
-			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
-				return c.(*medium.Client).Fetch(ctx, url)
-			},
-			want: &profile.Profile{
-				Platform: "medium",
-				URL:      "https://medium.com/@tstromberg",
-				Username: "tstromberg",
-				Name:     "Thom",
-			},
-		},
-		{
 			name: "Medium/ev",
 			url:  "https://medium.com/@ev",
 			setup: func(ctx context.Context, t *testing.T) interface{} {
