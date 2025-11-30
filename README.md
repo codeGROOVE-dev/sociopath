@@ -1,175 +1,96 @@
-# linkedin
+# sociopath
 
-A Go library to fetch LinkedIn user profile data using authenticated session cookies from your browser.
-
-## Features
-
-- **Minimal cookie usage**: In practice, only `li_at` cookie is required
-- **Automatic cookie extraction** from Firefox/Firefox Developer Edition using [kooky](https://github.com/browserutils/kooky)
-- **Command-line tool** for quick profile lookups
-- **Clean API** following Go best practices
-- **Context-aware** with structured logging
-- **Debug mode** to inspect cookies and requests
-- **Handles modern LinkedIn SDUI** (Server-Driven UI) format
+A Go tool for fetching social media profiles across 20+ platforms.
 
 ## Installation
 
-### As a library:
 ```bash
-go get github.com/tstromberg/linkedin
+go install github.com/codeGROOVE-dev/sociopath/cmd/sociopath@latest
 ```
 
-### As a command-line tool:
-```bash
-go install github.com/tstromberg/linkedin/cmd/linkedin@latest
-```
-
-Or build from source:
-```bash
-make build
-./bin/linkedin <profile-url>
-```
-
-## Command-Line Usage
+## Usage
 
 ```bash
-# Basic usage
-linkedin https://www.linkedin.com/in/thomas-str%C3%B6mberg-9977261/
-
-# With verbose logging
-linkedin -v https://www.linkedin.com/in/thomas-str%C3%B6mberg-9977261/
-
-# With debug mode (shows cookies and requests)
-linkedin -debug https://www.linkedin.com/in/thomas-str%C3%B6mberg-9977261/
+sociopath https://github.com/torvalds              # Single profile
+sociopath -r https://linktr.ee/johndoe             # Follow all social links
+sociopath --guess https://github.com/johndoe       # Find profiles by username
 ```
 
-Output:
+## The Power Features
+
+### Recursive Mode (`-r`)
+
+Follows social links found in profiles up to 3 levels deep. Start with a Linktree
+or personal website and discover all connected profiles:
+
+```bash
+$ sociopath -r https://linktr.ee/example
+# Returns: Linktree -> Twitter -> GitHub -> Mastodon -> ...
 ```
-LinkedIn Profile
-================
-Name:     Thomas Strömberg
-Headline: Software Engineer at Google
-Employer: Google
-Location: Mountain View, CA
-URL:      https://www.linkedin.com/in/thomas-strömberg-9977261/
+
+### Guess Mode (`--guess`)
+
+The real magic. Probes other platforms using discovered usernames. Each guess
+includes a confidence score based on username match, name similarity, location
+overlap, bio keywords, and cross-links between profiles:
+
+```bash
+$ sociopath --guess https://github.com/johndoe
+# Finds johndoe on Twitter, Mastodon, BlueSky, Dev.to, etc.
+# Each guessed profile: "IsGuess": true, "Confidence": 0.85
+```
+
+## Supported Platforms
+
+| No Auth Required | Auth Required (browser cookies) |
+|------------------|--------------------------------|
+| GitHub, Mastodon, BlueSky | LinkedIn, Twitter/X |
+| Dev.to, StackOverflow, Linktree | Instagram, TikTok |
+| Medium, Reddit, YouTube | VKontakte, Weibo |
+| Substack, Zhihu, Bilibili, Habr | |
+| Generic websites | |
+
+## Options
+
+```
+-r            Recursively fetch profiles from discovered links
+--guess       Guess related profiles on other platforms (implies -r)
+--no-browser  Disable automatic browser cookie extraction
+--no-cache    Disable HTTP caching (default: 75-day TTL)
+-v, -debug    Enable verbose logging
+```
+
+## Output
+
+JSON to stdout. Single profile for basic fetch, array for `-r`/`--guess`:
+
+```json
+{
+  "Platform": "github",
+  "URL": "https://github.com/torvalds",
+  "Username": "torvalds",
+  "Name": "Linus Torvalds",
+  "Location": "Portland, OR",
+  "SocialLinks": ["https://twitter.com/..."]
+}
+```
+
+Guessed profiles include:
+
+```json
+{ "IsGuess": true, "Confidence": 0.85, "GuessMatch": ["username:exact", "name:github"] }
 ```
 
 ## Library Usage
 
 ```go
-package main
+profiles, _ := sociopath.FetchRecursiveWithGuess(ctx, url,
+    sociopath.WithBrowserCookies(),
+    sociopath.WithLogger(logger))
 
-import (
-    "context"
-    "fmt"
-    "log"
-
-    "github.com/tstromberg/linkedin"
-)
-
-func main() {
-    ctx := context.Background()
-
-    client, err := linkedin.New(ctx)
-    if err != nil {
-        log.Fatal(err)
+for _, p := range profiles {
+    if p.IsGuess {
+        fmt.Printf("%s (%.0f%% confidence)\n", p.URL, p.Confidence*100)
     }
-
-    // Optional: enable debug mode
-    // client.EnableDebug()
-
-    profile, err := client.FetchProfile(ctx, "https://www.linkedin.com/in/thomas-strömberg-9977261/")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    fmt.Printf("Name: %s\n", profile.Name)
-    fmt.Printf("Employer: %s\n", profile.CurrentEmployer)
 }
 ```
-
-## Minimal Cookie Requirements
-
-After testing, LinkedIn profile fetching requires only **4 cookies**:
-
-1. **`li_at`** - Authentication token (REQUIRED)
-2. **`JSESSIONID`** - Session ID (REQUIRED)
-3. **`lidc`** - Data center routing (REQUIRED)
-4. **`bcookie`** - Browser cookie (may be required)
-
-The library automatically filters to use only these essential cookies, ignoring all others from your browser.
-
-## Using Environment Variables
-
-Instead of extracting cookies from your browser, you can set them as environment variables:
-
-```bash
-export LINKEDIN_LI_AT="your-li_at-cookie-value"
-export LINKEDIN_JSESSIONID="your-jsessionid-value"
-export LINKEDIN_LIDC="your-lidc-value"
-export LINKEDIN_BCOOKIE="your-bcookie-value"
-
-linkedin https://www.linkedin.com/in/...
-```
-
-Environment variables take precedence over browser cookies. This is useful for:
-- CI/CD pipelines
-- Docker containers
-- Serverless functions
-- Any environment without a browser
-
-## Testing Cookie Combinations
-
-To determine the minimum required cookies for your LinkedIn account:
-
-```bash
-make test-cookies URL=https://www.linkedin.com/in/your-profile/
-```
-
-Or build and run directly:
-
-```bash
-go build -o bin/test-cookies ./cmd/test-cookies
-./bin/test-cookies -url https://www.linkedin.com/in/your-profile/
-```
-
-This will test various cookie combinations and report which ones work:
-- `li_at` only
-- `li_at` + `JSESSIONID`
-- `li_at` + `JSESSIONID` + `lidc`
-- All 4 cookies
-- And various other combinations
-
-## Requirements
-
-- **Option 1**: Logged into LinkedIn in Firefox (for automatic cookie extraction)
-- **Option 2**: LinkedIn cookies set as environment variables
-- LinkedIn cookies must be valid and not expired
-
-## How It Works
-
-1. Uses `kooky` to extract LinkedIn session cookies from Firefox
-2. Filters to only essential cookies (li_at, JSESSIONID, lidc, bcookie)
-3. Makes authenticated HTTP requests to LinkedIn profile pages with proper Firefox headers
-4. Parses embedded Voyager API JSON data and HTML meta tags
-5. Returns structured profile data
-
-## Development
-
-```bash
-# Run tests
-make test
-
-# Build the CLI tool
-make build
-
-# Run with arguments
-make run ARGS="-v https://www.linkedin.com/in/..."
-
-# Run linter (requires golangci-lint)
-make lint
-```
-
-## Security Note
-
-This library accesses your browser's cookies to authenticate with LinkedIn. Only use with profiles you have permission to access.

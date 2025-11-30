@@ -45,6 +45,14 @@ var platformPatterns = []struct {
 	{"instagram", "https://instagram.com/%s"},
 	{"tiktok", "https://tiktok.com/@%s"},
 	{"linkedin", "https://linkedin.com/in/%s"},
+	{"weibo", "https://weibo.com/%s"},
+	{"zhihu", "https://zhihu.com/people/%s"},
+	{"bilibili", "https://space.bilibili.com/%s"},
+	{"reddit", "https://reddit.com/user/%s"},
+	{"youtube", "https://youtube.com/@%s"},
+	{"medium", "https://medium.com/@%s"},
+	{"habr", "https://habr.com/users/%s"},
+	{"vkontakte", "https://vk.com/%s"},
 }
 
 // Related discovers related profiles based on known profiles.
@@ -154,12 +162,11 @@ func extractUsernames(profiles []*profile.Profile) []string {
 }
 
 func isSocialPlatform(platform string) bool {
-	social := map[string]bool{
-		"github": true, "twitter": true, "mastodon": true, "bluesky": true,
-		"linkedin": true, "instagram": true, "tiktok": true, "devto": true,
-		"stackoverflow": true, "linktree": true,
+	// Platforms that should NOT be used for username extraction/guessing
+	nonSocial := map[string]bool{
+		"generic": true, // generic websites don't have meaningful usernames
 	}
-	return social[strings.ToLower(platform)]
+	return !nonSocial[strings.ToLower(platform)]
 }
 
 func isValidUsername(u string) bool {

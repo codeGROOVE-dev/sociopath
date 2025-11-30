@@ -1,6 +1,6 @@
 module github.com/codeGROOVE-dev/sociopath
 
-go 1.23.10
+go 1.25.4
 
 require github.com/browserutils/kooky v0.2.4
 
@@ -8,6 +8,8 @@ require (
 	github.com/Velocidex/json v0.0.0-20220224052537-92f3c0326e5a // indirect
 	github.com/Velocidex/ordereddict v0.0.0-20250626035939-2f7f022fc719 // indirect
 	github.com/Velocidex/yaml/v2 v2.2.8 // indirect
+	github.com/codeGROOVE-dev/bdcache v0.6.1 // indirect
+	github.com/codeGROOVE-dev/bdcache/persist/localfs v0.0.0-20251121210535-3893c2b92813 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-sqlite/sqlite3 v0.0.0-20180313105335-53dd8e640ee7 // indirect

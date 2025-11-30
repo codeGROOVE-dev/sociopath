@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codeGROOVE-dev/sociopath/cache"
 	"github.com/codeGROOVE-dev/sociopath/htmlutil"
 	"github.com/codeGROOVE-dev/sociopath/profile"
 )
@@ -63,7 +64,7 @@ func AuthRequired() bool { return false }
 // Client handles Mastodon requests.
 type Client struct {
 	httpClient *http.Client
-	cache      profile.HTTPCache
+	cache      cache.HTTPCache
 	logger     *slog.Logger
 }
 
@@ -71,13 +72,13 @@ type Client struct {
 type Option func(*config)
 
 type config struct {
-	cache  profile.HTTPCache
+	cache  cache.HTTPCache
 	logger *slog.Logger
 }
 
 // WithHTTPCache sets the HTTP cache.
-func WithHTTPCache(cache profile.HTTPCache) Option {
-	return func(c *config) { c.cache = cache }
+func WithHTTPCache(httpCache cache.HTTPCache) Option {
+	return func(c *config) { c.cache = httpCache }
 }
 
 // WithLogger sets a custom logger.

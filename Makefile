@@ -1,26 +1,7 @@
-.PHONY: test lint build install example test-cookies
+.PHONY: test lint 
 
 test:
 	go test -v ./...
-
-lint:
-	golangci-lint run
-
-build:
-	go build -o bin/linkedin ./cmd/linkedin
-	go build -o bin/test-cookies ./cmd/test-cookies
-
-install:
-	go install ./cmd/linkedin
-
-example:
-	cd example && go run main.go $(URL)
-
-run:
-	go run ./cmd/linkedin $(ARGS)
-
-test-cookies:
-	go run ./cmd/test-cookies -url $(URL)
 
 # BEGIN: lint-install .
 # http://github.com/codeGROOVE-dev/lint-install

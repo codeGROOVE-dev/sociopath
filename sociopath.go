@@ -27,6 +27,7 @@ import (
 
 	"github.com/codeGROOVE-dev/sociopath/bilibili"
 	"github.com/codeGROOVE-dev/sociopath/bluesky"
+	"github.com/codeGROOVE-dev/sociopath/cache"
 	"github.com/codeGROOVE-dev/sociopath/devto"
 	"github.com/codeGROOVE-dev/sociopath/generic"
 	"github.com/codeGROOVE-dev/sociopath/github"
@@ -52,8 +53,8 @@ import (
 type (
 	// Profile re-exports profile.Profile for convenience.
 	Profile = profile.Profile
-	// HTTPCache re-exports profile.HTTPCache for convenience.
-	HTTPCache = profile.HTTPCache
+	// HTTPCache re-exports cache.HTTPCache for convenience.
+	HTTPCache = cache.HTTPCache
 )
 
 // Re-export common errors.
@@ -69,7 +70,7 @@ type Option func(*config)
 
 type config struct {
 	cookies        map[string]string
-	cache          profile.HTTPCache
+	cache          cache.HTTPCache
 	logger         *slog.Logger
 	browserCookies bool
 }
@@ -85,8 +86,8 @@ func WithBrowserCookies() Option {
 }
 
 // WithHTTPCache sets the HTTP cache for responses.
-func WithHTTPCache(cache profile.HTTPCache) Option {
-	return func(c *config) { c.cache = cache }
+func WithHTTPCache(httpCache cache.HTTPCache) Option {
+	return func(c *config) { c.cache = httpCache }
 }
 
 // WithLogger sets a custom logger.
@@ -157,6 +158,9 @@ func fetchLinkedIn(ctx context.Context, url string, cfg *config) (*profile.Profi
 	}
 	if cfg.browserCookies {
 		opts = append(opts, linkedin.WithBrowserCookies())
+	}
+	if cfg.cache != nil {
+		opts = append(opts, linkedin.WithHTTPCache(cfg.cache))
 	}
 	if cfg.logger != nil {
 		opts = append(opts, linkedin.WithLogger(cfg.logger))
@@ -695,4 +699,36 @@ func FetchRecursiveWithGuess(ctx context.Context, url string, opts ...Option) ([
 	profiles = append(profiles, guessed...)
 
 	return profiles, nil
+}
+
+// GuessFromUsername guesses profiles across platforms based on a username.
+// It creates a synthetic profile with the username and searches for matching
+// profiles on supported platforms. All returned profiles are marked with IsGuess=true
+// and include confidence scores.
+func GuessFromUsername(ctx context.Context, username string, opts ...Option) ([]*profile.Profile, error) {
+	cfg := &config{logger: slog.Default()}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	// Create a synthetic profile with just the username
+	seedProfile := &profile.Profile{
+		Platform: "unknown",
+		Username: username,
+	}
+
+	// Build fetcher function
+	fetcher := func(ctx context.Context, url string) (*profile.Profile, error) {
+		return Fetch(ctx, url, opts...)
+	}
+
+	// Guess profiles
+	guessCfg := guess.Config{
+		Logger:  cfg.logger,
+		Fetcher: fetcher,
+	}
+
+	guessed := guess.Related(ctx, []*profile.Profile{seedProfile}, guessCfg)
+
+	return guessed, nil
 }

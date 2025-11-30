@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/codeGROOVE-dev/sociopath/auth"
+	"github.com/codeGROOVE-dev/sociopath/cache"
 	"github.com/codeGROOVE-dev/sociopath/htmlutil"
 	"github.com/codeGROOVE-dev/sociopath/profile"
 )
@@ -33,6 +33,7 @@ func AuthRequired() bool { return true }
 // Client handles LinkedIn requests with authenticated cookies.
 type Client struct {
 	httpClient *http.Client
+	cache      cache.HTTPCache
 	logger     *slog.Logger
 	debug      bool
 }
@@ -42,6 +43,7 @@ type Option func(*config)
 
 type config struct {
 	cookies        map[string]string
+	cache          cache.HTTPCache
 	logger         *slog.Logger
 	browserCookies bool
 }
@@ -49,6 +51,11 @@ type config struct {
 // WithCookies sets explicit cookie values.
 func WithCookies(cookies map[string]string) Option {
 	return func(c *config) { c.cookies = cookies }
+}
+
+// WithHTTPCache sets the HTTP cache.
+func WithHTTPCache(httpCache cache.HTTPCache) Option {
+	return func(c *config) { c.cache = httpCache }
 }
 
 // WithBrowserCookies enables reading cookies from browser stores.
@@ -98,6 +105,7 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 
 	return &Client{
 		httpClient: &http.Client{Jar: jar, Timeout: 3 * time.Second},
+		cache:      cfg.cache,
 		logger:     cfg.logger,
 	}, nil
 }
@@ -118,19 +126,9 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	setHeaders(req)
 
-	resp, err := c.httpClient.Do(req)
+	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // error ignored intentionally
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response failed: %w", err)
 	}
 
 	return parseProfile(body, urlStr)

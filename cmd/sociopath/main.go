@@ -14,14 +14,19 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/codeGROOVE-dev/sociopath"
+	"github.com/codeGROOVE-dev/sociopath/cache"
 )
 
 func main() {
 	debug := flag.Bool("debug", false, "enable debug logging")
 	verbose := flag.Bool("v", false, "verbose logging (same as -debug)")
 	noBrowser := flag.Bool("no-browser", false, "disable reading cookies from browser stores (enabled by default)")
+	noCache := flag.Bool("no-cache", false, "disable HTTP caching (enabled by default with 75-day TTL)")
+	cacheTTL := flag.Duration("cache-ttl", 75*24*time.Hour, "cache time-to-live (default: 75 days, use 24h for testing)")
 	recursive := flag.Bool("r", false, "recursively fetch social media profiles from discovered links")
 	guessMode := flag.Bool("guess", false, "guess related profiles based on discovered usernames (implies -r)")
 	flag.Parse()
@@ -47,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	url := flag.Arg(0)
+	input := flag.Arg(0)
 
 	// Setup logger
 	logLevel := slog.LevelInfo
@@ -56,29 +61,62 @@ func main() {
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
 
+	// Setup cache
+	var httpCache *cache.BDCache
+	if !*noCache {
+		var err error
+		httpCache, err = cache.New(*cacheTTL)
+		if err != nil {
+			logger.Warn("failed to initialize cache, continuing without cache", "error", err)
+		} else {
+			defer func() {
+				if err := httpCache.Close(); err != nil {
+					logger.Warn("failed to close cache", "error", err)
+				}
+			}()
+			logger.Debug("HTTP cache initialized", "ttl", cacheTTL.String())
+		}
+	}
+
 	// Build options
 	var opts []sociopath.Option
 	opts = append(opts, sociopath.WithLogger(logger))
 	if !*noBrowser {
 		opts = append(opts, sociopath.WithBrowserCookies())
 	}
+	if httpCache != nil {
+		opts = append(opts, sociopath.WithHTTPCache(httpCache))
+	}
 
 	ctx := context.Background()
 
 	switch {
 	case *guessMode:
-		// Guess mode implies recursive
-		profiles, err := sociopath.FetchRecursiveWithGuess(ctx, url, opts...)
+		// Guess mode implies recursive and accepts username or URL
+		var profiles []*sociopath.Profile
+		var err error
+
+		if isURL(input) {
+			profiles, err = sociopath.FetchRecursiveWithGuess(ctx, input, opts...)
+		} else {
+			// Treat as username and guess across platforms
+			profiles, err = sociopath.GuessFromUsername(ctx, input, opts...)
+		}
+
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(1) //nolint:gocritic // exitAfterDefer is acceptable in main
 		}
 		if err := outputJSON(profiles); err != nil {
 			fmt.Fprintf(os.Stderr, "Output error: %v\n", err)
 			os.Exit(1)
 		}
 	case *recursive:
-		profiles, err := sociopath.FetchRecursive(ctx, url, opts...)
+		if !isURL(input) {
+			fmt.Fprintf(os.Stderr, "Error: -r mode requires a URL, not a username\n")
+			os.Exit(1)
+		}
+		profiles, err := sociopath.FetchRecursive(ctx, input, opts...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -88,7 +126,11 @@ func main() {
 			os.Exit(1)
 		}
 	default:
-		profile, err := sociopath.Fetch(ctx, url, opts...)
+		if !isURL(input) {
+			fmt.Fprintf(os.Stderr, "Error: requires a URL, not a username. Use --guess to search by username.\n")
+			os.Exit(1)
+		}
+		profile, err := sociopath.Fetch(ctx, input, opts...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -98,6 +140,10 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func isURL(s string) bool {
+	return strings.Contains(s, "://") || strings.HasPrefix(s, "http")
 }
 
 func outputJSON(v any) error {

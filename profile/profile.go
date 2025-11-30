@@ -2,9 +2,7 @@
 package profile
 
 import (
-	"context"
 	"errors"
-	"time"
 )
 
 // Common errors returned by platform packages.
@@ -44,12 +42,4 @@ type Profile struct {
 	IsGuess    bool     `json:",omitempty"` // True if this profile was discovered via guessing
 	Confidence float64  `json:",omitempty"` // Confidence score 0.0-1.0 for guessed profiles
 	GuessMatch []string `json:",omitempty"` // Reasons for match (e.g., "username", "name", "location")
-}
-
-// HTTPCache defines the interface for caching HTTP responses.
-// This is compatible with locator's httpcache package.
-type HTTPCache interface {
-	Get(ctx context.Context, url string) (data []byte, etag string, headers map[string]string, found bool)
-	SetAsync(ctx context.Context, url string, data []byte, etag string, headers map[string]string) error
-	SetAsyncWithTTL(ctx context.Context, url string, data []byte, etag string, headers map[string]string, ttl time.Duration) error
 }
