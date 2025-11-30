@@ -348,11 +348,12 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 
 		p, err := Fetch(ctx, item.url, opts...)
 		if err != nil {
-			// For auth-required platforms, try generic parser on any error
-			authRequired := twitter.Match(item.url) || linkedin.Match(item.url) ||
-				instagram.Match(item.url) || tiktok.Match(item.url) || vkontakte.Match(item.url)
+			// For auth-required platforms, try generic parser on any error (except LinkedIn)
+			// LinkedIn's generic HTML contains dozens of "People Also Viewed" links that cause runaway crawling
+			tryGeneric := (twitter.Match(item.url) || instagram.Match(item.url) ||
+				tiktok.Match(item.url) || vkontakte.Match(item.url)) && !linkedin.Match(item.url)
 
-			if !authRequired {
+			if !tryGeneric {
 				cfg.logger.WarnContext(ctx, "failed to fetch profile", "url", item.url, "error", err)
 				continue
 			}

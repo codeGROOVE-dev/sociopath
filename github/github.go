@@ -283,8 +283,8 @@ func extractSocialLinks(html string) []string {
 	for _, match := range matches {
 		if len(match) > 1 {
 			link := match[1]
-			// Filter out GitHub URLs
-			if !strings.Contains(link, "github.com") {
+			// Filter out GitHub URLs and email URLs
+			if !strings.Contains(link, "github.com") && !htmlutil.IsEmailURL(link) {
 				links = append(links, link)
 			}
 		}
@@ -298,8 +298,8 @@ func extractSocialLinks(html string) []string {
 			continue
 		}
 		link := match[1]
-		// Skip GitHub links and duplicates
-		if strings.Contains(link, "github.com") {
+		// Skip GitHub links, email URLs, and duplicates
+		if strings.Contains(link, "github.com") || htmlutil.IsEmailURL(link) {
 			continue
 		}
 		isDuplicate := false
@@ -351,16 +351,22 @@ func parseJSON(data []byte, urlStr, _ string) (*profile.Profile, error) {
 		Fields:        make(map[string]string),
 	}
 
-	// Add website
+	// Add website or email
 	if ghUser.Blog != "" {
 		// GitHub sometimes stores URLs without protocol
 		website := ghUser.Blog
 		if !strings.HasPrefix(website, "http") {
 			website = "https://" + website
 		}
-		p.Website = website
-		p.Fields["website"] = website
-		// Don't add to SocialLinks - it's already in p.Website which is followed by recursive mode
+
+		// Check if this is actually an email address with http(s):// prefix
+		if email, isEmail := htmlutil.ExtractEmailFromURL(website); isEmail {
+			p.Fields["email"] = email
+		} else {
+			p.Website = website
+			p.Fields["website"] = website
+			// Don't add to SocialLinks - it's already in p.Website which is followed by recursive mode
+		}
 	}
 
 	// Add email

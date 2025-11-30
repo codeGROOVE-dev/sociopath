@@ -17,7 +17,8 @@ func SocialLinks(htmlContent string) []string {
 		for _, u := range matches {
 			// Clean up trailing non-URL characters (quotes, brackets, etc.)
 			u = cleanURL(u)
-			if u != "" && !seen[u] && isValidProfileLink(u) {
+			// Skip email URLs (like http://email@domain.com) and invalid links
+			if u != "" && !seen[u] && !IsEmailURL(u) && isValidProfileLink(u) {
 				seen[u] = true
 				urls = append(urls, u)
 			}
@@ -27,7 +28,8 @@ func SocialLinks(htmlContent string) []string {
 	// Also extract links with social/personal keywords in the link text
 	personalLinks := extractPersonalLinks(htmlContent)
 	for _, u := range personalLinks {
-		if !seen[u] {
+		// Skip email URLs and duplicates
+		if !seen[u] && !IsEmailURL(u) {
 			seen[u] = true
 			urls = append(urls, u)
 		}
@@ -127,6 +129,45 @@ func cleanURL(s string) string {
 }
 
 var emailPattern = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
+
+// ExtractEmailFromURL extracts an email address from URLs like "https://user@domain.com" or "http://email@example.com".
+// Returns the email address and true if found, empty string and false otherwise.
+func ExtractEmailFromURL(urlStr string) (string, bool) {
+	// Check if URL starts with http:// or https://
+	lower := strings.ToLower(urlStr)
+	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		return "", false
+	}
+
+	// Remove protocol
+	withoutProtocol := urlStr
+	withoutProtocol = strings.TrimPrefix(withoutProtocol, "https://")
+	withoutProtocol = strings.TrimPrefix(withoutProtocol, "http://")
+	withoutProtocol = strings.TrimPrefix(withoutProtocol, "HTTPS://")
+	withoutProtocol = strings.TrimPrefix(withoutProtocol, "HTTP://")
+
+	// Check if what remains matches email pattern
+	if emailPattern.MatchString(withoutProtocol) {
+		// Extract just the email part (before any path or query)
+		email := withoutProtocol
+		if idx := strings.IndexAny(email, "/?#"); idx >= 0 {
+			email = email[:idx]
+		}
+
+		// Validate it's a proper email
+		if emailPattern.MatchString(email) {
+			return email, true
+		}
+	}
+
+	return "", false
+}
+
+// IsEmailURL returns true if the URL is actually an email address with http(s):// prefix.
+func IsEmailURL(urlStr string) bool {
+	_, ok := ExtractEmailFromURL(urlStr)
+	return ok
+}
 
 // EmailAddresses extracts email addresses from HTML content.
 // Filters out common false positives like noreply@, example@, etc.
@@ -289,6 +330,7 @@ func isSocialPlatformURL(u string) bool {
 		"youtube.com", "twitch.tv", "tiktok.com", "github.com", "vk.com",
 		"habr.com", "habrahabr.ru", "bsky.app", "fosstodon.org", "hachyderm.io",
 		"infosec.exchange", "mastodon.social", "mastodon.online",
+		"discord.com", "discordapp.com",
 	}
 	for _, p := range platforms {
 		if strings.Contains(lower, p) {
@@ -328,6 +370,7 @@ var socialPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`https?://(?:www\.)?twitch\.tv/\w+`),
 	regexp.MustCompile(`https?://(?:www\.)?tiktok\.com/@\w+`),
 	regexp.MustCompile(`https?://(?:www\.)?github\.com/[\w-]+/?(?:[^\w-/]|$)`), // Profile only, not /user/project
+	regexp.MustCompile(`https?://(?:www\.)?(?:discord|discordapp)\.com/users/\d+`), // Discord user profiles
 	regexp.MustCompile(`https?://(?:www\.)?vk\.com/[\w.]+`),                    // VKontakte
 	regexp.MustCompile(`https?://(?:www\.)?habr\.com/(?:ru/)?users/[\w-]+`),    // Habr (formerly Habrhabr)
 	regexp.MustCompile(`https?://habrahabr\.ru/users/[\w-]+`),                  // Old Habrhabr domain

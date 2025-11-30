@@ -216,21 +216,11 @@ func parseProfile(body []byte, profileURL string) (*profile.Profile, error) {
 	}
 
 	// Verify we got the profile we requested (not logged-in user's feed)
-	if targetID != "" {
-		// Extract the actual publicIdentifier from the profile data
-		actualID := ""
-		for _, code := range blocks {
-			if strings.Contains(code, `"publicIdentifier":`) {
-				re := regexp.MustCompile(`"publicIdentifier"\s*:\s*"([^"]+)"`)
-				if m := re.FindStringSubmatch(code); len(m) > 1 {
-					actualID = m[1]
-					break
-				}
-			}
-		}
-		// If we found an ID and it doesn't match what we requested, this is a redirect
-		if actualID != "" && actualID != targetID {
-			return nil, fmt.Errorf("profile not found (got %q instead of %q)", actualID, targetID)
+	// Check if the extracted profile data contains the target ID
+	if targetID != "" && prof.Username != "" {
+		// The Username field should match our target (case-insensitive comparison)
+		if !strings.EqualFold(prof.Username, targetID) {
+			return nil, fmt.Errorf("profile not found (got %q instead of %q)", prof.Username, targetID)
 		}
 	}
 
