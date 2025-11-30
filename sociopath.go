@@ -651,6 +651,49 @@ func isSingleAccountPlatform(platform string) bool {
 	}
 }
 
+// PlatformForURL returns the platform name for a URL, or "generic" if unknown.
+// This uses the same matching logic as Fetch() to ensure consistency.
+func PlatformForURL(url string) string {
+	switch {
+	case linkedin.Match(url):
+		return "linkedin"
+	case twitter.Match(url):
+		return "twitter"
+	case linktree.Match(url):
+		return "linktree"
+	case github.Match(url):
+		return "github"
+	case medium.Match(url):
+		return "medium"
+	case reddit.Match(url):
+		return "reddit"
+	case youtube.Match(url):
+		return "youtube"
+	case substack.Match(url):
+		return "substack"
+	case bilibili.Match(url):
+		return "bilibili"
+	case bluesky.Match(url):
+		return "bluesky"
+	case devto.Match(url):
+		return "devto"
+	case stackoverflow.Match(url):
+		return "stackoverflow"
+	case habr.Match(url):
+		return "habr"
+	case instagram.Match(url):
+		return "instagram"
+	case tiktok.Match(url):
+		return "tiktok"
+	case vkontakte.Match(url):
+		return "vkontakte"
+	case mastodon.Match(url):
+		return "mastodon"
+	default:
+		return "generic"
+	}
+}
+
 // platformMatches checks if a URL matches the given platform name.
 func platformMatches(url, platform string) bool {
 	switch platform {
@@ -705,8 +748,9 @@ func FetchRecursiveWithGuess(ctx context.Context, url string, opts ...Option) ([
 
 	// Guess additional profiles
 	guessCfg := guess.Config{
-		Logger:  cfg.logger,
-		Fetcher: fetcher,
+		Logger:           cfg.logger,
+		Fetcher:          fetcher,
+		PlatformDetector: PlatformForURL,
 	}
 
 	guessed := guess.Related(ctx, profiles, guessCfg)
@@ -740,8 +784,9 @@ func GuessFromUsername(ctx context.Context, username string, opts ...Option) ([]
 
 	// Guess profiles
 	guessCfg := guess.Config{
-		Logger:  cfg.logger,
-		Fetcher: fetcher,
+		Logger:           cfg.logger,
+		Fetcher:          fetcher,
+		PlatformDetector: PlatformForURL,
 	}
 
 	guessed := guess.Related(ctx, []*profile.Profile{seedProfile}, guessCfg)

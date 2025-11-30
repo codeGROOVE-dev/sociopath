@@ -14,10 +14,14 @@ import (
 // Fetcher is a function that fetches a profile from a URL.
 type Fetcher func(ctx context.Context, url string) (*profile.Profile, error)
 
+// PlatformDetector is a function that returns the platform name for a URL.
+type PlatformDetector func(url string) string
+
 // Config holds configuration for guessing.
 type Config struct {
-	Logger  *slog.Logger
-	Fetcher Fetcher
+	Logger           *slog.Logger
+	Fetcher          Fetcher
+	PlatformDetector PlatformDetector
 }
 
 // Popular Mastodon servers to check.
@@ -131,17 +135,31 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 	// Second round: Fetch social links and extract usernames from guessed profiles
 	// This handles cases like finding "thomrstrom" from a Mastodon link in a GitHub profile
 	if len(guessed) > 0 {
+		// Update knownPlatforms with platforms discovered in first round
+		for _, p := range guessed {
+			knownPlatforms[p.Platform] = true
+		}
+
 		// First, collect all social links from guessed profiles to fetch directly
+		// Skip links for platforms we already have
 		var socialLinksToFetch []string
 		for _, p := range guessed {
 			for _, link := range p.SocialLinks {
 				normalized := normalizeURL(link)
-				if !knownURLs[normalized] {
-					socialLinksToFetch = append(socialLinksToFetch, link)
-					knownURLs[normalized] = true // Mark as known immediately
+				if knownURLs[normalized] {
+					continue
 				}
+				// Skip if we already have this platform
+				if cfg.PlatformDetector != nil {
+					linkPlatform := cfg.PlatformDetector(link)
+					if linkPlatform != "" && linkPlatform != "generic" && knownPlatforms[linkPlatform] {
+						continue
+					}
+				}
+				socialLinksToFetch = append(socialLinksToFetch, link)
+				knownURLs[normalized] = true // Mark as known immediately
 			}
-			// Also check website field
+			// Also check website field (websites are generic, always fetch)
 			if p.Website != "" {
 				normalized := normalizeURL(p.Website)
 				if !knownURLs[normalized] {
@@ -569,6 +587,11 @@ func generateCandidates(usernames []string, names []string, knownURLs map[string
 	for _, username := range usernames {
 		// Add platform patterns
 		for _, pp := range platformPatterns {
+			// Skip platforms we already have a verified profile for
+			if knownPlatforms[pp.name] {
+				continue
+			}
+
 			// Skip LinkedIn for usernames with underscores (LinkedIn only allows hyphens)
 			if pp.name == "linkedin" && strings.Contains(username, "_") {
 				continue
