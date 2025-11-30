@@ -138,7 +138,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 				normalized := normalizeURL(link)
 				if !knownURLs[normalized] {
 					socialLinksToFetch = append(socialLinksToFetch, link)
-					knownURLs[normalized] = true  // Mark as known immediately
+					knownURLs[normalized] = true // Mark as known immediately
 				}
 			}
 			// Also check website field
@@ -183,7 +183,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 						url:       url,
 						username:  p.Username,
 						platform:  p.Platform,
-						matchType: "linked",  // This is a verified link
+						matchType: "linked", // This is a verified link
 					})
 
 					// Lower threshold for linked profiles since they were directly referenced
@@ -296,7 +296,101 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 		}
 	}
 
+	// Retrospective rescoring: Now that we have all profiles (including GitHub with orgs),
+	// rescore earlier guesses that might benefit from newly discovered information.
+	// Use iterative rescoring - profiles that reach 1.0 can help boost others in subsequent rounds.
+	if len(guessed) > 0 {
+		maxRounds := 3 // Prevent infinite loops
+		totalRescored := false
+
+		for round := range maxRounds {
+			// Build list of high-confidence profiles (known + guessed with 1.0 confidence)
+			var highConfidence []*profile.Profile
+			highConfidence = append(highConfidence, known...)
+			for _, p := range guessed {
+				if p.Confidence == 1.0 {
+					highConfidence = append(highConfidence, p)
+				}
+			}
+
+			roundRescored := false
+
+			for i, p := range guessed {
+				// Skip if already at 1.0 confidence
+				if p.Confidence == 1.0 {
+					continue
+				}
+
+				// Rescore this profile against only high-confidence profiles
+				newConfidence, newMatches := scoreMatch(p, highConfidence, candidateURL{
+					url:       p.URL,
+					username:  p.Username,
+					platform:  p.Platform,
+					matchType: "username",
+				})
+
+				// Update if confidence improved
+				if newConfidence > p.Confidence {
+					cfg.Logger.Debug("retrospective rescore improved confidence",
+						"url", p.URL,
+						"round", round+1,
+						"old_confidence", p.Confidence,
+						"new_confidence", newConfidence,
+						"new_matches", newMatches)
+					guessed[i].Confidence = newConfidence
+					guessed[i].GuessMatch = newMatches
+					roundRescored = true
+					totalRescored = true
+				}
+			}
+
+			// If no changes in this round, we're done
+			if !roundRescored {
+				break
+			}
+		}
+
+		if totalRescored {
+			cfg.Logger.Info("retrospective rescoring updated confidences")
+		}
+	}
+
+	// Filter to only highest confidence per platform
+	guessed = filterHighestConfidencePerPlatform(guessed)
+
 	return guessed
+}
+
+// filterHighestConfidencePerPlatform keeps only the highest confidence profile(s) per platform.
+// If multiple profiles are tied at the highest confidence, all are kept.
+func filterHighestConfidencePerPlatform(profiles []*profile.Profile) []*profile.Profile {
+	if len(profiles) == 0 {
+		return profiles
+	}
+
+	// Group profiles by platform and find max confidence per platform
+	byPlatform := make(map[string][]*profile.Profile)
+	maxConfidence := make(map[string]float64)
+
+	for _, p := range profiles {
+		byPlatform[p.Platform] = append(byPlatform[p.Platform], p)
+		if p.Confidence > maxConfidence[p.Platform] {
+			maxConfidence[p.Platform] = p.Confidence
+		}
+	}
+
+	// Keep only profiles at max confidence for their platform
+	var result []*profile.Profile
+	for platform, platformProfiles := range byPlatform {
+		maxConf := maxConfidence[platform]
+		for _, p := range platformProfiles {
+			if p.Confidence == maxConf {
+				result = append(result, p)
+			}
+		}
+	}
+
+	return result
 }
 
 type candidateURL struct {
@@ -475,6 +569,11 @@ func generateCandidates(usernames []string, names []string, knownURLs map[string
 	for _, username := range usernames {
 		// Add platform patterns
 		for _, pp := range platformPatterns {
+			// Skip LinkedIn for usernames with underscores (LinkedIn only allows hyphens)
+			if pp.name == "linkedin" && strings.Contains(username, "_") {
+				continue
+			}
+
 			url := strings.Replace(pp.pattern, "%s", username, 1)
 			if !knownURLs[normalizeURL(url)] {
 				candidates = append(candidates, candidateURL{
@@ -510,6 +609,7 @@ func generateCandidates(usernames []string, names []string, knownURLs map[string
 				continue
 			}
 
+			// Try hyphenated version (e.g., dan-lorenc)
 			url := "https://www.linkedin.com/in/" + slug + "/"
 			if !knownURLs[normalizeURL(url)] {
 				candidates = append(candidates, candidateURL{
@@ -519,6 +619,21 @@ func generateCandidates(usernames []string, names []string, knownURLs map[string
 					matchType:  "name",
 					sourceName: name,
 				})
+			}
+
+			// Also try without hyphens (e.g., danlorenc)
+			slugNoHyphens := strings.ReplaceAll(slug, "-", "")
+			if slugNoHyphens != slug && len(slugNoHyphens) >= 3 {
+				urlNoHyphens := "https://www.linkedin.com/in/" + slugNoHyphens + "/"
+				if !knownURLs[normalizeURL(urlNoHyphens)] {
+					candidates = append(candidates, candidateURL{
+						url:        urlNoHyphens,
+						username:   slugNoHyphens,
+						platform:   "linkedin",
+						matchType:  "name",
+						sourceName: name,
+					})
+				}
 			}
 		}
 	}
@@ -534,6 +649,9 @@ func normalizeURL(url string) string {
 	url = strings.ToLower(url)
 	// Normalize x.com to twitter.com (they're the same platform)
 	url = strings.Replace(url, "x.com/", "twitter.com/", 1)
+	// Normalize Mastodon web interface URLs to canonical profile URLs
+	// e.g., triangletoot.party/web/@username -> triangletoot.party/@username
+	url = strings.Replace(url, "/web/@", "/@", 1)
 	return url
 }
 
@@ -582,7 +700,7 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 	// Track best signals (don't accumulate across profiles)
 	var hasLink bool
 	var bestNameScore, bestLocScore, bestBioScore float64
-	var hasWebsiteMatch, hasEmployerMatch bool
+	var hasWebsiteMatch, hasEmployerMatch, hasOrgMatch bool
 
 	// Check against each known profile for additional signals
 	for _, k := range known {
@@ -668,6 +786,27 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 				}
 			}
 		}
+
+		// Check organization match (GitHub organizations vs bio/employer/unstructured mentions)
+		if !hasOrgMatch {
+			// Get organizations from either profile (usually GitHub)
+			guessedOrgs := extractOrganizationList(guessed.Fields)
+			knownOrgs := extractOrganizationList(k.Fields)
+
+			// Check if any organization appears in the other profile's bio, employer, or unstructured text
+			if len(guessedOrgs) > 0 || len(knownOrgs) > 0 {
+				// Check guessed orgs against known bio/employer/unstructured
+				if len(guessedOrgs) > 0 && scoreOrganizationMatch(guessedOrgs, k.Bio, getEmployer(k.Fields), k.Unstructured) {
+					hasOrgMatch = true
+					matches = append(matches, "organization:"+k.Platform)
+				}
+				// Check known orgs against guessed bio/employer/unstructured
+				if !hasOrgMatch && len(knownOrgs) > 0 && scoreOrganizationMatch(knownOrgs, guessed.Bio, getEmployer(guessed.Fields), guessed.Unstructured) {
+					hasOrgMatch = true
+					matches = append(matches, "organization:"+k.Platform)
+				}
+			}
+		}
 	}
 
 	// Add best signals to score (only once, not per profile)
@@ -689,6 +828,10 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 	if hasEmployerMatch {
 		// Employer match is a strong signal, especially for name-based LinkedIn guesses
 		score += 0.35
+	}
+	if hasOrgMatch {
+		// Organization match is a strong signal (e.g., GitHub org matches bio mention)
+		score += 0.30
 	}
 
 	// Cap at 1.0
@@ -761,17 +904,35 @@ func scoreName(a, b string) float64 {
 	}
 
 	var overlap int
-	for _, wa := range wordsA {
-		for _, wb := range wordsB {
+	var firstNameMatch bool
+	for i, wa := range wordsA {
+		for j, wb := range wordsB {
 			if wa == wb || strings.Contains(wa, wb) || strings.Contains(wb, wa) {
 				overlap++
+				// Track if first word (likely first name) matches
+				if i == 0 && j == 0 {
+					firstNameMatch = true
+				}
 				break
 			}
 		}
 	}
 
 	if overlap > 0 {
-		return float64(overlap) / float64(max(len(wordsA), len(wordsB)))
+		maxLen := len(wordsA)
+		if len(wordsB) > maxLen {
+			maxLen = len(wordsB)
+		}
+		score := float64(overlap) / float64(maxLen)
+
+		// Penalize if first names don't match (likely different people)
+		// Sharing just a surname shouldn't give high confidence
+		if !firstNameMatch && overlap == 1 {
+			// Only surname matches - give very low score
+			score *= 0.2
+		}
+
+		return score
 	}
 
 	return 0
@@ -815,7 +976,11 @@ func scoreLocation(a, b string) float64 {
 	}
 
 	if overlap > 0 {
-		return float64(overlap) / float64(max(len(wordsA), len(wordsB)))
+		maxLen := len(wordsA)
+		if len(wordsB) > maxLen {
+			maxLen = len(wordsB)
+		}
+		return float64(overlap) / float64(maxLen)
 	}
 
 	return 0
@@ -847,7 +1012,11 @@ func scoreBioOverlap(a, b string) float64 {
 	}
 
 	if overlap >= 2 {
-		return float64(overlap) / float64(max(len(wordsA), len(wordsB)))
+		maxLen := len(wordsA)
+		if len(wordsB) > maxLen {
+			maxLen = len(wordsB)
+		}
+		return float64(overlap) / float64(maxLen)
 	}
 
 	return 0
@@ -876,4 +1045,76 @@ func extractSignificantWords(s string) []string {
 		}
 	}
 	return words
+}
+
+// extractOrganizationList parses organization names from Fields["organizations"].
+// It normalizes organization names by removing common suffixes like "-dev", "-org", etc.
+func extractOrganizationList(fields map[string]string) []string {
+	if fields == nil {
+		return nil
+	}
+
+	orgsStr, ok := fields["organizations"]
+	if !ok || orgsStr == "" {
+		return nil
+	}
+
+	// Split by comma (GitHub stores as "org1, org2, org3")
+	parts := strings.Split(orgsStr, ",")
+	var normalized []string
+
+	for _, org := range parts {
+		org = strings.TrimSpace(org)
+		if org == "" {
+			continue
+		}
+
+		// Normalize: remove common suffixes
+		orgLower := strings.ToLower(org)
+		orgLower = strings.TrimSuffix(orgLower, "-dev")
+		orgLower = strings.TrimSuffix(orgLower, "-org")
+		orgLower = strings.TrimSuffix(orgLower, "-io")
+		orgLower = strings.TrimSuffix(orgLower, "-labs")
+
+		normalized = append(normalized, orgLower)
+	}
+
+	return normalized
+}
+
+// getEmployer extracts employer/company from Fields.
+func getEmployer(fields map[string]string) string {
+	if fields == nil {
+		return ""
+	}
+
+	// Check both "employer" and "company" keys
+	if emp := fields["employer"]; emp != "" {
+		return emp
+	}
+	if comp := fields["company"]; comp != "" {
+		return comp
+	}
+
+	return ""
+}
+
+// scoreOrganizationMatch checks if any organization name appears in bio, employer, or unstructured text.
+// Organizations are already normalized (lowercase, suffixes removed).
+func scoreOrganizationMatch(orgs []string, bio string, employer string, unstructured string) bool {
+	if len(orgs) == 0 {
+		return false
+	}
+
+	// Combine bio, employer, and unstructured text for searching
+	searchText := strings.ToLower(bio + " " + employer + " " + unstructured)
+
+	for _, org := range orgs {
+		// Organization names are already lowercase and normalized
+		if strings.Contains(searchText, org) {
+			return true
+		}
+	}
+
+	return false
 }

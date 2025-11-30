@@ -608,6 +608,70 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				cmpopts.IgnoreFields(profile.Profile{}, "Website", "SocialLinks", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
 			},
 		},
+		{
+			name:     "LinkedIn/mattmoor",
+			url:      "https://www.linkedin.com/in/mattmoor",
+			authOnly: true,
+			setup: func(ctx context.Context, t *testing.T) interface{} {
+				t.Helper()
+				client, err := linkedin.New(ctx, linkedin.WithBrowserCookies())
+				if err != nil {
+					t.Skipf("linkedin.New(linkedin.WithBrowserCookies()) failed: %v", err)
+				}
+				return client
+			},
+			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+				return c.(*linkedin.Client).Fetch(ctx, url)
+			},
+			want: &profile.Profile{
+				Platform:      "linkedin",
+				URL:           "https://www.linkedin.com/in/mattmoor",
+				Authenticated: true,
+				Username:      "mattmoor",
+				Name:          "Matt Moore",
+				Location:      "Kirkland, Washington, United States",
+				Fields: map[string]string{
+					"employer": "Chainguard",
+				},
+			},
+			// LinkedIn test should verify employer extraction
+			cmpOpts: []cmp.Option{
+				cmpopts.IgnoreFields(profile.Profile{}, "Bio", "Website", "SocialLinks", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
+				cmpopts.IgnoreMapEntries(func(k, v string) bool { return k == "pronouns" }),
+			},
+		},
+		{
+			name:     "LinkedIn/austen-bryan",
+			url:      "https://www.linkedin.com/in/austen-bryan-23485a19",
+			authOnly: true,
+			setup: func(ctx context.Context, t *testing.T) interface{} {
+				t.Helper()
+				client, err := linkedin.New(ctx, linkedin.WithBrowserCookies())
+				if err != nil {
+					t.Skipf("linkedin.New(linkedin.WithBrowserCookies()) failed: %v", err)
+				}
+				return client
+			},
+			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+				return c.(*linkedin.Client).Fetch(ctx, url)
+			},
+			want: &profile.Profile{
+				Platform:      "linkedin",
+				URL:           "https://www.linkedin.com/in/austen-bryan-23485a19",
+				Authenticated: true,
+				Username:      "austen-bryan-23485a19",
+				Name:          "Austen Bryan",
+				Location:      "Omaha, Nebraska, United States",
+				Fields: map[string]string{
+					"employer": "Defense Unicorns",
+				},
+			},
+			// LinkedIn test should verify employer extraction
+			cmpOpts: []cmp.Option{
+				cmpopts.IgnoreFields(profile.Profile{}, "Bio", "Website", "SocialLinks", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
+				cmpopts.IgnoreMapEntries(func(k, v string) bool { return k == "pronouns" }),
+			},
+		},
 	}
 
 	opts := []cmp.Option{

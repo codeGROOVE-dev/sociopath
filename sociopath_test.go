@@ -38,13 +38,17 @@ func TestFetchRequiresAuthForInstagram(t *testing.T) {
 	}
 }
 
-func TestFetchRequiresAuthForTikTok(t *testing.T) {
+func TestFetchWorksForTikTokWithoutAuth(t *testing.T) {
+	// TikTok doesn't require auth and should work without cookies
+	// However, it may fail if the profile doesn't exist
 	_, err := Fetch(context.Background(), "https://tiktok.com/@johndoe")
-	if err == nil {
-		t.Error("Fetch should fail for TikTok without auth")
+	// We don't expect ErrAuthRequired or ErrNoCookies
+	if errors.Is(err, ErrAuthRequired) || errors.Is(err, ErrNoCookies) {
+		t.Errorf("TikTok should not require auth, got: %v", err)
 	}
-	if !errors.Is(err, ErrAuthRequired) {
-		t.Logf("error: %v", err)
+	// Other errors (like profile not found) are acceptable
+	if err != nil {
+		t.Logf("TikTok fetch failed (likely profile doesn't exist): %v", err)
 	}
 }
 

@@ -15,12 +15,14 @@ import (
 var platformDomains = map[string]string{
 	"linkedin": "linkedin.com",
 	"twitter":  "x.com",
+	"tiktok":   "tiktok.com",
 }
 
 // platformEssentialCookies maps platform names to their required cookie names.
 var platformEssentialCookies = map[string][]string{
 	"linkedin": {"li_at", "JSESSIONID", "lidc", "bcookie"},
 	"twitter":  {"auth_token", "ct0", "kdt", "twid", "att"},
+	"tiktok":   {"sessionid"},
 }
 
 // BrowserSource reads cookies from browser cookie stores.
@@ -92,7 +94,7 @@ func (s *BrowserSource) tryFirefoxProfiles(ctx context.Context, domain, platform
 }
 
 // filterEssentialCookies extracts only the required cookies for a platform.
-func (*BrowserSource) filterEssentialCookies(kookies []*kooky.Cookie, platform string) map[string]string {
+func (s *BrowserSource) filterEssentialCookies(kookies []*kooky.Cookie, platform string) map[string]string {
 	essential, ok := platformEssentialCookies[platform]
 	if !ok {
 		// No filter defined, return all cookies
@@ -112,6 +114,7 @@ func (*BrowserSource) filterEssentialCookies(kookies []*kooky.Cookie, platform s
 	for _, c := range kookies {
 		if essentialSet[c.Name] {
 			cookies[c.Name] = c.Value
+			s.logger.Debug("found essential cookie", "name", c.Name, "len", len(c.Value))
 		}
 	}
 

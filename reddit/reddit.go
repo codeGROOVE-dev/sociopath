@@ -156,6 +156,18 @@ func parseProfile(html, url, username string) (*profile.Profile, error) { //noli
 		prof.Fields["joined_year"] = matches[1]
 	}
 
+	// Extract subreddits and comment samples
+	subreddits := extractSubreddits(html)
+	if len(subreddits) > 0 {
+		prof.Fields["subreddits"] = strings.Join(subreddits, ", ")
+	}
+
+	// Extract comment samples (for keyword/organization matching)
+	commentSamples := extractCommentSamples(html, 5)
+	if len(commentSamples) > 0 {
+		prof.Unstructured = strings.Join(commentSamples, "\n\n---\n\n")
+	}
+
 	// Extract social links
 	prof.SocialLinks = htmlutil.SocialLinks(html)
 
@@ -163,7 +175,8 @@ func parseProfile(html, url, username string) (*profile.Profile, error) { //noli
 	var filtered []string
 	for _, link := range prof.SocialLinks {
 		if !strings.Contains(link, "reddit.com") &&
-			!strings.Contains(link, "redd.it") {
+			!strings.Contains(link, "redd.it") &&
+			!strings.Contains(link, "redditblog.com") {
 			filtered = append(filtered, link)
 		}
 	}
@@ -184,4 +197,113 @@ func extractUsername(urlStr string) string {
 	}
 
 	return ""
+}
+
+// extractSubreddits extracts subreddit names from Reddit profile HTML.
+func extractSubreddits(html string) []string {
+	// Extract from data-subreddit attributes in comment/post divs
+	pattern := regexp.MustCompile(`data-subreddit="([^"]+)"`)
+	matches := pattern.FindAllStringSubmatch(html, -1)
+
+	seen := make(map[string]bool)
+	var subreddits []string
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			sub := match[1]
+			// Skip user profiles (like u_username)
+			if strings.HasPrefix(sub, "u_") {
+				continue
+			}
+			// Skip generic/common subreddits
+			if isGenericSubreddit(sub) {
+				continue
+			}
+			if !seen[sub] {
+				seen[sub] = true
+				subreddits = append(subreddits, sub)
+			}
+		}
+	}
+
+	// Limit to top 10 most relevant subreddits
+	if len(subreddits) > 10 {
+		subreddits = subreddits[:10]
+	}
+
+	return subreddits
+}
+
+// isGenericSubreddit returns true for very common/generic subreddits that don't indicate interests.
+func isGenericSubreddit(sub string) bool {
+	generic := map[string]bool{
+		"AskReddit": true, "pics": true, "funny": true, "movies": true,
+		"gaming": true, "worldnews": true, "news": true, "todayilearned": true,
+		"nottheonion": true, "explainlikeimfive": true, "mildlyinteresting": true,
+		"DIY": true, "videos": true, "OldSchoolCool": true, "TwoXChromosomes": true,
+		"tifu": true, "Music": true, "books": true, "LifeProTips": true,
+		"dataisbeautiful": true, "aww": true, "science": true, "space": true,
+		"Showerthoughts": true, "askscience": true, "Jokes": true, "IAmA": true,
+		"Futurology": true, "sports": true, "UpliftingNews": true, "food": true,
+		"nosleep": true, "creepy": true, "history": true, "gifs": true,
+		"InternetIsBeautiful": true, "GetMotivated": true, "gadgets": true,
+		"announcements": true, "WritingPrompts": true, "philosophy": true,
+		"Documentaries": true, "EarthPorn": true, "photoshopbattles": true,
+		"listentothis": true, "blog": true, "all": true, "popular": true,
+		"reddit": true,
+	}
+	return generic[sub]
+}
+
+// extractCommentSamples extracts recent comment text samples from Reddit profile HTML.
+func extractCommentSamples(html string, limit int) []string {
+	// Extract text from comment divs with class="md" - use non-greedy match and look for paragraph tags
+	pattern := regexp.MustCompile(`<div class="md"><p>(.+?)</p>`)
+	matches := pattern.FindAllStringSubmatch(html, -1)
+
+	var samples []string
+	for _, match := range matches {
+		if len(match) > 1 && len(samples) < limit {
+			// Extract text from HTML, removing tags
+			text := stripHTML(match[1])
+			text = strings.TrimSpace(text)
+
+			// Skip very short comments
+			if len(text) < 20 {
+				continue
+			}
+
+			// Skip generic messages
+			if strings.Contains(text, "archived post") ||
+				strings.Contains(text, "automatically archived") {
+				continue
+			}
+
+			// Limit length of each sample to ~200 chars
+			if len(text) > 200 {
+				text = text[:200] + "..."
+			}
+
+			samples = append(samples, text)
+		}
+	}
+
+	return samples
+}
+
+// stripHTML removes HTML tags from a string (simple implementation).
+func stripHTML(s string) string {
+	// Remove HTML tags
+	tagPattern := regexp.MustCompile(`<[^>]*>`)
+	s = tagPattern.ReplaceAllString(s, "")
+
+	// Decode HTML entities
+	s = strings.ReplaceAll(s, "&lt;", "<")
+	s = strings.ReplaceAll(s, "&gt;", ">")
+	s = strings.ReplaceAll(s, "&amp;", "&")
+	s = strings.ReplaceAll(s, "&quot;", "\"")
+	s = strings.ReplaceAll(s, "&#39;", "'")
+	s = strings.ReplaceAll(s, "&nbsp;", " ")
+
+	return s
 }

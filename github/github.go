@@ -117,12 +117,19 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, err
 	}
 
-	// Fetch HTML to extract rel="me" links and README
+	// Fetch HTML to extract rel="me" links, README, and organizations
 	htmlContent, htmlLinks := c.fetchHTML(ctx, urlStr)
 	p.SocialLinks = append(p.SocialLinks, htmlLinks...)
 
-	// Extract README from HTML if available
+	// Extract README and organizations from HTML if available
 	if htmlContent != "" {
+		// Extract organizations
+		orgs := extractOrganizations(htmlContent)
+		if len(orgs) > 0 {
+			p.Fields["organizations"] = strings.Join(orgs, ", ")
+		}
+
+		// Extract README
 		readme := extractREADME(htmlContent)
 		if readme != "" {
 			p.Unstructured = readme
@@ -286,6 +293,51 @@ func extractSocialLinks(html string) []string {
 	}
 
 	return links
+}
+
+// extractOrganizations extracts organization names from GitHub profile HTML.
+// Organizations are listed in the profile sidebar with aria-label attributes.
+func extractOrganizations(html string) []string {
+	// Pattern: aria-label="organizationname"
+	// This matches the organization links in the profile sidebar
+	pattern := regexp.MustCompile(`aria-label="([^"]+)"[^>]*>\s*<img[^>]+alt="@([^"]+)"`)
+	matches := pattern.FindAllStringSubmatch(html, -1)
+
+	var orgs []string
+	seen := make(map[string]bool)
+
+	for _, match := range matches {
+		if len(match) > 2 {
+			orgName := match[1]
+			// Skip if already seen
+			if seen[orgName] {
+				continue
+			}
+			seen[orgName] = true
+			orgs = append(orgs, orgName)
+		}
+	}
+
+	// Fallback pattern: just look for organization links
+	if len(orgs) == 0 {
+		linkPattern := regexp.MustCompile(`href="/([^/"]+)"[^>]*aria-label="([^"]+)"`)
+		matches = linkPattern.FindAllStringSubmatch(html, -1)
+		for _, match := range matches {
+			if len(match) > 2 {
+				orgName := match[2]
+				// Filter out obviously non-org labels
+				if strings.Contains(strings.ToLower(orgName), "organization") ||
+					len(orgName) < 50 && !strings.Contains(orgName, " ") {
+					if !seen[orgName] {
+						seen[orgName] = true
+						orgs = append(orgs, orgName)
+					}
+				}
+			}
+		}
+	}
+
+	return orgs
 }
 
 func parseJSON(data []byte, urlStr, _ string) (*profile.Profile, error) {

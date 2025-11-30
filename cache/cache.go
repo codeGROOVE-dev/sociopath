@@ -23,13 +23,21 @@ type HTTPCache interface {
 // Returns an error if the HTTP status is not 200 OK.
 // The caller must set all necessary headers on the request before calling this function.
 func FetchURL(ctx context.Context, cache HTTPCache, client *http.Client, req *http.Request, logger *slog.Logger) ([]byte, error) {
-	url := req.URL.String()
+	// Build cache key that includes auth state to avoid mixing authenticated/unauthenticated responses
+	cacheKey := req.URL.String()
+	if client.Jar != nil {
+		cookies := client.Jar.Cookies(req.URL)
+		if len(cookies) > 0 {
+			cacheKey += "|auth"
+		}
+	}
 
 	// Check cache
 	if cache != nil {
-		if data, _, _, found := cache.Get(ctx, url); found {
+		if data, _, _, found := cache.Get(ctx, cacheKey); found {
 			if logger != nil {
-				logger.Debug("cache hit", "url", url)
+				logger.Debug("cache hit", "key", cacheKey)
+				logger.Debug("response body", "url", req.URL.String(), "body", string(data))
 			}
 			return data, nil
 		}
@@ -44,7 +52,7 @@ func FetchURL(ctx context.Context, cache HTTPCache, client *http.Client, req *ht
 
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
-		return nil, &HTTPError{StatusCode: resp.StatusCode, URL: url}
+		return nil, &HTTPError{StatusCode: resp.StatusCode, URL: req.URL.String()}
 	}
 
 	// Read response body
@@ -55,7 +63,11 @@ func FetchURL(ctx context.Context, cache HTTPCache, client *http.Client, req *ht
 
 	// Cache successful response (async, errors intentionally ignored)
 	if cache != nil {
-		_ = cache.SetAsync(ctx, url, body, "", nil) //nolint:errcheck // async, error ignored
+		_ = cache.SetAsync(ctx, cacheKey, body, "", nil) //nolint:errcheck // async, error ignored
+	}
+
+	if logger != nil {
+		logger.Debug("response body", "url", req.URL.String(), "body", string(body))
 	}
 
 	return body, nil

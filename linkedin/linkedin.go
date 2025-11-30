@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -139,12 +140,286 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 			"error", parseErr,
 			"response_size", len(body),
 		)
+		return prof, parseErr
 	}
+
+	// If no employer found from HTML parsing, try the Voyager API
+	c.logger.DebugContext(ctx, "checking employer", "employer", prof.Fields["employer"])
+	if prof.Fields["employer"] == "" {
+		username := extractPublicID(urlStr)
+		memberURN := extractMemberURN(body)
+		c.logger.DebugContext(ctx, "extracted for API call", "username", username, "memberURN", memberURN)
+		if username != "" || memberURN != "" {
+			employer := c.fetchEmployerFromAPI(ctx, username, memberURN)
+			if employer != "" {
+				prof.Fields["employer"] = employer
+				c.logger.DebugContext(ctx, "employer found via API", "employer", employer)
+			}
+		}
+	}
+
 	return prof, parseErr
 }
 
 // EnableDebug enables debug logging.
 func (c *Client) EnableDebug() { c.debug = true }
+
+// fetchEmployerFromAPI calls the LinkedIn Voyager API to get profile experience data.
+func (c *Client) fetchEmployerFromAPI(ctx context.Context, _ string, memberURN string) string {
+	// First, make a request to LinkedIn to get session cookies (JSESSIONID)
+	// This is necessary because JSESSIONID is set as a response cookie, not stored persistently
+	if err := c.ensureSessionCookies(ctx); err != nil {
+		c.logger.DebugContext(ctx, "failed to get session cookies", "error", err)
+		return ""
+	}
+
+	if memberURN == "" {
+		c.logger.DebugContext(ctx, "no member URN available for API call")
+		return ""
+	}
+
+	// Use GraphQL endpoint to get experience data
+	profileURN := url.QueryEscape(fmt.Sprintf("urn:li:fsd_profile:%s", memberURN))
+	queryID := "voyagerIdentityDashProfileComponents.7af5d6f176f11583b382e37e5639e69e"
+	baseURL := "https://www.linkedin.com/voyager/api/graphql"
+	apiURL := fmt.Sprintf("%s?variables=(profileUrn:%s,sectionType:experience)&queryId=%s&includeWebMetadata=true",
+		baseURL, profileURN, queryID)
+	c.logger.DebugContext(ctx, "calling voyager api", "url", apiURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		c.logger.DebugContext(ctx, "voyager api request creation failed", "error", err)
+		return ""
+	}
+
+	setVoyagerHeaders(req, c.httpClient, c.logger)
+	req.Header.Set("Accept", "application/vnd.linkedin.normalized+json+2.1")
+
+	// Don't use cache for API calls - they need fresh CSRF tokens
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.logger.DebugContext(ctx, "voyager api request failed", "error", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		c.logger.DebugContext(ctx, "voyager api request failed", "status", resp.StatusCode)
+		return ""
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.logger.DebugContext(ctx, "voyager api body read failed", "error", err)
+		return ""
+	}
+
+	c.logger.DebugContext(ctx, "response body", "url", apiURL, "body", string(body))
+
+	employer := extractEmployerFromGraphQLResponse(body)
+	c.logger.DebugContext(ctx, "voyager api response parsed", "employer", employer, "bodySize", len(body))
+	return employer
+}
+
+// ensureSessionCookies makes a request to LinkedIn to get session cookies (JSESSIONID).
+func (c *Client) ensureSessionCookies(ctx context.Context) error {
+	// Check if we already have JSESSIONID
+	u, _ := url.Parse("https://www.linkedin.com")
+	for _, cookie := range c.httpClient.Jar.Cookies(u) {
+		if cookie.Name == "JSESSIONID" {
+			c.logger.DebugContext(ctx, "JSESSIONID already present")
+			return nil
+		}
+	}
+
+	// Make a request to get session cookies
+	c.logger.DebugContext(ctx, "fetching session cookies")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.linkedin.com/feed/", http.NoBody)
+	if err != nil {
+		return err
+	}
+	setHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body) // drain body
+
+	// Check if we got JSESSIONID
+	for _, cookie := range c.httpClient.Jar.Cookies(u) {
+		if cookie.Name == "JSESSIONID" {
+			c.logger.DebugContext(ctx, "got JSESSIONID from response")
+			return nil
+		}
+	}
+
+	c.logger.DebugContext(ctx, "JSESSIONID not found in response cookies")
+	return nil
+}
+
+func setVoyagerHeaders(req *http.Request, client *http.Client, logger *slog.Logger) {
+	// Chrome user agent - split into parts to avoid long line
+	ua := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 " +
+		"(KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36"
+	req.Header.Set("User-Agent", ua)
+	// Note: don't set Accept header - LinkedIn API is picky about it
+	req.Header.Set("Accept-Language", "en-AU,en-GB;q=0.9,en-US;q=0.8,en;q=0.7")
+	req.Header.Set("X-Li-Lang", "en_US")
+	req.Header.Set("X-Restli-Protocol-Version", "2.0.0")
+
+	// Extract CSRF token from JSESSIONID cookie
+	if client.Jar != nil {
+		u, _ := url.Parse("https://www.linkedin.com")
+		cookies := client.Jar.Cookies(u)
+		logger.Debug("voyager api cookies available", "count", len(cookies))
+		for _, cookie := range cookies {
+			if cookie.Name == "JSESSIONID" {
+				// Strip quotes from the value
+				csrfToken := strings.Trim(cookie.Value, `"`)
+				req.Header.Set("Csrf-Token", csrfToken)
+				logger.Debug("csrf token set", "token", csrfToken[:min(len(csrfToken), 20)]+"...")
+				break
+			}
+		}
+	}
+}
+
+// extractMemberURN extracts the encoded member ID from the profile HTML response.
+// LinkedIn profile pages contain encoded IDs like "ACoAAABI9AMB..." which are used for API calls.
+// Important: The HTML contains URNs for both the logged-in user AND the profile being viewed.
+// We need to find the one associated with the profile, not the logged-in user.
+func extractMemberURN(body []byte) string {
+	// FIRST: look for profileCard URN which is tied to the viewed profile (not the logged-in user)
+	// Pattern: fsd_profileCard:(ACoA...,EXPERIENCE or fsd_profileCard:(ACoA...,EDUCATION
+	// This pattern only appears for the profile being viewed, not the logged-in user
+	cardRe := regexp.MustCompile(`fsd_profileCard:\((ACoA[A-Za-z0-9_-]+),`)
+	if match := cardRe.FindSubmatch(body); len(match) > 1 {
+		return string(match[1])
+	}
+
+	// Fallback: look for the profile URN - but this may match logged-in user
+	// Pattern: "*elements":["urn:li:fsd_profile:ACoA..."]
+	profileRe := regexp.MustCompile(`fsd_profile:(ACoA[A-Za-z0-9_-]+)`)
+	if match := profileRe.FindSubmatch(body); len(match) > 1 {
+		return string(match[1])
+	}
+
+	// Last resort: any ACoA pattern (may pick up wrong user)
+	re := regexp.MustCompile(`ACoA[A-Za-z0-9_-]+`)
+	match := re.Find(body)
+	if len(match) > 0 {
+		return string(match)
+	}
+	return ""
+}
+
+func extractEmployerFromGraphQLResponse(body []byte) string {
+	// The GraphQL response has a complex nested structure
+	// We look for company names in the experience data
+	// The structure is: data.elements[].components.entityComponent.subtitle.text
+	// Where the subtitle text contains "Company Name · Employment Type · Duration"
+
+	// First try to find company name in the subtitle text
+	var data struct {
+		Data struct {
+			IdentityDashProfileComponentsBySectionType struct {
+				Elements []struct {
+					Components struct {
+						EntityComponent struct {
+							Subtitle struct {
+								Text string `json:"text"`
+							} `json:"subtitle"`
+						} `json:"entityComponent"`
+					} `json:"components"`
+				} `json:"elements"`
+			} `json:"identityDashProfileComponentsBySectionType"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &data); err != nil {
+		// Try to extract any company name from the raw JSON using regex
+		return extractCompanyFromJSON(body)
+	}
+
+	elements := data.Data.IdentityDashProfileComponentsBySectionType.Elements
+	if len(elements) > 0 {
+		// The first element is usually the current position
+		subtitle := elements[0].Components.EntityComponent.Subtitle.Text
+		if subtitle != "" {
+			// Subtitle format: "Company · Employment Type · Duration"
+			parts := strings.Split(subtitle, " · ")
+			if len(parts) > 0 && parts[0] != "" {
+				return parts[0]
+			}
+		}
+	}
+
+	return extractCompanyFromJSON(body)
+}
+
+func extractCompanyFromJSON(body []byte) string {
+	// The experience section has different structures:
+	// 1. Multiple roles at same company: subtitle.text = "Company · Full-time", titleV2.text.text = Role
+	// 2. Single position view: titleV2.text.text = "Company"
+	//
+	// We prioritize the subtitle pattern because it's more reliable (has "· Full-time" delimiter)
+
+	// Look for company in subtitle field with middot separator (more reliable)
+	// Format: "subtitle":{..."text":"Company · Employment Type"...}
+	subtitleRe := regexp.MustCompile(`"subtitle":\{[^}]*"text":\{[^}]*"text":"([^"·]+)\s*·`)
+	if m := subtitleRe.FindSubmatch(body); len(m) > 1 {
+		company := strings.TrimSpace(string(m[1]))
+		if company != "" && company != "USER_LOCALE" {
+			return company
+		}
+	}
+
+	// Fallback: look for company logo accessibility text
+	// Format: "accessibilityText":"Company logo"
+	logoRe := regexp.MustCompile(`"accessibilityText":"([^"]+) logo"`)
+	if m := logoRe.FindSubmatch(body); len(m) > 1 {
+		company := strings.TrimSpace(string(m[1]))
+		if company != "" {
+			return company
+		}
+	}
+
+	// Fallback: look for company name in titleV2 (but this might be a job title)
+	// Only use if it doesn't look like a job title
+	titleRe := regexp.MustCompile(`"titleV2":\{[^}]*"text":\{[^}]*"text":"([^"]+)"`)
+	if m := titleRe.FindSubmatch(body); len(m) > 1 {
+		company := strings.TrimSpace(string(m[1]))
+		// Skip if it looks like a job title (contains common title words)
+		if company != "" && company != "USER_LOCALE" &&
+			!strings.Contains(strings.ToLower(company), "founder") &&
+			!strings.Contains(strings.ToLower(company), "director") &&
+			!strings.Contains(strings.ToLower(company), "manager") &&
+			!strings.Contains(strings.ToLower(company), "engineer") &&
+			!strings.Contains(strings.ToLower(company), "officer") &&
+			!strings.Contains(strings.ToLower(company), "president") &&
+			!strings.Contains(strings.ToLower(company), "chief") {
+			return company
+		}
+	}
+
+	// Last fallback: look for common company name patterns
+	patterns := []string{
+		`"companyName"\s*:\s*"([^"]+)"`,
+		`"name"\s*:\s*"([^"]+)".*?"\$type"\s*:\s*"com\.linkedin\.voyager\.dash\.identity\.profile\.Company"`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		match := re.FindSubmatch(body)
+		if len(match) > 1 {
+			return string(match[1])
+		}
+	}
+
+	return ""
+}
 
 func setHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
@@ -202,13 +477,14 @@ func parseProfile(body []byte, profileURL string) (*profile.Profile, error) {
 		Platform:      platform,
 		URL:           profileURL,
 		Authenticated: true,
-		Username:      targetID,
+		Username:      "", // Will be extracted from HTML
 		Fields:        make(map[string]string),
 	}
 
 	// Extract profile data from embedded JSON in <code> blocks
 	blocks := extractCodeBlocks(content)
 	var fallbackData *profileData
+	var actualUsername string
 
 	// Concatenate all blocks for location/pronoun extraction
 	allBlocksContent := strings.Join(blocks, "\n")
@@ -225,8 +501,13 @@ func parseProfile(body []byte, profileURL string) (*profile.Profile, error) {
 		case targetID != "" && strings.Contains(code, fmt.Sprintf(`"publicIdentifier":%q`, targetID)):
 			exact = true
 			section = extractProfileSection(code, targetID)
+			actualUsername = targetID
 		case fallbackData == nil:
 			section = code
+			// Extract the actual publicIdentifier from this section
+			if extracted := extractPublicIdentifier(code); extracted != "" {
+				actualUsername = extracted
+			}
 		default:
 			continue
 		}
@@ -234,6 +515,7 @@ func parseProfile(body []byte, profileURL string) (*profile.Profile, error) {
 		data := extractProfileData(section)
 		if data.name != "" {
 			if exact {
+				prof.Username = actualUsername
 				applyProfileData(prof, data, allBlocksContent)
 				break
 			}
@@ -244,6 +526,7 @@ func parseProfile(body []byte, profileURL string) (*profile.Profile, error) {
 	}
 
 	if prof.Name == "" && fallbackData != nil {
+		prof.Username = actualUsername
 		applyProfileData(prof, *fallbackData, allBlocksContent)
 	}
 
@@ -412,6 +695,16 @@ func extractProfileSection(s, id string) string {
 	start := max(0, idx-5000)
 	end := min(len(s), idx+5000)
 	return s[start:end]
+}
+
+// extractPublicIdentifier extracts the first publicIdentifier value from JSON content.
+func extractPublicIdentifier(content string) string {
+	// Look for "publicIdentifier":"value"
+	re := regexp.MustCompile(`"publicIdentifier"\s*:\s*"([^"]+)"`)
+	if matches := re.FindStringSubmatch(content); len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
 }
 
 func parseCompanyFromHeadline(headline string) string {
