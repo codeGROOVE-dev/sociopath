@@ -1,0 +1,258 @@
+package htmlutil
+
+import (
+	"net/url"
+	"regexp"
+	"strings"
+)
+
+// SocialLinks extracts social media URLs from HTML content.
+func SocialLinks(htmlContent string) []string {
+	var urls []string
+	seen := make(map[string]bool)
+
+	for _, pattern := range socialPatterns {
+		matches := pattern.FindAllString(htmlContent, -1)
+		for _, u := range matches {
+			// Clean up trailing non-URL characters (quotes, brackets, etc.)
+			u = cleanURL(u)
+			if u != "" && !seen[u] && isValidProfileLink(u) {
+				seen[u] = true
+				urls = append(urls, u)
+			}
+		}
+	}
+
+	return urls
+}
+
+// isValidProfileLink filters out URLs that are system pages, not user profiles.
+func isValidProfileLink(urlStr string) bool {
+	lower := strings.ToLower(urlStr)
+
+	// Filter out YouTube system pages
+	if strings.Contains(lower, "youtube.com/") {
+		systemPaths := []string{"/about", "/press", "/copyright", "/creators", "/ads", "/policies", "/howyoutubeworks", "/opensearch"}
+		for _, sp := range systemPaths {
+			if strings.Contains(lower, sp) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// cleanURL removes trailing non-URL characters that might be captured by regex.
+func cleanURL(s string) string {
+	// Trim whitespace first
+	s = strings.TrimSpace(s)
+
+	// Remove trailing quotes, brackets, and other HTML/markdown artifacts
+	for s != "" {
+		last := s[len(s)-1]
+		if last != '"' && last != '\'' && last != '>' && last != ')' && last != ']' {
+			break
+		}
+		s = s[:len(s)-1]
+	}
+
+	// Final trim in case artifacts were followed by whitespace
+	return strings.TrimSpace(s)
+}
+
+var emailPattern = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
+
+// EmailAddresses extracts email addresses from HTML content.
+// Filters out common false positives like noreply@, example@, etc.
+func EmailAddresses(htmlContent string) []string {
+	var emails []string
+	seen := make(map[string]bool)
+
+	matches := emailPattern.FindAllString(htmlContent, -1)
+	for _, email := range matches {
+		email = strings.ToLower(email)
+
+		// Skip common false positives
+		if strings.HasPrefix(email, "noreply@") ||
+			strings.HasPrefix(email, "no-reply@") ||
+			strings.HasPrefix(email, "example@") ||
+			strings.Contains(email, "@example.") ||
+			strings.Contains(email, "@localhost") ||
+			strings.Contains(email, "@test.") ||
+			strings.HasSuffix(email, ".png") ||
+			strings.HasSuffix(email, ".jpg") ||
+			strings.HasSuffix(email, ".gif") {
+			continue
+		}
+
+		if !seen[email] {
+			seen[email] = true
+			emails = append(emails, email)
+		}
+	}
+
+	return emails
+}
+
+// ContactLinks extracts contact/about page URLs from HTML content.
+// These pages often contain additional social media links.
+func ContactLinks(htmlContent, baseURL string) []string {
+	var links []string
+	seen := make(map[string]bool)
+
+	// Pattern to find anchor tags with contact-related text
+	// Handles both quoted and unquoted href attributes
+	anchorPattern := regexp.MustCompile(`(?i)<a[^>]+href=["']?([^\s"'>]+)["']?[^>]*>([^<]*(?:<[^/][^>]*>[^<]*)*)</a>`)
+	matches := anchorPattern.FindAllStringSubmatch(htmlContent, -1)
+
+	// Also look for title attributes
+	titlePattern := regexp.MustCompile(`(?i)<a[^>]+href=["']?([^\s"'>]+)["']?[^>]*title=["']?([^"'>]+)["']?[^>]*>`)
+	titleMatches := titlePattern.FindAllStringSubmatch(htmlContent, -1)
+	for _, match := range titleMatches {
+		if len(match) >= 3 {
+			matches = append(matches, match)
+		}
+	}
+
+	for _, match := range matches {
+		if len(match) < 3 {
+			continue
+		}
+		href := strings.TrimSpace(match[1])
+		text := strings.ToLower(strings.TrimSpace(match[2]))
+		// Strip HTML tags from text content
+		text = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(text, " ")
+		text = strings.TrimSpace(text)
+
+		// Look for contact-related link text or title
+		contactKeywords := []string{"contact", "about", "about me", "connect", "links", "socials", "find me", "get in touch"}
+		isContactLink := false
+		for _, kw := range contactKeywords {
+			if strings.Contains(text, kw) {
+				isContactLink = true
+				break
+			}
+		}
+
+		// Also check href for contact patterns
+		hrefLower := strings.ToLower(href)
+		if strings.Contains(hrefLower, "/contact") || strings.Contains(hrefLower, "/about") ||
+			strings.Contains(hrefLower, "/links") || strings.Contains(hrefLower, "/connect") {
+			isContactLink = true
+		}
+
+		if !isContactLink {
+			continue
+		}
+
+		// Resolve relative URLs
+		resolved := resolveURL(href, baseURL)
+		if resolved == "" {
+			continue
+		}
+
+		// Skip if same as base URL
+		if normalizeForDedup(resolved) == normalizeForDedup(baseURL) {
+			continue
+		}
+
+		// Skip known social platforms (they'll be picked up separately)
+		if isSocialPlatformURL(resolved) {
+			continue
+		}
+
+		if !seen[resolved] {
+			seen[resolved] = true
+			links = append(links, resolved)
+		}
+	}
+
+	return links
+}
+
+func resolveURL(href, baseURL string) string {
+	// Skip javascript, mailto, tel links
+	hrefLower := strings.ToLower(href)
+	if strings.HasPrefix(hrefLower, "javascript:") || strings.HasPrefix(hrefLower, "mailto:") ||
+		strings.HasPrefix(hrefLower, "tel:") || strings.HasPrefix(hrefLower, "#") {
+		return ""
+	}
+
+	// Already absolute
+	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+		return href
+	}
+
+	// Parse base URL
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+
+	// Handle protocol-relative URLs
+	if strings.HasPrefix(href, "//") {
+		return base.Scheme + ":" + href
+	}
+
+	// Resolve relative URL
+	ref, err := url.Parse(href)
+	if err != nil {
+		return ""
+	}
+
+	return base.ResolveReference(ref).String()
+}
+
+func normalizeForDedup(u string) string {
+	u = strings.TrimSuffix(u, "/")
+	u = strings.TrimPrefix(u, "https://")
+	u = strings.TrimPrefix(u, "http://")
+	u = strings.TrimPrefix(u, "www.")
+	return strings.ToLower(u)
+}
+
+func isSocialPlatformURL(u string) bool {
+	lower := strings.ToLower(u)
+	platforms := []string{
+		"twitter.com", "x.com", "linkedin.com", "instagram.com", "facebook.com",
+		"youtube.com", "twitch.tv", "tiktok.com", "github.com", "vk.com",
+		"habr.com", "habrahabr.ru", "bsky.app", "fosstodon.org", "hachyderm.io",
+		"infosec.exchange", "mastodon.social", "mastodon.online",
+	}
+	for _, p := range platforms {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	// Check for Mastodon pattern (/@username)
+	if strings.Contains(lower, "/@") {
+		return true
+	}
+	return false
+}
+
+// Pre-compiled patterns for social media URLs.
+var socialPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`https?://(?:www\.)?twitter\.com/\w+`),
+	regexp.MustCompile(`https?://(?:www\.)?x\.com/\w+`),
+	regexp.MustCompile(`https?://(?:www\.)?linkedin\.com/in/[\w%-]+/?`), // Allow URL-encoded chars like %C3%B6
+	regexp.MustCompile(`https?://(?:www\.)?instagram\.com/[\w.]+`),
+	regexp.MustCompile(`https?://(?:www\.)?facebook\.com/[\w.]+`),
+	regexp.MustCompile(`https?://(?:www\.)?youtube\.com/[\w/@-]+`),
+	regexp.MustCompile(`https?://(?:www\.)?twitch\.tv/\w+`),
+	regexp.MustCompile(`https?://(?:www\.)?tiktok\.com/@\w+`),
+	regexp.MustCompile(`https?://(?:www\.)?github\.com/[\w-]+/?(?:[^\w-/]|$)`), // Profile only, not /user/project
+	regexp.MustCompile(`https?://(?:www\.)?vk\.com/[\w.]+`),                    // VKontakte
+	regexp.MustCompile(`https?://(?:www\.)?habr\.com/(?:ru/)?users/[\w-]+`),    // Habr (formerly Habrhabr)
+	regexp.MustCompile(`https?://habrahabr\.ru/users/[\w-]+`),                  // Old Habrhabr domain
+	regexp.MustCompile(`skype:[\w.-]+\??[\w=&]*`),                              // Skype links
+	regexp.MustCompile(`https?://bsky\.app/profile/[\w.-]+`),
+	regexp.MustCompile(`https?://[\w.-]+\.social/@\w+`),
+	regexp.MustCompile(`https?://mastodon\.[\w.-]+/@\w+`),
+	regexp.MustCompile(`https?://fosstodon\.org/@\w+`),
+	regexp.MustCompile(`https?://hachyderm\.io/@\w+`),
+	regexp.MustCompile(`https?://infosec\.exchange/@\w+`),
+	// General Mastodon instance pattern - must come after TikTok (which also uses /@user)
+	regexp.MustCompile(`https?://[\w.-]+\.\w{2,}/@\w+`),
+}

@@ -1,4 +1,4 @@
-module github.com/tstromberg/linkedin
+module github.com/codeGROOVE-dev/sociopath
 
 go 1.23.10
 
