@@ -2,6 +2,7 @@
 package linkedin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -127,7 +128,9 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	setHeaders(req)
 
-	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	// Use validator to avoid caching empty SPA shell pages from LinkedIn
+	// Shell pages have <title>LinkedIn</title> without profile data embedded
+	body, err := cache.FetchURLWithValidator(ctx, c.cache, c.httpClient, req, c.logger, isValidProfilePage)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -145,15 +148,19 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	// If no employer found from HTML parsing, try the Voyager API
 	c.logger.DebugContext(ctx, "checking employer", "employer", prof.Fields["employer"])
-	if prof.Fields["employer"] == "" {
+	if prof.Fields["employer"] == "" || prof.Fields["title"] == "" {
 		username := extractPublicID(urlStr)
 		memberURN := extractMemberURN(body)
 		c.logger.DebugContext(ctx, "extracted for API call", "username", username, "memberURN", memberURN)
 		if username != "" || memberURN != "" {
-			employer := c.fetchEmployerFromAPI(ctx, username, memberURN)
-			if employer != "" {
-				prof.Fields["employer"] = employer
-				c.logger.DebugContext(ctx, "employer found via API", "employer", employer)
+			exp := c.fetchExperienceFromAPI(ctx, username, memberURN)
+			if exp.employer != "" && prof.Fields["employer"] == "" {
+				prof.Fields["employer"] = exp.employer
+				c.logger.DebugContext(ctx, "employer found via API", "employer", exp.employer)
+			}
+			if exp.title != "" {
+				prof.Fields["title"] = exp.title
+				c.logger.DebugContext(ctx, "title found via API", "title", exp.title)
 			}
 		}
 	}
@@ -164,18 +171,18 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 // EnableDebug enables debug logging.
 func (c *Client) EnableDebug() { c.debug = true }
 
-// fetchEmployerFromAPI calls the LinkedIn Voyager API to get profile experience data.
-func (c *Client) fetchEmployerFromAPI(ctx context.Context, _ string, memberURN string) string {
+// fetchExperienceFromAPI calls the LinkedIn Voyager API to get profile experience data.
+func (c *Client) fetchExperienceFromAPI(ctx context.Context, _ string, memberURN string) experienceData {
 	// First, make a request to LinkedIn to get session cookies (JSESSIONID)
 	// This is necessary because JSESSIONID is set as a response cookie, not stored persistently
 	if err := c.ensureSessionCookies(ctx); err != nil {
 		c.logger.DebugContext(ctx, "failed to get session cookies", "error", err)
-		return ""
+		return experienceData{}
 	}
 
 	if memberURN == "" {
 		c.logger.DebugContext(ctx, "no member URN available for API call")
-		return ""
+		return experienceData{}
 	}
 
 	// Use GraphQL endpoint to get experience data
@@ -189,7 +196,7 @@ func (c *Client) fetchEmployerFromAPI(ctx context.Context, _ string, memberURN s
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
 		c.logger.DebugContext(ctx, "voyager api request creation failed", "error", err)
-		return ""
+		return experienceData{}
 	}
 
 	setVoyagerHeaders(req, c.httpClient, c.logger)
@@ -199,26 +206,26 @@ func (c *Client) fetchEmployerFromAPI(ctx context.Context, _ string, memberURN s
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		c.logger.DebugContext(ctx, "voyager api request failed", "error", err)
-		return ""
+		return experienceData{}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		c.logger.DebugContext(ctx, "voyager api request failed", "status", resp.StatusCode)
-		return ""
+		return experienceData{}
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		c.logger.DebugContext(ctx, "voyager api body read failed", "error", err)
-		return ""
+		return experienceData{}
 	}
 
 	c.logger.DebugContext(ctx, "response body", "url", apiURL, "body", string(body))
 
-	employer := extractEmployerFromGraphQLResponse(body)
-	c.logger.DebugContext(ctx, "voyager api response parsed", "employer", employer, "bodySize", len(body))
-	return employer
+	exp := extractExperienceFromGraphQLResponse(body)
+	c.logger.DebugContext(ctx, "voyager api response parsed", "title", exp.title, "employer", exp.employer, "bodySize", len(body))
+	return exp
 }
 
 // ensureSessionCookies makes a request to LinkedIn to get session cookies (JSESSIONID).
@@ -286,6 +293,21 @@ func setVoyagerHeaders(req *http.Request, client *http.Client, logger *slog.Logg
 	}
 }
 
+// isValidProfilePage checks if a LinkedIn response contains actual profile data.
+// LinkedIn sometimes returns SPA shell pages with <title>LinkedIn</title> but no profile data.
+// These shell pages should NOT be cached as they require JavaScript to load content.
+func isValidProfilePage(body []byte) bool {
+	// Shell pages have generic <title>LinkedIn</title>
+	// Valid profile pages have <title>Name | LinkedIn</title> or contain embedded JSON data
+	hasGenericTitle := bytes.Contains(body, []byte("<title>LinkedIn</title>"))
+	hasProfileData := bytes.Contains(body, []byte("fsd_profile:")) ||
+		bytes.Contains(body, []byte(`"publicIdentifier"`)) ||
+		bytes.Contains(body, []byte(`"firstName"`))
+
+	// Valid if it has profile data OR doesn't have the generic shell title
+	return hasProfileData || !hasGenericTitle
+}
+
 // extractMemberURN extracts the encoded member ID from the profile HTML response.
 // LinkedIn profile pages contain encoded IDs like "ACoAAABI9AMB..." which are used for API calls.
 // Important: The HTML contains URNs for both the logged-in user AND the profile being viewed.
@@ -315,19 +337,32 @@ func extractMemberURN(body []byte) string {
 	return ""
 }
 
-func extractEmployerFromGraphQLResponse(body []byte) string {
-	// The GraphQL response has a complex nested structure
-	// We look for company names in the experience data
-	// The structure is: data.elements[].components.entityComponent.subtitle.text
-	// Where the subtitle text contains "Company Name · Employment Type · Duration"
+// experienceData holds extracted job title and employer from the experience section.
+type experienceData struct {
+	title    string
+	employer string
+}
 
-	// First try to find company name in the subtitle text
+func extractExperienceFromGraphQLResponse(body []byte) experienceData {
+	result := experienceData{}
+
+	// The GraphQL response has a complex nested structure
+	// We look for job title in titleV2 and company in subtitle
+	// Structure: data.elements[].components.entityComponent.titleV2.text.text = "Job Title"
+	// Structure: data.elements[].components.entityComponent.subtitle.text = "Company · Full-time · Duration"
+
+	// Try JSON parsing first (more reliable)
 	var data struct {
 		Data struct {
 			IdentityDashProfileComponentsBySectionType struct {
 				Elements []struct {
 					Components struct {
 						EntityComponent struct {
+							TitleV2 struct {
+								Text struct {
+									Text string `json:"text"`
+								} `json:"text"`
+							} `json:"titleV2"`
 							Subtitle struct {
 								Text string `json:"text"`
 							} `json:"subtitle"`
@@ -338,87 +373,58 @@ func extractEmployerFromGraphQLResponse(body []byte) string {
 		} `json:"data"`
 	}
 
-	if err := json.Unmarshal(body, &data); err != nil {
-		// Try to extract any company name from the raw JSON using regex
-		return extractCompanyFromJSON(body)
-	}
+	if err := json.Unmarshal(body, &data); err == nil {
+		elements := data.Data.IdentityDashProfileComponentsBySectionType.Elements
+		if len(elements) > 0 {
+			// The first element is usually the current position
+			elem := elements[0].Components.EntityComponent
 
-	elements := data.Data.IdentityDashProfileComponentsBySectionType.Elements
-	if len(elements) > 0 {
-		// The first element is usually the current position
-		subtitle := elements[0].Components.EntityComponent.Subtitle.Text
-		if subtitle != "" {
-			// Subtitle format: "Company · Employment Type · Duration"
-			parts := strings.Split(subtitle, " · ")
-			if len(parts) > 0 && parts[0] != "" {
-				return parts[0]
+			// Extract job title from titleV2
+			if title := elem.TitleV2.Text.Text; title != "" && title != "USER_LOCALE" {
+				result.title = title
+			}
+
+			// Extract employer from subtitle (format: "Company · Employment Type · Duration")
+			if subtitle := elem.Subtitle.Text; subtitle != "" {
+				parts := strings.Split(subtitle, " · ")
+				if len(parts) > 0 && parts[0] != "" && parts[0] != "USER_LOCALE" {
+					result.employer = parts[0]
+				}
 			}
 		}
 	}
 
-	return extractCompanyFromJSON(body)
-}
-
-func extractCompanyFromJSON(body []byte) string {
-	// The experience section has different structures:
-	// 1. Multiple roles at same company: subtitle.text = "Company · Full-time", titleV2.text.text = Role
-	// 2. Single position view: titleV2.text.text = "Company"
-	//
-	// We prioritize the subtitle pattern because it's more reliable (has "· Full-time" delimiter)
-
-	// Look for company in subtitle field with middot separator (more reliable)
-	// Format: "subtitle":{..."text":"Company · Employment Type"...}
-	subtitleRe := regexp.MustCompile(`"subtitle":\{[^}]*"text":\{[^}]*"text":"([^"·]+)\s*·`)
-	if m := subtitleRe.FindSubmatch(body); len(m) > 1 {
-		company := strings.TrimSpace(string(m[1]))
-		if company != "" && company != "USER_LOCALE" {
-			return company
+	// Fallback to regex if JSON parsing didn't find the data
+	if result.title == "" {
+		titleRe := regexp.MustCompile(`"titleV2":\{[^}]*"text":\{[^}]*"text":"([^"]+)"`)
+		if m := titleRe.FindSubmatch(body); len(m) > 1 {
+			title := strings.TrimSpace(string(m[1]))
+			if title != "" && title != "USER_LOCALE" {
+				result.title = title
+			}
 		}
 	}
 
-	// Fallback: look for company logo accessibility text
-	// Format: "accessibilityText":"Company logo"
-	logoRe := regexp.MustCompile(`"accessibilityText":"([^"]+) logo"`)
-	if m := logoRe.FindSubmatch(body); len(m) > 1 {
-		company := strings.TrimSpace(string(m[1]))
-		if company != "" {
-			return company
+	if result.employer == "" {
+		// Try subtitle regex pattern
+		subtitleRe := regexp.MustCompile(`"subtitle":\{[^}]*"text":\{[^}]*"text":"([^"·]+)\s*·`)
+		if m := subtitleRe.FindSubmatch(body); len(m) > 1 {
+			employer := strings.TrimSpace(string(m[1]))
+			if employer != "" && employer != "USER_LOCALE" {
+				result.employer = employer
+			}
 		}
 	}
 
-	// Fallback: look for company name in titleV2 (but this might be a job title)
-	// Only use if it doesn't look like a job title
-	titleRe := regexp.MustCompile(`"titleV2":\{[^}]*"text":\{[^}]*"text":"([^"]+)"`)
-	if m := titleRe.FindSubmatch(body); len(m) > 1 {
-		company := strings.TrimSpace(string(m[1]))
-		// Skip if it looks like a job title (contains common title words)
-		if company != "" && company != "USER_LOCALE" &&
-			!strings.Contains(strings.ToLower(company), "founder") &&
-			!strings.Contains(strings.ToLower(company), "director") &&
-			!strings.Contains(strings.ToLower(company), "manager") &&
-			!strings.Contains(strings.ToLower(company), "engineer") &&
-			!strings.Contains(strings.ToLower(company), "officer") &&
-			!strings.Contains(strings.ToLower(company), "president") &&
-			!strings.Contains(strings.ToLower(company), "chief") {
-			return company
+	// Fallback for employer: company logo accessibility text
+	if result.employer == "" {
+		logoRe := regexp.MustCompile(`"accessibilityText":"([^"]+) logo"`)
+		if m := logoRe.FindSubmatch(body); len(m) > 1 {
+			result.employer = strings.TrimSpace(string(m[1]))
 		}
 	}
 
-	// Last fallback: look for common company name patterns
-	patterns := []string{
-		`"companyName"\s*:\s*"([^"]+)"`,
-		`"name"\s*:\s*"([^"]+)".*?"\$type"\s*:\s*"com\.linkedin\.voyager\.dash\.identity\.profile\.Company"`,
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		match := re.FindSubmatch(body)
-		if len(match) > 1 {
-			return string(match[1])
-		}
-	}
-
-	return ""
+	return result
 }
 
 func setHeaders(req *http.Request) {
@@ -542,13 +548,16 @@ func parseProfile(body []byte, profileURL string) (*profile.Profile, error) {
 		return nil, errors.New("failed to extract profile name")
 	}
 
-	// Verify we got the profile we requested (not logged-in user's feed)
-	// Check if the extracted profile data contains the target ID
-	if targetID != "" && prof.Username != "" {
-		// The Username field should match our target (case-insensitive comparison)
-		if !strings.EqualFold(prof.Username, targetID) {
-			return nil, fmt.Errorf("profile not found (got %q instead of %q)", prof.Username, targetID)
-		}
+	// Check if LinkedIn redirected to a different profile
+	// This can happen when:
+	// 1. Old profile URL redirects to new canonical URL (OK - same person)
+	// 2. Non-existent profile redirects to logged-in user (BAD - different person)
+	// We can't distinguish these cases at parse time, so return both the requested
+	// URL and actual username. The caller (guess logic) can verify if needed.
+	// For vouched URLs from trusted sources, the redirect is acceptable.
+	if targetID != "" && prof.Username != "" && !strings.EqualFold(prof.Username, targetID) {
+		// Update URL to canonical form to help callers detect duplicates
+		prof.URL = "https://www.linkedin.com/in/" + prof.Username
 	}
 
 	// Extract social links and websites
@@ -719,9 +728,9 @@ func parseCompanyFromHeadline(headline string) string {
 	} else if idx := strings.Index(headline, "@"); idx != -1 {
 		// Handle "@Company" without space (e.g., "Engineering @Akuity")
 		company = headline[idx+1:]
-	} else if parts := strings.SplitN(headline, ", ", 2); len(parts) == 2 {
-		company = parts[1]
 	} else {
+		// Don't try to extract company from comma-separated lists
+		// Headlines like "P2P, Rust, FP, databases" are skill lists, not "Title, Company"
 		return ""
 	}
 

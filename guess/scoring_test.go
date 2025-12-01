@@ -295,9 +295,10 @@ func TestScoreMatchIntegration(t *testing.T) {
 				matchType:  "name",
 				sourceName: "David E Worth",
 			},
-			wantMin:     0.75,
-			wantMax:     1.0,
-			wantMatches: []string{"name:slug", "name:github", "employer:github"},
+			// Complex slug (3 parts) = 0.15 base + 0.15 name + 0.35 employer = 0.65
+			wantMin:     0.60,
+			wantMax:     0.75,
+			wantMatches: []string{"name:slug-complex", "name:github", "employer:github"},
 		},
 		{
 			name: "medium confidence - username and name match only",

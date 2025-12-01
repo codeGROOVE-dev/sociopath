@@ -76,14 +76,28 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 
 	// Build set of already known URLs to avoid duplicates
 	knownURLs := make(map[string]bool)
-	knownPlatforms := make(map[string]bool)
+	knownPlatforms := make(map[string]bool)      // Platforms we have profiles for (guessed or vouched)
+	vouchedPlatforms := make(map[string]bool)    // Platforms from vouched sources only
 	for _, p := range known {
 		knownURLs[normalizeURL(p.URL)] = true
 		knownPlatforms[p.Platform] = true
+		vouchedPlatforms[p.Platform] = true
+		// Also mark platforms from social links as vouched - these are verified URLs
+		// that we'll fetch directly, so no need to guess for these platforms
+		for _, link := range p.SocialLinks {
+			knownURLs[normalizeURL(link)] = true
+			if cfg.PlatformDetector != nil {
+				if platform := cfg.PlatformDetector(link); platform != "" && platform != "generic" {
+					knownPlatforms[platform] = true
+					vouchedPlatforms[platform] = true
+				}
+			}
+		}
 	}
 
 	// Generate candidate URLs
-	candidates := generateCandidates(usernames, names, knownURLs, knownPlatforms)
+	// Pass vouchedPlatforms for name-based guessing (we skip only if vouched)
+	candidates := generateCandidates(usernames, names, knownURLs, knownPlatforms, vouchedPlatforms)
 	cfg.Logger.Info("generated guess candidates", "count", len(candidates))
 
 	// Fetch candidates concurrently
@@ -140,8 +154,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 			knownPlatforms[p.Platform] = true
 		}
 
-		// First, collect all social links from guessed profiles to fetch directly
-		// Skip links for platforms we already have
+		// Collect social links from guessed profiles to fetch directly
 		var socialLinksToFetch []string
 		for _, p := range guessed {
 			for _, link := range p.SocialLinks {
@@ -149,7 +162,15 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 				if knownURLs[normalized] {
 					continue
 				}
-				// Skip if we already have this platform
+				// For high-confidence profiles (>=0.6), always fetch their social links
+				// even if we already have that platform - the linked profile may be
+				// the correct one while our guess may be wrong
+				if p.Confidence >= 0.6 {
+					socialLinksToFetch = append(socialLinksToFetch, link)
+					knownURLs[normalized] = true
+					continue
+				}
+				// For lower confidence profiles, skip if we already have this platform
 				if cfg.PlatformDetector != nil {
 					linkPlatform := cfg.PlatformDetector(link)
 					if linkPlatform != "" && linkPlatform != "generic" && knownPlatforms[linkPlatform] {
@@ -157,7 +178,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 					}
 				}
 				socialLinksToFetch = append(socialLinksToFetch, link)
-				knownURLs[normalized] = true // Mark as known immediately
+				knownURLs[normalized] = true
 			}
 			// Also check website field (websites are generic, always fetch)
 			if p.Website != "" {
@@ -264,7 +285,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 			cfg.Logger.Debug("second round: found new usernames from guessed profiles",
 				"new_usernames", len(newUsernames), "new_names", len(newNames))
 
-			secondCandidates := generateCandidates(newUsernames, newNames, knownURLs, knownPlatforms)
+			secondCandidates := generateCandidates(newUsernames, newNames, knownURLs, knownPlatforms, vouchedPlatforms)
 			cfg.Logger.Info("generated second round candidates", "count", len(secondCandidates))
 
 			// Fetch second round candidates
@@ -580,7 +601,7 @@ func isNumeric(s string) bool {
 	return s != ""
 }
 
-func generateCandidates(usernames []string, names []string, knownURLs map[string]bool, knownPlatforms map[string]bool) []candidateURL {
+func generateCandidates(usernames []string, names []string, knownURLs map[string]bool, knownPlatforms map[string]bool, vouchedPlatforms map[string]bool) []candidateURL {
 	var candidates []candidateURL
 
 	// Generate username-based candidates
@@ -624,39 +645,42 @@ func generateCandidates(usernames []string, names []string, knownURLs map[string
 		}
 	}
 
-	// Generate name-based LinkedIn candidates
-	if !knownPlatforms["linkedin"] {
-		for _, name := range names {
-			slug := slugifyName(name)
-			if slug == "" || len(slug) < 3 {
-				continue
-			}
+	// Generate name-based LinkedIn candidates only if we don't have a vouched LinkedIn profile
+	// Username-based guesses may find wrong people (common usernames), so we still try
+	// name-based guessing. But if we have a vouched LinkedIn from a trusted source, skip.
+	if vouchedPlatforms["linkedin"] {
+		return candidates
+	}
+	for _, name := range names {
+		slug := slugifyName(name)
+		if slug == "" || len(slug) < 3 {
+			continue
+		}
 
-			// Try hyphenated version (e.g., dan-lorenc)
-			url := "https://www.linkedin.com/in/" + slug + "/"
-			if !knownURLs[normalizeURL(url)] {
+		// Try hyphenated version (e.g., dan-lorenc)
+		url := "https://www.linkedin.com/in/" + slug + "/"
+		if !knownURLs[normalizeURL(url)] {
+			candidates = append(candidates, candidateURL{
+				url:        url,
+				username:   slug,
+				platform:   "linkedin",
+				matchType:  "name",
+				sourceName: name,
+			})
+		}
+
+		// Also try without hyphens (e.g., danlorenc)
+		slugNoHyphens := strings.ReplaceAll(slug, "-", "")
+		if slugNoHyphens != slug && len(slugNoHyphens) >= 3 {
+			urlNoHyphens := "https://www.linkedin.com/in/" + slugNoHyphens + "/"
+			if !knownURLs[normalizeURL(urlNoHyphens)] {
 				candidates = append(candidates, candidateURL{
-					url:        url,
-					username:   slug,
+					url:        urlNoHyphens,
+					username:   slugNoHyphens,
 					platform:   "linkedin",
 					matchType:  "name",
 					sourceName: name,
 				})
-			}
-
-			// Also try without hyphens (e.g., danlorenc)
-			slugNoHyphens := strings.ReplaceAll(slug, "-", "")
-			if slugNoHyphens != slug && len(slugNoHyphens) >= 3 {
-				urlNoHyphens := "https://www.linkedin.com/in/" + slugNoHyphens + "/"
-				if !knownURLs[normalizeURL(urlNoHyphens)] {
-					candidates = append(candidates, candidateURL{
-						url:        urlNoHyphens,
-						username:   slugNoHyphens,
-						platform:   "linkedin",
-						matchType:  "name",
-						sourceName: name,
-					})
-				}
 			}
 		}
 	}
@@ -689,9 +713,16 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 
 	// Base score depends on match type
 	if matchType == "name" {
-		// Name-based matches get slightly lower base confidence than username matches
-		score += 0.25
-		matches = append(matches, "name:slug")
+		// Name-based slug matches start with low base confidence.
+		// Simple slugs like "max-allan" are common and need more corroborating signals.
+		// Complex slugs with numbers/suffixes like "max-allan-cgr" or "m4x4ll4n" are more unique.
+		if isComplexSlug(candidate.username) {
+			score += 0.15
+			matches = append(matches, "name:slug-complex")
+		} else {
+			score += 0.10
+			matches = append(matches, "name:slug")
+		}
 	} else {
 		// Username match scoring
 		guessedUser := strings.ToLower(guessed.Username)
@@ -829,6 +860,21 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 					matches = append(matches, "organization:"+k.Platform)
 				}
 			}
+
+			// Also check if guessed employer matches any known org directly
+			// E.g., LinkedIn employer "Chainguard" should match GitHub org "chainguard-dev" (normalized to "chainguard")
+			if !hasOrgMatch && len(knownOrgs) > 0 {
+				guessedEmployer := strings.ToLower(getEmployer(guessed.Fields))
+				if guessedEmployer != "" {
+					for _, org := range knownOrgs {
+						if strings.Contains(guessedEmployer, org) || strings.Contains(org, guessedEmployer) {
+							hasOrgMatch = true
+							matches = append(matches, "organization:"+k.Platform)
+							break
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -837,7 +883,13 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 		score += 0.5
 	}
 	if bestNameScore > 0 {
-		score += bestNameScore * 0.3
+		// Name match alone shouldn't push score too high for name-based LinkedIn guesses
+		// For username-based matches, name match is a stronger signal
+		if matchType == "name" {
+			score += bestNameScore * 0.15
+		} else {
+			score += bestNameScore * 0.3
+		}
 	}
 	if bestLocScore > 0 {
 		score += bestLocScore * 0.15
@@ -857,9 +909,48 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 		score += 0.30
 	}
 
+	// Tech title bonus: if the profile has a tech-related title, it's more likely to be the same person
+	// This is especially valuable when combined with other signals like org/employer match
+	hasTechTitleMatch := false
+	title := ""
+	if guessed.Fields != nil {
+		title = guessed.Fields["title"]
+	}
+	if hasTechTitle(guessed.Bio) || hasTechTitle(title) {
+		hasTechTitleMatch = true
+		// Tech title alone is a weak signal, but combined with org/employer match it's strong
+		if hasOrgMatch || hasEmployerMatch {
+			score += 0.10
+			matches = append(matches, "title:tech")
+		}
+	}
+
+	// Strong signal combination bonus: name + org/employer + tech title together are very reliable
+	if (hasOrgMatch || hasEmployerMatch) && bestNameScore > 0.5 && hasTechTitleMatch {
+		score += 0.15
+		matches = append(matches, "combo:name+org+tech")
+	}
+
 	// Cap at 1.0
 	if score > 1.0 {
 		score = 1.0
+	}
+
+	// For LinkedIn name-based matches without strong signals (employer, location, link),
+	// require a tech-related job title to avoid false positives from common names.
+	// A "Career Coach" or "Partner at Law Firm" with the same name is unlikely to be the same person.
+	if guessed.Platform == "linkedin" && matchType == "name" &&
+		!hasLink && !hasEmployerMatch && !hasOrgMatch && bestLocScore < 0.5 {
+		// Check both bio (headline) and title field for tech indicators
+		title := ""
+		if guessed.Fields != nil {
+			title = guessed.Fields["title"]
+		}
+		if !hasTechTitle(guessed.Bio) && !hasTechTitle(title) {
+			// Reduce score significantly - name alone is not enough for non-tech LinkedIn profiles
+			score *= 0.4
+			matches = append(matches, "penalty:non-tech-title")
+		}
 	}
 
 	// Deduplicate match reasons
@@ -1120,6 +1211,102 @@ func getEmployer(fields map[string]string) string {
 	}
 
 	return ""
+}
+
+// isComplexSlug returns true if the slug has characteristics that make it more unique,
+// such as containing digits, suffixes like "-dev", or being unusually long.
+func isComplexSlug(slug string) bool {
+	// Check for digits (e.g., "john123", "m4x4ll4n")
+	for _, c := range slug {
+		if c >= '0' && c <= '9' {
+			return true
+		}
+	}
+
+	// Check for common dev/tech suffixes that indicate intentional username choice
+	techSuffixes := []string{"-dev", "-cgr", "-eng", "-tech", "-code", "-io", "-labs"}
+	slugLower := strings.ToLower(slug)
+	for _, suffix := range techSuffixes {
+		if strings.HasSuffix(slugLower, suffix) {
+			return true
+		}
+	}
+
+	// Long slugs with 3+ parts are more unique (e.g., "john-david-smith")
+	parts := strings.Split(slug, "-")
+	if len(parts) >= 3 {
+		return true
+	}
+
+	return false
+}
+
+// hasTechTitle returns true if the bio/headline contains a job title that suggests
+// the person is likely to use GitHub (developer, engineer, etc.).
+func hasTechTitle(bio string) bool {
+	if bio == "" {
+		return false
+	}
+
+	bioLower := strings.ToLower(bio)
+
+	// Tech-related job titles/keywords that suggest GitHub usage
+	// These are checked as whole words or at word boundaries to avoid false matches
+	techTerms := []string{
+		"engineer", "developer", "programmer", "architect",
+		"devops", "sre", "software", "backend", "frontend", "full-stack", "fullstack",
+		"data scientist", "machine learning", "ml engineer",
+		"security", "infosec", "devsecops", "appsec",
+		"open source", "open-source", "maintainer", "creator",
+		"cloud engineer", "platform engineer", "infrastructure",
+		"vp engineering", "vp of engineering", "head of engineering", "head of r&d",
+		"tech lead", "technical lead", "staff engineer", "principal engineer",
+		"founding engineer", "co-founder", "founder",
+		"researcher", // often technical
+		"hacker", "maker",
+		"kubernetes", "docker",
+		"golang", "python developer", "rust developer", "java developer",
+		"customer success", "technical support", // tech company roles
+	}
+
+	for _, term := range techTerms {
+		if strings.Contains(bioLower, term) {
+			return true
+		}
+	}
+
+	// Check for standalone acronyms/titles that need word boundary matching
+	// to avoid matching substrings (e.g., "cto" in "director")
+	standaloneTerms := []string{"cto", "ceo", "cio", "aws", "gcp", "azure", "oss", "ai"}
+	words := strings.FieldsFunc(bioLower, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	})
+	wordSet := make(map[string]bool)
+	for _, w := range words {
+		wordSet[w] = true
+	}
+	for _, term := range standaloneTerms {
+		if wordSet[term] {
+			return true
+		}
+	}
+
+	// Check for known tech companies - if they work at these, they likely use GitHub
+	techCompanies := []string{
+		"chainguard", "google", "microsoft", "amazon", "meta", "apple", "netflix",
+		"github", "gitlab", "docker", "hashicorp", "datadog", "cloudflare",
+		"vercel", "supabase", "prisma", "stripe", "twilio", "okta",
+		"red hat", "canonical", "suse", "vmware", "nvidia", "intel", "amd",
+		"isovalent", "cilium", "tigera", "solo.io", "tetrate",
+		"kubernetes", "linux foundation", "cncf",
+	}
+	for _, company := range techCompanies {
+		if strings.Contains(bioLower, company) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // scoreOrganizationMatch checks if any organization name appears in bio, employer, or unstructured text.

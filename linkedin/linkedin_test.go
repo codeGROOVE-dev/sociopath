@@ -67,7 +67,7 @@ func TestParseCompanyFromHeadline(t *testing.T) {
 		{"Software Engineer at Google", "Google"},
 		{"CEO @ Startup", "Startup"},
 		{"Engineering @Akuity", "Akuity"},
-		{"Engineer, Acme Corp", "Acme Corp"},
+		{"Engineer, Acme Corp", ""},  // comma-separated formats are too ambiguous (e.g., "P2P, Rust")
 		{"Senior Developer at Meta, Inc.", "Meta"},
 		{"Just a person", ""},
 	}
@@ -172,4 +172,60 @@ func TestNew(t *testing.T) {
 			t.Fatal("New(WithLogger, WithCookies) returned nil client")
 		}
 	})
+}
+
+func TestParseProfileCanonicalizesRedirectedURL(t *testing.T) {
+	// When LinkedIn redirects an old profile URL to a new one,
+	// we should update the URL to the canonical form based on the
+	// actual username returned. This helps with deduplication.
+
+	// Minimal HTML that parseProfile can extract data from
+	html := `<!DOCTYPE html>
+<html>
+<head><title>Thomas Strömberg | LinkedIn</title></head>
+<body>
+<code id="bpr-guid-123">{"publicIdentifier":"thomrstrom","firstName":"Thomas","lastName":"Strömberg"}</code>
+</body>
+</html>`
+
+	// Request old URL but get profile for thomrstrom
+	requestedURL := "https://www.linkedin.com/in/thomas-stromberg-9977261/"
+	prof, err := parseProfile([]byte(html), requestedURL)
+	if err != nil {
+		t.Fatalf("parseProfile failed: %v", err)
+	}
+
+	// URL should be canonicalized to the actual username
+	expectedURL := "https://www.linkedin.com/in/thomrstrom"
+	if prof.URL != expectedURL {
+		t.Errorf("parseProfile URL = %q, want %q (should canonicalize on redirect)", prof.URL, expectedURL)
+	}
+
+	// Username should be the actual username from the response
+	if prof.Username != "thomrstrom" {
+		t.Errorf("parseProfile Username = %q, want %q", prof.Username, "thomrstrom")
+	}
+}
+
+func TestParseProfileKeepsURLWhenMatching(t *testing.T) {
+	// When the requested URL matches the returned profile, keep the original URL
+
+	html := `<!DOCTYPE html>
+<html>
+<head><title>John Doe | LinkedIn</title></head>
+<body>
+<code id="bpr-guid-123">{"publicIdentifier":"johndoe","firstName":"John","lastName":"Doe"}</code>
+</body>
+</html>`
+
+	requestedURL := "https://www.linkedin.com/in/johndoe"
+	prof, err := parseProfile([]byte(html), requestedURL)
+	if err != nil {
+		t.Fatalf("parseProfile failed: %v", err)
+	}
+
+	// URL should remain as requested since it matches
+	if prof.URL != requestedURL {
+		t.Errorf("parseProfile URL = %q, want %q (should keep original when matching)", prof.URL, requestedURL)
+	}
 }

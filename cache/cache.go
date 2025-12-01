@@ -17,12 +17,23 @@ type HTTPCache interface {
 	SetAsyncWithTTL(ctx context.Context, url string, data []byte, etag string, headers map[string]string, ttl time.Duration) error
 }
 
+// ResponseValidator is a function that validates a response body.
+// Returns true if the response should be cached, false otherwise.
+type ResponseValidator func(body []byte) bool
+
 // FetchURL fetches a URL with caching support.
 // If cache is non-nil and contains the URL, returns cached data.
 // Otherwise, executes the HTTP request, caches successful responses (HTTP 200), and returns the body.
 // Returns an error if the HTTP status is not 200 OK.
 // The caller must set all necessary headers on the request before calling this function.
 func FetchURL(ctx context.Context, cache HTTPCache, client *http.Client, req *http.Request, logger *slog.Logger) ([]byte, error) {
+	return FetchURLWithValidator(ctx, cache, client, req, logger, nil)
+}
+
+// FetchURLWithValidator fetches a URL with caching support and optional response validation.
+// If validator is provided and returns false, the response is NOT cached but still returned.
+// This is useful for avoiding caching of incomplete/shell responses.
+func FetchURLWithValidator(ctx context.Context, cache HTTPCache, client *http.Client, req *http.Request, logger *slog.Logger, validator ResponseValidator) ([]byte, error) {
 	// Build cache key that includes auth state to avoid mixing authenticated/unauthenticated responses
 	cacheKey := req.URL.String()
 	if client.Jar != nil {
@@ -61,9 +72,13 @@ func FetchURL(ctx context.Context, cache HTTPCache, client *http.Client, req *ht
 		return nil, err
 	}
 
-	// Cache successful response (async, errors intentionally ignored)
-	if cache != nil {
+	// Cache successful response only if validator passes (or no validator)
+	shouldCache := validator == nil || validator(body)
+	if cache != nil && shouldCache {
 		_ = cache.SetAsync(ctx, cacheKey, body, "", nil) //nolint:errcheck // async, error ignored
+	}
+	if cache != nil && !shouldCache && logger != nil {
+		logger.Debug("skipping cache due to validation failure", "key", cacheKey)
 	}
 
 	if logger != nil {

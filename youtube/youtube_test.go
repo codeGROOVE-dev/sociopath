@@ -53,3 +53,26 @@ func TestExtractUsername(t *testing.T) {
 		})
 	}
 }
+
+func TestIsDefaultBio(t *testing.T) {
+	tests := []struct {
+		name string
+		bio  string
+		want bool
+	}{
+		{"default bio", "Share your videos with friends, family, and the world", true},
+		{"default bio with caps", "SHARE YOUR VIDEOS WITH FRIENDS, FAMILY, AND THE WORLD", true},
+		{"default bio with whitespace", "  Share your videos with friends, family, and the world  ", true},
+		{"custom bio", "Tech tutorials and coding content", false},
+		{"similar but not default", "Share your videos with friends", false},
+		{"empty bio", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isDefaultBio(tt.bio); got != tt.want {
+				t.Errorf("isDefaultBio(%q) = %v, want %v", tt.bio, got, tt.want)
+			}
+		})
+	}
+}

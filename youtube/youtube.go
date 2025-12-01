@@ -138,8 +138,11 @@ func parseProfile(html, url string) (*profile.Profile, error) { //nolint:unparam
 		}
 	}
 
-	// Extract description
-	prof.Bio = htmlutil.Description(html)
+	// Extract description (filter out default YouTube bio)
+	bio := htmlutil.Description(html)
+	if !isDefaultBio(bio) {
+		prof.Bio = bio
+	}
 
 	// Try to extract subscriber count
 	subPattern := regexp.MustCompile(`([\d.]+[KMB]?)\s*(?:subscribers|Subscribers)`)
@@ -172,6 +175,20 @@ func parseProfile(html, url string) (*profile.Profile, error) { //nolint:unparam
 	}
 
 	return prof, nil
+}
+
+// isDefaultBio returns true if the bio is YouTube's default description.
+func isDefaultBio(bio string) bool {
+	defaultBios := []string{
+		"share your videos with friends, family, and the world",
+	}
+	bioLower := strings.ToLower(strings.TrimSpace(bio))
+	for _, d := range defaultBios {
+		if bioLower == d {
+			return true
+		}
+	}
+	return false
 }
 
 func extractUsername(urlStr string) string {
