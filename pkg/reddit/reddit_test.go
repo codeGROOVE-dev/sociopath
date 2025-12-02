@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
 
 func TestMatch(t *testing.T) {
@@ -114,19 +116,19 @@ func TestFetch(t *testing.T) {
 		transport: originalTransport,
 	}
 
-	profile, err := client.Fetch(ctx, "https://reddit.com/user/testuser")
+	prof, err := client.Fetch(ctx, "https://reddit.com/user/testuser")
 	if err != nil {
 		t.Fatalf("Fetch() error = %v", err)
 	}
 
-	if profile.Platform != "reddit" {
-		t.Errorf("Platform = %q, want %q", profile.Platform, "reddit")
+	if prof.Platform != "reddit" {
+		t.Errorf("Platform = %q, want %q", prof.Platform, "reddit")
 	}
-	if profile.Username != "testuser" {
-		t.Errorf("Username = %q, want %q", profile.Username, "testuser")
+	if prof.Username != "testuser" {
+		t.Errorf("Username = %q, want %q", prof.Username, "testuser")
 	}
-	if profile.Name != "testuser" {
-		t.Errorf("Name = %q, want %q", profile.Name, "testuser")
+	if prof.Name != "testuser" {
+		t.Errorf("Name = %q, want %q", prof.Name, "testuser")
 	}
 }
 
@@ -204,22 +206,22 @@ func TestParseProfile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			profile, err := parseProfile(tt.html, "https://old.reddit.com/user/"+tt.wantUsername, tt.wantUsername)
+			prof, err := parseProfile(tt.html, "https://old.reddit.com/user/"+tt.wantUsername, tt.wantUsername)
 			if err != nil {
 				t.Fatalf("parseProfile() error = %v", err)
 			}
 
-			if profile.Username != tt.wantUsername {
-				t.Errorf("Username = %q, want %q", profile.Username, tt.wantUsername)
+			if prof.Username != tt.wantUsername {
+				t.Errorf("Username = %q, want %q", prof.Username, tt.wantUsername)
 			}
-			if profile.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", profile.Name, tt.wantName)
+			if prof.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", prof.Name, tt.wantName)
 			}
-			if tt.wantPostKarma != "" && profile.Fields["post_karma"] != tt.wantPostKarma {
-				t.Errorf("post_karma = %q, want %q", profile.Fields["post_karma"], tt.wantPostKarma)
+			if tt.wantPostKarma != "" && prof.Fields["post_karma"] != tt.wantPostKarma {
+				t.Errorf("post_karma = %q, want %q", prof.Fields["post_karma"], tt.wantPostKarma)
 			}
-			if tt.wantSubreddits != "" && profile.Fields["subreddits"] != tt.wantSubreddits {
-				t.Errorf("subreddits = %q, want %q", profile.Fields["subreddits"], tt.wantSubreddits)
+			if tt.wantSubreddits != "" && prof.Fields["subreddits"] != tt.wantSubreddits {
+				t.Errorf("subreddits = %q, want %q", prof.Fields["subreddits"], tt.wantSubreddits)
 			}
 		})
 	}
@@ -247,17 +249,65 @@ func TestExtractSubreddits(t *testing.T) {
 	}
 }
 
-func TestExtractCommentSamples(t *testing.T) {
-	html := `<div class="md"><p>This is a longer comment that should be included in the samples.</p></div>
-		<div class="md"><p>Short</p></div>
-		<div class="md"><p>Another good comment that has enough content to be included.</p></div>
-		<div class="md"><p>This post is archived automatically archived.</p></div>`
+func TestExtractPosts(t *testing.T) {
+	html := `
+<div class=" thing link" data-subreddit="golang">
+	<a class="title" href="/r/golang/test">How to use Go interfaces effectively</a>
+</div>
+<div class=" thing link" data-subreddit="kubernetes">
+	<a class="title" href="/r/kubernetes/test">Kubernetes deployment strategies</a>
+</div>
+<div class=" thing comment" data-subreddit="golang">
+	<div class="md"><p>This is a longer comment about Go programming that should be included.</p></div>
+</div>
+<div class=" thing comment" data-subreddit="rust">
+	<div class="md"><p>Short</p></div>
+</div>
+<div class=" thing comment" data-subreddit="programming">
+	<div class="md"><p>Another good comment that has enough content to be included in results.</p></div>
+</div>
+<div class=" thing comment" data-subreddit="test">
+	<div class="md"><p>This post is archived automatically archived.</p></div>
+</div>`
 
-	samples := extractCommentSamples(html, 5)
+	posts := extractPosts(html, 10)
 
-	// Should include the two longer comments but not the short one or archived one
-	if len(samples) != 2 {
-		t.Errorf("extractCommentSamples() returned %d samples, want 2: %v", len(samples), samples)
+	// Should have 2 posts and 2 comments (short and archived filtered out)
+	if len(posts) != 4 {
+		t.Errorf("extractPosts() returned %d posts, want 4: %v", len(posts), posts)
+	}
+
+	// Verify first two are posts with titles
+	postCount := 0
+	commentCount := 0
+	for _, p := range posts {
+		switch p.Type {
+		case profile.PostTypePost:
+			postCount++
+			if p.Title == "" {
+				t.Error("post.Title is empty for PostTypePost")
+			}
+			if p.Category == "" {
+				t.Error("post.Category is empty for PostTypePost")
+			}
+		case profile.PostTypeComment:
+			commentCount++
+			if p.Content == "" {
+				t.Error("post.Content is empty for PostTypeComment")
+			}
+			if p.Category == "" {
+				t.Error("post.Category is empty for PostTypeComment")
+			}
+		case profile.PostTypeVideo, profile.PostTypeArticle, profile.PostTypeQuestion, profile.PostTypeAnswer, profile.PostTypeRepository:
+			t.Errorf("unexpected post type: %s", p.Type)
+		}
+	}
+
+	if postCount != 2 {
+		t.Errorf("expected 2 posts, got %d", postCount)
+	}
+	if commentCount != 2 {
+		t.Errorf("expected 2 comments, got %d", commentCount)
 	}
 }
 

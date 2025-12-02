@@ -13,6 +13,29 @@ var (
 	ErrRateLimited     = errors.New("rate limited")
 )
 
+// PostType indicates the type of user-generated content.
+type PostType string
+
+// Post type constants for categorizing user-generated content.
+const (
+	PostTypeComment    PostType = "comment"
+	PostTypePost       PostType = "post"
+	PostTypeVideo      PostType = "video"
+	PostTypeArticle    PostType = "article"
+	PostTypeQuestion   PostType = "question"
+	PostTypeAnswer     PostType = "answer"
+	PostTypeRepository PostType = "repository"
+)
+
+// Post represents a piece of user-generated content (post, comment, video, etc.).
+type Post struct {
+	Type     PostType `json:"type"`               // Type of content
+	Title    string   `json:"title,omitempty"`    // Title (for videos, articles, posts)
+	Content  string   `json:"content,omitempty"`  // Body text or description
+	URL      string   `json:"url,omitempty"`      // Link to the original content
+	Category string   `json:"category,omitempty"` // Category (subreddit, channel, topic, etc.)
+}
+
 // Profile represents extracted data from a social media profile.
 //
 //nolint:govet // fieldalignment: intentional layout for readability
@@ -33,8 +56,14 @@ type Profile struct {
 	// Platform-specific fields
 	Fields map[string]string `json:",omitempty"` // Additional platform-specific data (headline, employer, etc.)
 
+	// Activity timestamp
+	LastActive string `json:",omitempty"` // ISO timestamp of last known activity (post, comment, etc.)
+
 	// For further crawling
 	SocialLinks []string `json:",omitempty"` // Other social media URLs detected on the profile
+
+	// User-generated content (posts, comments, videos, etc.)
+	Posts []Post `json:",omitempty"` // Structured content extracted from the profile
 
 	// Fallback for unrecognized platforms
 	Unstructured string `json:",omitempty"` // Raw markdown content (HTML->MD conversion)

@@ -4,6 +4,7 @@ package devto
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"html"
 	"log/slog"
@@ -91,7 +92,16 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, err
 	}
 
-	return parseHTML(body, urlStr, username), nil
+	p := parseHTML(body, urlStr, username)
+
+	// Fetch recent articles via API
+	posts, lastActive := c.fetchArticles(ctx, username, 5)
+	p.Posts = posts
+	if lastActive != "" {
+		p.LastActive = lastActive
+	}
+
+	return p, nil
 }
 
 func parseHTML(data []byte, urlStr, username string) *profile.Profile {
@@ -176,6 +186,49 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 	p.SocialLinks = htmlutil.SocialLinks(content)
 
 	return p
+}
+
+func (c *Client) fetchArticles(ctx context.Context, username string, limit int) (posts []profile.Post, lastActive string) {
+	apiURL := fmt.Sprintf("https://dev.to/api/articles?username=%s&per_page=%d", username, limit)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return nil, ""
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "sociopath/1.0")
+
+	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		return nil, ""
+	}
+
+	var articles []struct {
+		Title       string `json:"title"`
+		PublishedAt string `json:"published_at"`
+		URL         string `json:"url"`
+	}
+
+	if err := json.Unmarshal(body, &articles); err != nil {
+		return nil, ""
+	}
+
+	for i, a := range articles {
+		if a.Title == "" {
+			continue
+		}
+		posts = append(posts, profile.Post{
+			Type:  profile.PostTypeArticle,
+			Title: a.Title,
+			URL:   a.URL,
+		})
+		// First article is the most recent
+		if i == 0 && a.PublishedAt != "" {
+			lastActive = a.PublishedAt
+		}
+	}
+
+	return posts, lastActive
 }
 
 func extractUsername(urlStr string) string {

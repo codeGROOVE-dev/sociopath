@@ -93,7 +93,19 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, err
 	}
 
-	return parseAPIResponse(body, urlStr, handle)
+	p, err := parseAPIResponse(body, urlStr, handle)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch recent posts
+	posts, lastActive := c.fetchPosts(ctx, handle, 5)
+	p.Posts = posts
+	if lastActive != "" {
+		p.LastActive = lastActive
+	}
+
+	return p, nil
 }
 
 func parseAPIResponse(data []byte, urlStr, handle string) (*profile.Profile, error) {
@@ -129,6 +141,61 @@ func parseAPIResponse(data []byte, urlStr, handle string) (*profile.Profile, err
 	}
 
 	return p, nil
+}
+
+func (c *Client) fetchPosts(ctx context.Context, handle string, limit int) (posts []profile.Post, lastActive string) {
+	apiURL := fmt.Sprintf("https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=%s&limit=%d", handle, limit)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return nil, ""
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "sociopath/1.0")
+
+	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		return nil, ""
+	}
+
+	var feed struct {
+		Feed []struct {
+			Post struct {
+				Author struct {
+					Handle string `json:"handle"`
+				} `json:"author"`
+				Record struct {
+					Text      string `json:"text"`
+					CreatedAt string `json:"createdAt"`
+				} `json:"record"`
+			} `json:"post"`
+		} `json:"feed"`
+	}
+
+	if err := json.Unmarshal(body, &feed); err != nil {
+		return nil, ""
+	}
+
+	for _, item := range feed.Feed {
+		// Only include posts authored by this user (skip reposts)
+		if item.Post.Author.Handle != handle {
+			continue
+		}
+		text := strings.TrimSpace(item.Post.Record.Text)
+		if text == "" {
+			continue
+		}
+		posts = append(posts, profile.Post{
+			Type:    profile.PostTypePost,
+			Content: text,
+		})
+		// First post from this user is the most recent
+		if lastActive == "" && item.Post.Record.CreatedAt != "" {
+			lastActive = item.Post.Record.CreatedAt
+		}
+	}
+
+	return posts, lastActive
 }
 
 func extractHandle(urlStr string) string {

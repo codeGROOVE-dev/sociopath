@@ -146,11 +146,26 @@ func (c *Client) fetchViaAPI(ctx context.Context, host, username string) (*profi
 		return nil, err
 	}
 
-	return c.parseAPIResponse(body)
+	p, accountID, err := c.parseAPIResponse(body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch recent posts if we have an account ID
+	if accountID != "" {
+		posts, lastActive := c.fetchStatuses(ctx, host, accountID, 5)
+		p.Posts = posts
+		if lastActive != "" {
+			p.LastActive = lastActive
+		}
+	}
+
+	return p, nil
 }
 
-func (*Client) parseAPIResponse(data []byte) (*profile.Profile, error) {
+func (*Client) parseAPIResponse(data []byte) (*profile.Profile, string, error) {
 	var acc struct {
+		ID          string `json:"id"`
 		Username    string `json:"username"`
 		DisplayName string `json:"display_name"`
 		Note        string `json:"note"`
@@ -162,7 +177,7 @@ func (*Client) parseAPIResponse(data []byte) (*profile.Profile, error) {
 	}
 
 	if err := json.Unmarshal(data, &acc); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	p := &profile.Profile{
@@ -195,7 +210,7 @@ func (*Client) parseAPIResponse(data []byte) (*profile.Profile, error) {
 	// Filter out same-server Mastodon links
 	p.SocialLinks = filterSameServerLinks(p.SocialLinks, p.URL)
 
-	return p, nil
+	return p, acc.ID, nil
 }
 
 func (c *Client) fetchViaHTML(ctx context.Context, urlStr, username string) (*profile.Profile, error) {
@@ -233,6 +248,49 @@ func (*Client) parseHTML(data []byte, urlStr, username string) *profile.Profile 
 	p.SocialLinks = filterSameServerLinks(p.SocialLinks, urlStr)
 
 	return p
+}
+
+func (c *Client) fetchStatuses(ctx context.Context, host, accountID string, limit int) (posts []profile.Post, lastActive string) {
+	apiURL := fmt.Sprintf("https://%s/api/v1/accounts/%s/statuses?limit=%d&exclude_replies=true&exclude_reblogs=true",
+		host, accountID, limit)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return nil, ""
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "sociopath/1.0")
+
+	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		return nil, ""
+	}
+
+	var statuses []struct {
+		Content   string `json:"content"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	if err := json.Unmarshal(body, &statuses); err != nil {
+		return nil, ""
+	}
+
+	for i, s := range statuses {
+		text := stripHTML(s.Content)
+		if text == "" {
+			continue
+		}
+		posts = append(posts, profile.Post{
+			Type:    profile.PostTypePost,
+			Content: text,
+		})
+		// First status is the most recent
+		if i == 0 && s.CreatedAt != "" {
+			lastActive = s.CreatedAt
+		}
+	}
+
+	return posts, lastActive
 }
 
 func extractUsername(path string) string {
@@ -289,28 +347,24 @@ func extractURLs(htmlContent string) []string {
 }
 
 func filterSameServerLinks(links []string, profileURL string) []string {
-	// Extract the server/host from the profile URL
 	parsed, err := url.Parse(profileURL)
 	if err != nil {
 		return links
 	}
-	profileHost := strings.ToLower(parsed.Host)
+	host := parsed.Host
 
-	var filtered []string
+	var out []string
 	for _, link := range links {
-		linkParsed, err := url.Parse(link)
+		u, err := url.Parse(link)
 		if err != nil {
-			filtered = append(filtered, link)
+			out = append(out, link)
 			continue
 		}
-		linkHost := strings.ToLower(linkParsed.Host)
-
-		// If it's a Mastodon link on the same server, filter it out
-		if Match(link) && linkHost == profileHost {
+		// Skip Mastodon links on the same server
+		if Match(link) && strings.EqualFold(u.Host, host) {
 			continue
 		}
-
-		filtered = append(filtered, link)
+		out = append(out, link)
 	}
-	return filtered
+	return out
 }

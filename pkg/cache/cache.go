@@ -14,6 +14,10 @@ import (
 
 const errorTTL = 5 * 24 * time.Hour // Cache HTTP errors for 5 days
 
+// globalRateLimiter enforces minimum delay between requests to the same domain.
+// This prevents overwhelming servers even when running concurrent goroutines.
+var globalRateLimiter = NewDomainRateLimiter(600 * time.Millisecond)
+
 // Stats holds cache hit/miss statistics.
 type Stats struct {
 	Hits   int64
@@ -98,6 +102,9 @@ func FetchURLWithValidator(
 			logger.Info("cache miss", "url", req.URL.String(), "key", cacheKey)
 		}
 	}
+
+	// Rate limit: wait if we've recently hit this domain
+	globalRateLimiter.Wait(req.URL.String())
 
 	// Execute request
 	resp, err := client.Do(req)

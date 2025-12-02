@@ -129,16 +129,13 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 		prof.Fields["joined_year"] = matches[1]
 	}
 
-	// Extract subreddits and comment samples
+	// Extract posts and comments with subreddit context
+	prof.Posts = extractPosts(html, 10)
+
+	// Extract unique subreddits from posts
 	subreddits := extractSubreddits(html)
 	if len(subreddits) > 0 {
 		prof.Fields["subreddits"] = strings.Join(subreddits, ", ")
-	}
-
-	// Extract comment samples (for keyword/organization matching)
-	commentSamples := extractCommentSamples(html, 5)
-	if len(commentSamples) > 0 {
-		prof.Unstructured = strings.Join(commentSamples, "\n\n---\n\n")
 	}
 
 	// Extract social links
@@ -228,21 +225,49 @@ func isGenericSubreddit(sub string) bool {
 	return generic[sub]
 }
 
-// extractCommentSamples extracts recent comment text samples from Reddit profile HTML.
-func extractCommentSamples(html string, limit int) []string {
-	// Extract text from comment divs with class="md" - use non-greedy match and look for paragraph tags
-	pattern := regexp.MustCompile(`<div class="md"><p>(.+?)</p>`)
-	matches := pattern.FindAllStringSubmatch(html, -1)
+// extractPosts extracts posts and comments from Reddit profile HTML.
+// Posts have titles (submitted links/self-posts), comments have content text.
+func extractPosts(html string, limit int) []profile.Post {
+	var posts []profile.Post
 
-	var samples []string
-	for _, match := range matches {
-		if len(match) <= 1 || len(samples) >= limit {
+	// Pattern to match each "thing" div (post or comment) with its subreddit and content
+	// Posts: class contains "link" and have data-subreddit, with title in <a class="title">
+	// Comments: class contains "comment" and have data-subreddit, with content in <div class="md">
+
+	// Extract submitted posts (links/self-posts) - look for "thing ... link" divs
+	postRE := `(?s)<div[^>]+class="[^"]*\blink\b[^"]*"[^>]+data-subreddit="([^"]+)"[^>]*>` +
+		`.*?<a[^>]+class="[^"]*\btitle\b[^"]*"[^>]*>([^<]+)</a>`
+	postPattern := regexp.MustCompile(postRE)
+	postMatches := postPattern.FindAllStringSubmatch(html, -1)
+
+	for _, match := range postMatches {
+		if len(match) > 2 && len(posts) < limit {
+			subreddit := match[1]
+			title := strings.TrimSpace(stripHTML(match[2]))
+			if title == "" {
+				continue
+			}
+			posts = append(posts, profile.Post{
+				Type:     profile.PostTypePost,
+				Title:    title,
+				Category: subreddit,
+			})
+		}
+	}
+
+	// Extract comments - look for "thing ... comment" divs
+	commentRE := `(?s)<div[^>]+class="[^"]*\bcomment\b[^"]*"[^>]+data-subreddit="([^"]+)"[^>]*>` +
+		`.*?<div class="md"[^>]*><p>([^<]+)</p>`
+	commentPattern := regexp.MustCompile(commentRE)
+	commentMatches := commentPattern.FindAllStringSubmatch(html, -1)
+
+	for _, match := range commentMatches {
+		if len(match) <= 2 || len(posts) >= limit {
 			continue
 		}
 
-		// Extract text from HTML, removing tags
-		text := stripHTML(match[1])
-		text = strings.TrimSpace(text)
+		subreddit := match[1]
+		text := strings.TrimSpace(stripHTML(match[2]))
 
 		// Skip very short comments
 		if len(text) < 20 {
@@ -255,15 +280,19 @@ func extractCommentSamples(html string, limit int) []string {
 			continue
 		}
 
-		// Limit length of each sample to ~200 chars
+		// Limit length
 		if len(text) > 200 {
 			text = text[:200] + "..."
 		}
 
-		samples = append(samples, text)
+		posts = append(posts, profile.Post{
+			Type:     profile.PostTypeComment,
+			Content:  text,
+			Category: subreddit,
+		})
 	}
 
-	return samples
+	return posts
 }
 
 // stripHTML removes HTML tags from a string (simple implementation).

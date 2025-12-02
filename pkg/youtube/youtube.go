@@ -128,6 +128,9 @@ func parseProfile(html, url string) (*profile.Profile, error) {
 		prof.Fields["videos"] = strings.ReplaceAll(matches[1], ",", "")
 	}
 
+	// Extract video titles from accessibility labels
+	prof.Posts = extractVideoTitles(html, 10)
+
 	// Extract social links
 	prof.SocialLinks = htmlutil.SocialLinks(html)
 
@@ -163,36 +166,57 @@ func isDefaultBio(bio string) bool {
 	return false
 }
 
-func extractUsername(urlStr string) string {
-	// Remove protocol
-	urlStr = strings.TrimPrefix(urlStr, "https://")
-	urlStr = strings.TrimPrefix(urlStr, "http://")
-	urlStr = strings.TrimPrefix(urlStr, "www.")
+// extractVideoTitles extracts video titles from YouTube channel HTML.
+// YouTube embeds video titles in accessibility labels with duration info.
+func extractVideoTitles(html string, limit int) []profile.Post {
+	var posts []profile.Post
+	seen := make(map[string]bool)
 
-	// Extract various YouTube URL patterns
-	// @handle format
-	re := regexp.MustCompile(`youtube\.com/@([^/?#]+)`)
-	if matches := re.FindStringSubmatch(urlStr); len(matches) > 1 {
-		return matches[1]
+	// Extract from accessibility labels - these contain actual video titles with duration
+	// Pattern: "accessibilityData":{"label":"VIDEO TITLE DURATION"}
+	accessPattern := regexp.MustCompile(`"accessibilityData":\{"label":"([^"]+)\s+\d+\s*(?:minutes?|seconds?|hours?)`)
+	matches := accessPattern.FindAllStringSubmatch(html, -1)
+
+	for _, match := range matches {
+		if len(match) <= 1 || len(posts) >= limit {
+			continue
+		}
+
+		title := strings.TrimSpace(match[1])
+		// Clean up the title - remove trailing duration info
+		title = regexp.MustCompile(`\s*\d+\s*(?:minutes?|seconds?|hours?).*$`).ReplaceAllString(title, "")
+		title = strings.TrimSuffix(title, ",")
+		title = strings.TrimSpace(title)
+
+		if title == "" || seen[title] {
+			continue
+		}
+		seen[title] = true
+		posts = append(posts, profile.Post{
+			Type:  profile.PostTypeVideo,
+			Title: title,
+		})
 	}
 
-	// /c/channel format
-	re2 := regexp.MustCompile(`youtube\.com/c/([^/?#]+)`)
-	if matches := re2.FindStringSubmatch(urlStr); len(matches) > 1 {
-		return matches[1]
-	}
+	return posts
+}
 
-	// /user/ format
-	re3 := regexp.MustCompile(`youtube\.com/user/([^/?#]+)`)
-	if matches := re3.FindStringSubmatch(urlStr); len(matches) > 1 {
-		return matches[1]
-	}
+func extractUsername(s string) string {
+	s = strings.TrimPrefix(s, "https://")
+	s = strings.TrimPrefix(s, "http://")
+	s = strings.TrimPrefix(s, "www.")
 
-	// /channel/ format (ID)
-	re4 := regexp.MustCompile(`youtube\.com/channel/([^/?#]+)`)
-	if matches := re4.FindStringSubmatch(urlStr); len(matches) > 1 {
-		return matches[1]
+	// Try each YouTube URL pattern
+	patterns := []string{
+		`youtube\.com/@([^/?#]+)`,
+		`youtube\.com/c/([^/?#]+)`,
+		`youtube\.com/user/([^/?#]+)`,
+		`youtube\.com/channel/([^/?#]+)`,
 	}
-
+	for _, p := range patterns {
+		if m := regexp.MustCompile(p).FindStringSubmatch(s); len(m) > 1 {
+			return m[1]
+		}
+	}
 	return ""
 }

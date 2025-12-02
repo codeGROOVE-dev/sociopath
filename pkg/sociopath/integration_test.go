@@ -215,7 +215,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				Bio:      "KD4UHP - based out of Carrboro, NC\nfounder & CEO @ codeGROOVE\nformer Director of Security @ Chainguard & Xoogler\n#unix #infosec #bikes #carrboro #motorcycles #photography #hamradio",
 			},
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "Location", "Website", "SocialLinks", "Fields", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
+				cmpopts.IgnoreFields(profile.Profile{}, "Location", "Website", "SocialLinks", "Fields", "LastActive", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
 			},
 		},
 		{
@@ -384,6 +384,27 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				URL:      "https://old.reddit.com/user/GovSchwarzenegger",
 				Username: "GovSchwarzenegger",
 				Name:     "GovSchwarzenegger",
+			},
+		},
+		{
+			name: "Reddit/medyagh",
+			url:  "https://old.reddit.com/user/medyagh",
+			setup: func(ctx context.Context, t *testing.T) interface{} {
+				t.Helper()
+				client, err := reddit.New(ctx, reddit.WithHTTPCache(testCache))
+				if err != nil {
+					t.Fatalf("reddit.New() failed: %v", err)
+				}
+				return client
+			},
+			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+				return c.(*reddit.Client).Fetch(ctx, url)
+			},
+			want: &profile.Profile{
+				Platform: "reddit",
+				URL:      "https://old.reddit.com/user/medyagh",
+				Username: "medyagh",
+				Name:     "medyagh",
 			},
 		},
 		{
@@ -603,7 +624,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 			},
 			// LinkedIn test should verify Bio, Location; Fields may vary based on API availability
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "Fields", "Website", "SocialLinks", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
+				cmpopts.IgnoreFields(profile.Profile{}, "Fields", "Website", "SocialLinks", "LastActive", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
 			},
 		},
 		{
@@ -632,7 +653,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 			},
 			// LinkedIn profile verification - employer extraction depends on API access and profile settings
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "Bio", "Website", "SocialLinks", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
+				cmpopts.IgnoreFields(profile.Profile{}, "Bio", "Website", "SocialLinks", "LastActive", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
 				cmpopts.IgnoreMapEntries(func(k, _ string) bool { return true }), // Ignore all Fields entries as they vary
 			},
 		},
@@ -662,14 +683,14 @@ func TestIntegrationLiveFetch(t *testing.T) {
 			},
 			// LinkedIn profile verification - employer extraction depends on API access and profile settings
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "Bio", "Website", "SocialLinks", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
+				cmpopts.IgnoreFields(profile.Profile{}, "Bio", "Website", "SocialLinks", "LastActive", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
 				cmpopts.IgnoreMapEntries(func(k, _ string) bool { return true }), // Ignore all Fields entries as they vary
 			},
 		},
 	}
 
 	opts := []cmp.Option{
-		cmpopts.IgnoreFields(profile.Profile{}, "Bio", "Location", "Website", "Fields", "SocialLinks", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
+		cmpopts.IgnoreFields(profile.Profile{}, "Bio", "Location", "Website", "Fields", "SocialLinks", "LastActive", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch"),
 	}
 
 	for _, tt := range tests {

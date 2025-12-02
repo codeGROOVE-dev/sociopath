@@ -1115,15 +1115,15 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 			guessedOrgs := extractOrganizationList(guessed.Fields)
 			knownOrgs := extractOrganizationList(kp.Fields)
 
-			// Check if any organization appears in the other profile's bio, employer, or unstructured text
+			// Check if any organization appears in the other profile's bio, employer, unstructured, or posts
 			if len(guessedOrgs) > 0 || len(knownOrgs) > 0 {
-				// Check guessed orgs against known bio/employer/unstructured
-				if len(guessedOrgs) > 0 && scoreOrganizationMatch(guessedOrgs, kp.Bio, getEmployer(kp.Fields), kp.Unstructured) {
+				// Check guessed orgs against known bio/employer/unstructured/posts
+				if len(guessedOrgs) > 0 && scoreOrganizationMatch(guessedOrgs, kp.Bio, getEmployer(kp.Fields), kp.Unstructured+" "+postsText(kp)) {
 					hasOrgMatch = true
 					matches = append(matches, "organization:"+kp.Platform)
 				}
-				// Check known orgs against guessed bio/employer/unstructured
-				if !hasOrgMatch && len(knownOrgs) > 0 && scoreOrganizationMatch(knownOrgs, guessed.Bio, getEmployer(guessed.Fields), guessed.Unstructured) {
+				// Check known orgs against guessed bio/employer/unstructured/posts
+				if !hasOrgMatch && len(knownOrgs) > 0 && scoreOrganizationMatch(knownOrgs, guessed.Bio, getEmployer(guessed.Fields), guessed.Unstructured+" "+postsText(guessed)) {
 					hasOrgMatch = true
 					matches = append(matches, "organization:"+kp.Platform)
 				}
@@ -1604,6 +1604,23 @@ func scoreOrganizationMatch(orgs []string, bio string, employer string, unstruct
 	return false
 }
 
+// postsText extracts all text content from a profile's Posts slice.
+func postsText(p *profile.Profile) string {
+	if len(p.Posts) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, post := range p.Posts {
+		if post.Title != "" {
+			parts = append(parts, post.Title)
+		}
+		if post.Content != "" {
+			parts = append(parts, post.Content)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // scoreInterestMatch checks if profiles share common interests.
 // This catches cases like:
 // - Reddit subreddit "vim" matching GitHub bio "Vim plugin artist".
@@ -1666,11 +1683,27 @@ func extractInterests(p *profile.Profile) map[string]bool {
 		interests[k] = v
 	}
 
-	// Extract from unstructured content (Reddit comments, etc.)
+	// Extract from unstructured content (fallback for generic pages)
 	if p.Unstructured != "" {
 		unstructuredInterests := extractInterestKeywords(p.Unstructured)
 		for k, v := range unstructuredInterests {
 			interests[k] = v
+		}
+	}
+
+	// Extract from structured posts (Reddit comments, YouTube videos, etc.)
+	for _, post := range p.Posts {
+		if post.Title != "" {
+			titleInterests := extractInterestKeywords(post.Title)
+			for k, v := range titleInterests {
+				interests[k] = v
+			}
+		}
+		if post.Content != "" {
+			contentInterests := extractInterestKeywords(post.Content)
+			for k, v := range contentInterests {
+				interests[k] = v
+			}
 		}
 	}
 

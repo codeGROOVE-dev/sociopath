@@ -325,7 +325,7 @@ func TestParseAPIResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			profile, err := client.parseAPIResponse([]byte(tt.json))
+			prof, _, err := client.parseAPIResponse([]byte(tt.json))
 
 			if tt.wantErr {
 				if err == nil {
@@ -338,14 +338,14 @@ func TestParseAPIResponse(t *testing.T) {
 				t.Fatalf("parseAPIResponse() error = %v", err)
 			}
 
-			if profile.Username != tt.wantUsername {
-				t.Errorf("Username = %q, want %q", profile.Username, tt.wantUsername)
+			if prof.Username != tt.wantUsername {
+				t.Errorf("Username = %q, want %q", prof.Username, tt.wantUsername)
 			}
-			if profile.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", profile.Name, tt.wantName)
+			if prof.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", prof.Name, tt.wantName)
 			}
-			if tt.wantLocation != "" && profile.Location != tt.wantLocation {
-				t.Errorf("Location = %q, want %q", profile.Location, tt.wantLocation)
+			if tt.wantLocation != "" && prof.Location != tt.wantLocation {
+				t.Errorf("Location = %q, want %q", prof.Location, tt.wantLocation)
 			}
 		})
 	}
