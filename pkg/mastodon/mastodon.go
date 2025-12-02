@@ -153,7 +153,7 @@ func (c *Client) fetchViaAPI(ctx context.Context, host, username string) (*profi
 
 	// Fetch recent posts if we have an account ID
 	if accountID != "" {
-		posts, lastActive := c.fetchStatuses(ctx, host, accountID, 5)
+		posts, lastActive := c.fetchStatuses(ctx, host, accountID, 50)
 		p.Posts = posts
 		if lastActive != "" {
 			p.LastActive = lastActive

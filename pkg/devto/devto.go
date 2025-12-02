@@ -95,7 +95,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	p := parseHTML(body, urlStr, username)
 
 	// Fetch recent articles via API
-	posts, lastActive := c.fetchArticles(ctx, username, 5)
+	posts, lastActive := c.fetchArticles(ctx, username, 50)
 	p.Posts = posts
 	if lastActive != "" {
 		p.LastActive = lastActive

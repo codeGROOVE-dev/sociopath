@@ -99,7 +99,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	}
 
 	// Fetch recent posts
-	posts, lastActive := c.fetchPosts(ctx, handle, 5)
+	posts, lastActive := c.fetchPosts(ctx, handle, 50)
 	p.Posts = posts
 	if lastActive != "" {
 		p.LastActive = lastActive

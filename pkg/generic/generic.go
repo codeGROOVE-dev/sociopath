@@ -22,7 +22,7 @@ import (
 
 const (
 	platform     = "generic"
-	maxBlogPosts = 10
+	maxBlogPosts = 50
 )
 
 // Match always returns true as this is the fallback.
@@ -142,10 +142,12 @@ func parseHTML(data []byte, urlStr string) *profile.Profile {
 	}
 
 	// Extract blog posts if this looks like a blog
-	if posts := extractBlogPosts(content, urlStr); len(posts) > 0 {
+	if posts, lastActive := extractBlogPosts(content, urlStr); len(posts) > 0 {
 		p.Posts = posts
 		p.Platform = "blog"
-		if len(posts) > 0 && posts[0].URL != "" {
+		if lastActive != "" {
+			p.LastActive = lastActive
+		} else if len(posts) > 0 && posts[0].URL != "" {
 			p.LastActive = extractDateFromURL(posts[0].URL)
 		}
 	}
@@ -153,19 +155,26 @@ func parseHTML(data []byte, urlStr string) *profile.Profile {
 	return p
 }
 
+// blogPost represents a blog post with optional date for sorting.
+type blogPost struct {
+	post profile.Post
+	date string // YYYY-MM-DD format for sorting
+}
+
 // extractBlogPosts detects if a page is a blog and extracts post entries.
-func extractBlogPosts(content, baseURL string) []profile.Post {
+// Returns posts and the date of the most recent post (if available).
+func extractBlogPosts(content, baseURL string) (posts []profile.Post, lastActive string) {
 	// Check for blog indicators
 	if !isBlogPage(content) {
-		return nil
+		return nil, ""
 	}
 
-	var posts []profile.Post
+	var bposts []blogPost
 
 	// Parse base URL for resolving relative links
 	base, err := url.Parse(baseURL)
 	if err != nil {
-		return nil
+		return nil, ""
 	}
 
 	// Pattern 1: Links with dates in format YYYY-MM-DD or similar near them
@@ -176,16 +185,19 @@ func extractBlogPosts(content, baseURL string) []profile.Post {
 		if !isPostURL(postURL) {
 			continue
 		}
-		posts = append(posts, profile.Post{
-			Type:  profile.PostTypeArticle,
-			Title: html.UnescapeString(strings.TrimSpace(m[2])),
-			URL:   postURL,
+		bposts = append(bposts, blogPost{
+			post: profile.Post{
+				Type:  profile.PostTypeArticle,
+				Title: html.UnescapeString(strings.TrimSpace(m[2])),
+				URL:   postURL,
+			},
+			date: m[3],
 		})
 	}
 
 	// If we found posts with the date pattern, return them
-	if len(posts) > 0 {
-		return limitPosts(posts)
+	if len(bposts) > 0 {
+		return toBlogPosts(bposts)
 	}
 
 	// Pattern 2: Links with date prefix in link text (e.g., "2023-04-25 – Title")
@@ -195,18 +207,77 @@ func extractBlogPosts(content, baseURL string) []profile.Post {
 		if !isPostURL(postURL) {
 			continue
 		}
-		posts = append(posts, profile.Post{
-			Type:  profile.PostTypeArticle,
-			Title: html.UnescapeString(strings.TrimSpace(m[3])),
-			URL:   postURL,
+		bposts = append(bposts, blogPost{
+			post: profile.Post{
+				Type:  profile.PostTypeArticle,
+				Title: html.UnescapeString(strings.TrimSpace(m[3])),
+				URL:   postURL,
+			},
+			date: m[2],
 		})
 	}
 
-	if len(posts) > 0 {
-		return limitPosts(posts)
+	if len(bposts) > 0 {
+		return toBlogPosts(bposts)
 	}
 
-	// Pattern 3: All links within an <article> element pointing to post URLs
+	// Pattern 3: Jekyll-style post list with date span before link
+	// e.g., <li><span>19 Feb 2015</span> &raquo; <a href="URL">Title</a></li>
+	jekyllRe := `<li>\s*<span>(\d{1,2})\s+(\w{3})\s+(\d{4})</span>\s*(?:&raquo;|»)\s*` +
+		`<a[^>]+href=["']([^"']+)["'][^>]*>([^<]+)</a>`
+	jekyllPattern := regexp.MustCompile(jekyllRe)
+	for _, m := range jekyllPattern.FindAllStringSubmatch(content, maxBlogPosts) {
+		postURL := resolveURL(base, m[4])
+		if !isPostURL(postURL) {
+			continue
+		}
+		date := parseHumanDate(m[1], m[2], m[3])
+		bposts = append(bposts, blogPost{
+			post: profile.Post{
+				Type:  profile.PostTypeArticle,
+				Title: html.UnescapeString(strings.TrimSpace(m[5])),
+				URL:   postURL,
+			},
+			date: date,
+		})
+	}
+
+	if len(bposts) > 0 {
+		return toBlogPosts(bposts)
+	}
+
+	// Pattern 4: Links followed by date in MM.DD.YYYY or MM.DD.YY format
+	// e.g., <a href="URL">Title</a> ... : 05.15.2020
+	usDatePattern := regexp.MustCompile(`<a[^>]+href=["']([^"']+)["'][^>]*>([^<]+)</a>[^<]*:\s*(\d{1,2})\.(\d{1,2})\.(\d{2,4})`)
+	for _, m := range usDatePattern.FindAllStringSubmatch(content, maxBlogPosts) {
+		postURL := resolveURL(base, m[1])
+		title := html.UnescapeString(strings.TrimSpace(m[2]))
+		// Skip navigation links
+		if isNavLink(title) {
+			continue
+		}
+		month := m[3]
+		day := m[4]
+		year := m[5]
+		if len(year) == 2 {
+			year = "20" + year
+		}
+		date := fmt.Sprintf("%s-%02s-%02s", year, month, day)
+		bposts = append(bposts, blogPost{
+			post: profile.Post{
+				Type:  profile.PostTypeArticle,
+				Title: title,
+				URL:   postURL,
+			},
+			date: date,
+		})
+	}
+
+	if len(bposts) > 0 {
+		return toBlogPosts(bposts)
+	}
+
+	// Pattern 5: All links within an <article> element pointing to post URLs
 	articlePattern := regexp.MustCompile(`(?is)<article[^>]*>(.*?)</article>`)
 	if m := articlePattern.FindStringSubmatch(content); len(m) > 1 {
 		articleContent := m[1]
@@ -216,19 +287,22 @@ func extractBlogPosts(content, baseURL string) []profile.Post {
 			if !isPostURL(postURL) {
 				continue
 			}
-			posts = append(posts, profile.Post{
-				Type:  profile.PostTypeArticle,
-				Title: html.UnescapeString(strings.TrimSpace(lm[2])),
-				URL:   postURL,
+			bposts = append(bposts, blogPost{
+				post: profile.Post{
+					Type:  profile.PostTypeArticle,
+					Title: html.UnescapeString(strings.TrimSpace(lm[2])),
+					URL:   postURL,
+				},
+				date: extractDateFromURL(postURL),
 			})
 		}
 	}
 
-	if len(posts) > 0 {
-		return limitPosts(posts)
+	if len(bposts) > 0 {
+		return toBlogPosts(bposts)
 	}
 
-	// Pattern 4: Look for links in post/blog sections
+	// Pattern 6: Look for links in post/blog sections
 	// Find section with "posts", "articles", "blog" heading, then extract links
 	sectionPattern := regexp.MustCompile(`(?is)<h[123][^>]*>[^<]*(?:posts?|articles?|blog)[^<]*</h[123]>\s*(.*?)(?:<h[123]|</body|$)`)
 	if m := sectionPattern.FindStringSubmatch(content); len(m) > 1 {
@@ -239,23 +313,65 @@ func extractBlogPosts(content, baseURL string) []profile.Post {
 			if !isPostURL(postURL) {
 				continue
 			}
-			posts = append(posts, profile.Post{
-				Type:  profile.PostTypeArticle,
-				Title: html.UnescapeString(strings.TrimSpace(lm[2])),
-				URL:   postURL,
+			bposts = append(bposts, blogPost{
+				post: profile.Post{
+					Type:  profile.PostTypeArticle,
+					Title: html.UnescapeString(strings.TrimSpace(lm[2])),
+					URL:   postURL,
+				},
+				date: extractDateFromURL(postURL),
 			})
 		}
 	}
 
-	return limitPosts(posts)
+	return toBlogPosts(bposts)
 }
 
-// limitPosts returns at most maxBlogPosts posts.
-func limitPosts(posts []profile.Post) []profile.Post {
-	if len(posts) > maxBlogPosts {
-		return posts[:maxBlogPosts]
+// toBlogPosts converts blogPost slice to profile.Post slice, limiting to maxBlogPosts.
+// Returns posts and the most recent date (if any).
+func toBlogPosts(bposts []blogPost) (posts []profile.Post, lastActive string) {
+	if len(bposts) > maxBlogPosts {
+		bposts = bposts[:maxBlogPosts]
 	}
-	return posts
+	posts = make([]profile.Post, len(bposts))
+	for i, bp := range bposts {
+		posts[i] = bp.post
+		// First post with a date is the most recent
+		if lastActive == "" && bp.date != "" {
+			lastActive = bp.date
+		}
+	}
+	return posts, lastActive
+}
+
+// parseHumanDate converts day, month name, year to YYYY-MM-DD format.
+func parseHumanDate(day, month, year string) string {
+	months := map[string]string{
+		"jan": "01", "feb": "02", "mar": "03", "apr": "04",
+		"may": "05", "jun": "06", "jul": "07", "aug": "08",
+		"sep": "09", "oct": "10", "nov": "11", "dec": "12",
+	}
+	m := months[strings.ToLower(month)]
+	if m == "" {
+		return ""
+	}
+	d := day
+	if len(d) == 1 {
+		d = "0" + d
+	}
+	return fmt.Sprintf("%s-%s-%s", year, m, d)
+}
+
+// isNavLink returns true if the title looks like a navigation link.
+func isNavLink(title string) bool {
+	lower := strings.ToLower(title)
+	navWords := []string{"home", "about", "contact", "rss", "feed", "github", "twitter", "profile"}
+	for _, word := range navWords {
+		if lower == word || strings.HasPrefix(lower, word+" ") {
+			return true
+		}
+	}
+	return false
 }
 
 // isBlogPage checks if the page appears to be a blog.

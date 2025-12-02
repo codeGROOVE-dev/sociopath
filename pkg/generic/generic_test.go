@@ -325,7 +325,7 @@ func TestExtractBlogPosts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			posts := extractBlogPosts(tt.html, tt.baseURL)
+			posts, _ := extractBlogPosts(tt.html, tt.baseURL)
 			if len(posts) != tt.wantCount {
 				t.Errorf("extractBlogPosts() returned %d posts, want %d", len(posts), tt.wantCount)
 			}

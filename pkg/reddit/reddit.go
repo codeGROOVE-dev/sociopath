@@ -130,7 +130,7 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	}
 
 	// Extract posts and comments with subreddit context
-	prof.Posts = extractPosts(html, 10)
+	prof.Posts = extractPosts(html, 50)
 
 	// Extract unique subreddits from posts
 	subreddits := extractSubreddits(html)

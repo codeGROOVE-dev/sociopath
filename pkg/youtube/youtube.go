@@ -129,7 +129,7 @@ func parseProfile(html, url string) (*profile.Profile, error) {
 	}
 
 	// Extract video titles from accessibility labels
-	prof.Posts = extractVideoTitles(html, 10)
+	prof.Posts = extractVideoTitles(html, 50)
 
 	// Extract social links
 	prof.SocialLinks = htmlutil.SocialLinks(html)
