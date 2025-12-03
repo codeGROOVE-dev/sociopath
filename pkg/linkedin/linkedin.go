@@ -109,9 +109,18 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 	cfg.logger.InfoContext(ctx, "linkedin client created", "cookie_count", len(cookies))
 
 	return &Client{
-		httpClient: &http.Client{Jar: jar, Timeout: 3 * time.Second},
-		cache:      cfg.cache,
-		logger:     cfg.logger,
+		httpClient: &http.Client{
+			Jar:     jar,
+			Timeout: 3 * time.Second,
+			CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+				if len(via) >= 1 {
+					return http.ErrUseLastResponse
+				}
+				return nil
+			},
+		},
+		cache:  cfg.cache,
+		logger: cfg.logger,
 	}, nil
 }
 
@@ -138,26 +147,39 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
-	prof, parseErr := parseProfile(body, urlStr)
-	if parseErr != nil {
-		// Log additional context for debugging
-		c.logger.DebugContext(ctx, "linkedin parse failed",
-			"url", urlStr,
-			"error", parseErr,
-			"response_size", len(body),
-		)
-		return prof, parseErr
-	}
-
-	// Extract URN for API calls
+	// Extract username from URL for API calls
 	username := extractPublicID(urlStr)
-	memberURN := extractMemberURN(body)
+
+	// Try to extract the target profile's member URN from the HTML
+	// IMPORTANT: The HTML contains URNs for both logged-in user and viewed profile
+	// We must extract the URN for the TARGET profile, not the logged-in user
+	memberURN := extractTargetMemberURN(body, username)
 	c.logger.DebugContext(ctx, "extracted for API call", "username", username, "memberURN", memberURN)
 
-	// If no employer found from HTML parsing, try the Voyager API
-	c.logger.DebugContext(ctx, "checking employer", "employer", prof.Fields["employer"])
+	// PRIMARY: Use Voyager API to get profile data (avoids logged-in user data contamination)
+	// The HTML often contains the logged-in user's data mixed with viewed profile data
+	var prof *profile.Profile
+	if memberURN != "" {
+		prof = c.fetchProfileFromAPI(ctx, memberURN, urlStr, username)
+	}
+
+	// FALLBACK: Parse HTML only if API failed
+	if prof == nil {
+		var parseErr error
+		prof, parseErr = parseProfile(body, urlStr)
+		if parseErr != nil {
+			c.logger.DebugContext(ctx, "linkedin parse failed",
+				"url", urlStr,
+				"error", parseErr,
+				"response_size", len(body),
+			)
+			return prof, parseErr
+		}
+	}
+
+	// Ensure we have experience data
 	if prof.Fields["employer"] == "" || prof.Fields["title"] == "" {
-		if username != "" || memberURN != "" {
+		if memberURN != "" {
 			exp := c.fetchExperienceFromAPI(ctx, username, memberURN)
 			if exp.employer != "" && prof.Fields["employer"] == "" {
 				prof.Fields["employer"] = exp.employer
@@ -170,7 +192,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		}
 	}
 
-	// If no location found from HTML parsing, try the Voyager API
+	// Ensure we have location
 	if prof.Location == "" && memberURN != "" {
 		loc := c.fetchLocationFromAPI(ctx, memberURN)
 		if loc != "" {
@@ -179,11 +201,230 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		}
 	}
 
-	return prof, parseErr
+	// Extract social links from HTML (API doesn't provide these)
+	prof.SocialLinks = htmlutil.SocialLinks(string(body))
+	extractContactInfo(prof, string(body))
+	prof.SocialLinks = filterSamePlatformLinks(prof.SocialLinks)
+
+	return prof, nil
 }
 
 // EnableDebug enables debug logging.
 func (c *Client) EnableDebug() { c.debug = true }
+
+// fetchProfileFromAPI fetches the profile data from the LinkedIn Voyager API.
+// This is the primary method for getting profile data as it avoids logged-in user data contamination.
+// Uses the /identity/profiles/{publicIdentifier} endpoint which returns profile by username.
+func (c *Client) fetchProfileFromAPI(ctx context.Context, _, profileURL, username string) *profile.Profile {
+	if username == "" {
+		c.logger.DebugContext(ctx, "no username for profile API call")
+		return nil
+	}
+
+	if err := c.ensureSessionCookies(ctx); err != nil {
+		c.logger.DebugContext(ctx, "failed to get session cookies for profile", "error", err)
+		return nil
+	}
+
+	// Use the identity/profiles endpoint which takes publicIdentifier (username) directly
+	// This avoids the problem of extracting wrong URN from HTML
+	apiURL := fmt.Sprintf("https://www.linkedin.com/voyager/api/identity/profiles/%s", url.PathEscape(username))
+
+	c.logger.DebugContext(ctx, "fetching profile from voyager api", "url", apiURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		c.logger.DebugContext(ctx, "profile api request creation failed", "error", err)
+		return nil
+	}
+
+	setVoyagerHeaders(req, c.httpClient, c.logger)
+	req.Header.Set("Accept", "application/vnd.linkedin.normalized+json+2.1")
+
+	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		c.logger.DebugContext(ctx, "profile api request failed", "error", err)
+		return nil
+	}
+
+	c.logger.DebugContext(ctx, "profile api response", "bodySize", len(body))
+
+	return extractProfileFromIdentityAPI(body, profileURL, username, c.logger)
+}
+
+// extractProfileFromIdentityAPI extracts profile data from the /identity/profiles/ API response.
+// This endpoint returns profile data with fields like firstName, lastName, headline, geoLocationName.
+func extractProfileFromIdentityAPI(body []byte, profileURL, username string, logger *slog.Logger) *profile.Profile {
+	prof := &profile.Profile{
+		Platform:      platform,
+		URL:           profileURL,
+		Authenticated: true,
+		Username:      username,
+		Fields:        make(map[string]string),
+	}
+
+	// The identity/profiles API returns JSON with direct fields:
+	// firstName, lastName, headline, geoLocationName, industryName, etc.
+
+	// Extract firstName and lastName
+	firstName := extractJSONField(string(body), "firstName")
+	lastName := extractJSONField(string(body), "lastName")
+	if firstName != "" {
+		prof.Name = unescapeJSON(firstName)
+		if lastName != "" {
+			prof.Name += " " + unescapeJSON(lastName)
+		}
+		logger.Debug("extracted name from identity API", "name", prof.Name)
+	}
+
+	// Extract headline (bio)
+	if headline := extractJSONField(string(body), "headline"); headline != "" {
+		prof.Bio = unescapeJSON(headline)
+		logger.Debug("extracted headline from identity API", "headline", prof.Bio)
+	}
+
+	// Extract location
+	if loc := extractJSONField(string(body), "geoLocationName"); loc != "" {
+		prof.Location = unescapeJSON(loc)
+		logger.Debug("extracted location from identity API", "location", prof.Location)
+	}
+
+	// Extract pronouns
+	pronounRe := regexp.MustCompile(`"standardizedPronoun"\s*:\s*"(HE_HIM|SHE_HER|THEY_THEM)"`)
+	if m := pronounRe.FindSubmatch(body); len(m) > 1 {
+		pronouns := convertStandardizedPronoun(string(m[1]))
+		if pronouns != "" {
+			prof.Fields["pronouns"] = pronouns
+			logger.Debug("extracted pronouns from identity API", "pronouns", pronouns)
+		}
+	}
+
+	// If no name found, return nil to fall back to HTML parsing
+	if prof.Name == "" {
+		logger.Debug("no name found in identity API response")
+		return nil
+	}
+
+	return prof
+}
+
+// extractProfileFromGraphQLResponse extracts profile data from the TOP_CARD GraphQL response.
+// This is a fallback method if the identity/profiles endpoint fails.
+func extractProfileFromGraphQLResponse(body []byte, profileURL, username string, logger *slog.Logger) *profile.Profile {
+	prof := &profile.Profile{
+		Platform:      platform,
+		URL:           profileURL,
+		Authenticated: true,
+		Username:      username,
+		Fields:        make(map[string]string),
+	}
+
+	// The TOP_CARD response contains the profile name and headline in "text" fields
+	// Structure: elements containing titleV2 with text for name, subtitleV2 for headline
+	// Look for patterns like: "titleV2":{"text":{"text":"Stephen Fox Jr."
+
+	// Extract name from titleV2
+	titleRe := regexp.MustCompile(`"titleV2"\s*:\s*\{[^}]*"text"\s*:\s*\{[^}]*"text"\s*:\s*"([^"]+)"`)
+	if m := titleRe.FindSubmatch(body); len(m) > 1 {
+		prof.Name = strings.TrimSpace(string(m[1]))
+		logger.Debug("extracted name from titleV2", "name", prof.Name)
+	} else {
+		logger.Debug("titleV2 pattern not found")
+	}
+
+	// Extract headline/bio from subtitleV2
+	subtitleRe := regexp.MustCompile(`"subtitleV2"\s*:\s*\{[^}]*"text"\s*:\s*\{[^}]*"text"\s*:\s*"([^"]+)"`)
+	if m := subtitleRe.FindSubmatch(body); len(m) > 1 {
+		prof.Bio = strings.TrimSpace(string(m[1]))
+		logger.Debug("extracted bio from subtitleV2", "bio", prof.Bio)
+	} else {
+		logger.Debug("subtitleV2 pattern not found")
+	}
+
+	// Extract location
+	loc := extractLocationFromGraphQLResponse(body)
+	if loc != "" {
+		prof.Location = loc
+	}
+
+	// Extract pronouns - look for standardizedPronoun
+	pronounRe := regexp.MustCompile(`"standardizedPronoun"\s*:\s*"(HE_HIM|SHE_HER|THEY_THEM)"`)
+	if m := pronounRe.FindSubmatch(body); len(m) > 1 {
+		pronouns := convertStandardizedPronoun(string(m[1]))
+		if pronouns != "" {
+			prof.Fields["pronouns"] = pronouns
+		}
+	}
+
+	// If no name found, return nil to fall back to HTML parsing
+	if prof.Name == "" {
+		return nil
+	}
+
+	return prof
+}
+
+// extractTargetMemberURN extracts the member URN for the TARGET profile from HTML.
+// This is critical because LinkedIn pages contain URNs for both the logged-in user
+// and the profile being viewed. We need to find the URN that belongs to the target.
+func extractTargetMemberURN(body []byte, targetUsername string) string {
+	// Strategy 1: Look for URN associated with the target username in the URL
+	// Pattern: fsd_profileCard with publicIdentifier matching target
+	if targetUsername != "" {
+		// Look for the pattern that ties publicIdentifier to a member URN
+		// Example: "publicIdentifier":"stephen-fox-jr"... nearby "fsd_profile:ACoA..."
+		pattern := fmt.Sprintf(`"publicIdentifier"\s*:\s*"%s"[^}]*}[^{]*\{[^}]*fsd_profile:(ACoA[A-Za-z0-9_-]+)`, regexp.QuoteMeta(targetUsername))
+		re := regexp.MustCompile(pattern)
+		if m := re.FindSubmatch(body); len(m) > 1 {
+			return string(m[1])
+		}
+	}
+
+	// Strategy 2: Look for fsd_profileCard URN which is typically the viewed profile
+	// Pattern: fsd_profileCard:(ACoA...,SECTION_TYPE
+	cardRe := regexp.MustCompile(`fsd_profileCard:\((ACoA[A-Za-z0-9_-]+),`)
+	if match := cardRe.FindSubmatch(body); len(match) > 1 {
+		return string(match[1])
+	}
+
+	// Strategy 3: Look for profile URN in the page's data
+	// The viewed profile's URN often appears in specific contexts
+	profileRe := regexp.MustCompile(`fsd_profile:(ACoA[A-Za-z0-9_-]+)`)
+	matches := profileRe.FindAllSubmatch(body, -1)
+
+	// If we have multiple URNs, we need to identify which is the target
+	// Usually the most frequently occurring one in certain contexts is the viewed profile
+	if len(matches) > 0 {
+		// Count occurrences of each URN
+		urnCounts := make(map[string]int)
+		for _, m := range matches {
+			urn := string(m[1])
+			urnCounts[urn]++
+		}
+
+		// Return the most common URN (likely the viewed profile)
+		var maxURN string
+		maxCount := 0
+		for urn, count := range urnCounts {
+			if count > maxCount {
+				maxCount = count
+				maxURN = urn
+			}
+		}
+		if maxURN != "" {
+			return maxURN
+		}
+	}
+
+	// Last resort: any ACoA pattern
+	re := regexp.MustCompile(`ACoA[A-Za-z0-9_-]+`)
+	match := re.Find(body)
+	if len(match) > 0 {
+		return string(match)
+	}
+
+	return ""
+}
 
 // fetchExperienceFromAPI calls the LinkedIn Voyager API to get profile experience data.
 func (c *Client) fetchExperienceFromAPI(ctx context.Context, _ string, memberURN string) experienceData {

@@ -16,7 +16,13 @@ const errorTTL = 5 * 24 * time.Hour // Cache HTTP errors for 5 days
 
 // globalRateLimiter enforces minimum delay between requests to the same domain.
 // This prevents overwhelming servers even when running concurrent goroutines.
-var globalRateLimiter = NewDomainRateLimiter(600 * time.Millisecond)
+var globalRateLimiter = newGlobalRateLimiter()
+
+func newGlobalRateLimiter() *DomainRateLimiter {
+	r := NewDomainRateLimiter(600 * time.Millisecond)
+	r.SetDomainDelay("www.linkedin.com", 1200*time.Millisecond)
+	return r
+}
 
 // Stats holds cache hit/miss statistics.
 type Stats struct {

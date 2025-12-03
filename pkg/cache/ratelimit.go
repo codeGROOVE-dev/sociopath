@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"log/slog"
 	"net/url"
 	"sync"
 	"time"
@@ -9,17 +10,25 @@ import (
 // DomainRateLimiter enforces a minimum delay between requests to the same domain.
 // It is safe for concurrent use from multiple goroutines.
 type DomainRateLimiter struct {
-	lastRequest sync.Map // map[string]time.Time
-	mu          sync.Map // map[string]*sync.Mutex - per-domain locks
-	minDelay    time.Duration
+	domainOverride map[string]time.Duration // per-domain minimum delays
+	lastRequest    sync.Map                 // map[string]time.Time
+	mu             sync.Map                 // map[string]*sync.Mutex - per-domain locks
+	minDelay       time.Duration
 }
 
 // NewDomainRateLimiter creates a rate limiter that enforces minDelay between
-// requests to the same domain.
+// requests to the same domain. Domain-specific overrides can be set with SetDomainDelay.
 func NewDomainRateLimiter(minDelay time.Duration) *DomainRateLimiter {
 	return &DomainRateLimiter{
-		minDelay: minDelay,
+		minDelay:       minDelay,
+		domainOverride: make(map[string]time.Duration),
 	}
+}
+
+// SetDomainDelay sets a custom minimum delay for a specific domain.
+// This overrides the default minDelay for requests to this domain.
+func (r *DomainRateLimiter) SetDomainDelay(domain string, delay time.Duration) {
+	r.domainOverride[domain] = delay
 }
 
 // Wait blocks until it's safe to make a request to the given URL's domain.
@@ -40,12 +49,20 @@ func (r *DomainRateLimiter) Wait(rawURL string) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	// Use domain-specific delay if set, otherwise use default
+	delay := r.minDelay
+	if override, ok := r.domainOverride[domain]; ok {
+		delay = override
+	}
+
 	// Check last request time
 	if lastI, ok := r.lastRequest.Load(domain); ok {
 		if last, ok := lastI.(time.Time); ok {
 			elapsed := time.Since(last)
-			if elapsed < r.minDelay {
-				time.Sleep(r.minDelay - elapsed)
+			if elapsed < delay {
+				waitTime := delay - elapsed
+				slog.Debug("rate limiting request", "domain", domain, "wait", waitTime.Round(time.Millisecond))
+				time.Sleep(waitTime)
 			}
 		}
 	}
