@@ -2,7 +2,10 @@
 package github
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -411,8 +414,19 @@ func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, erro
 }
 
 func (c *Client) doAPIRequest(ctx context.Context, req *http.Request) ([]byte, error) {
-	// Check cache first
+	// Build cache key - for POST requests, include body hash to differentiate queries
 	cacheKey := req.URL.String()
+	if req.Method == http.MethodPost && req.Body != nil {
+		bodyBytes, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, fmt.Errorf("reading request body: %w", err)
+		}
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		hash := sha256.Sum256(bodyBytes)
+		cacheKey = req.URL.String() + ":" + hex.EncodeToString(hash[:])
+	}
+
+	// Check cache first
 	if c.cache != nil {
 		if data, _, _, found := c.cache.Get(ctx, cacheKey); found {
 			c.cache.RecordHit()
