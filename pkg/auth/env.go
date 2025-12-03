@@ -17,10 +17,6 @@ var platformEnvVars = map[string]map[string]string{
 	"twitter": {
 		"TWITTER_AUTH_TOKEN": "auth_token",
 		"TWITTER_CT0":        "ct0",
-		"TWITTER_TWID":       "twid",
-		"TWITTER_GUEST_ID":   "guest_id",
-		"TWITTER_KDT":        "kdt",
-		"TWITTER_ATT":        "att",
 	},
 	"instagram": {
 		"INSTAGRAM_SESSIONID": "sessionid",
