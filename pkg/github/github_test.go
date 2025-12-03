@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -465,6 +466,152 @@ func TestWithOptions(t *testing.T) {
 		}
 		if client == nil {
 			t.Fatal("New(WithLogger) returned nil")
+		}
+	})
+}
+
+func TestParseProfileFromHTML(t *testing.T) {
+	ctx := context.Background()
+	client, err := New(ctx)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	// Sample HTML based on github.com/tstromberg profile structure
+	sampleHTML := `
+<html>
+<head><title>tstromberg</title></head>
+<body>
+<img style="height:auto;" src="https://avatars.githubusercontent.com/u/101424?v=4" width="260" height="260" class="avatar avatar-user width-full border color-bg-default" />
+<span class="p-name vcard-fullname d-block overflow-hidden" itemprop="name">
+Thomas Stromberg
+</span>
+<span class="p-nickname vcard-username d-block" itemprop="additionalName">tstromberg</span>
+<div class="p-note user-profile-bio mb-3 js-user-profile-bio f4" data-bio-text="CEO @ codeGROOVE">
+CEO @ codeGROOVE
+</div>
+<li class="vcard-detail pt-1" itemprop="homeLocation" aria-label="Home location: McMurdo Station, Antarctica">
+<svg class="octicon octicon-location"></svg>
+<span>McMurdo Station, Antarctica</span>
+</li>
+<li itemprop="url" data-test-selector="profile-website-url" class="vcard-detail pt-1">
+<svg class="octicon octicon-link"></svg>
+<a rel="nofollow me" class="Link--primary" href="http://localhost:8080/">http://localhost:8080/</a>
+</li>
+</body>
+</html>
+`
+
+	tests := []struct {
+		name     string
+		html     string
+		urlStr   string
+		username string
+		wantName string
+		wantBio  string
+		wantLoc  string
+		wantWeb  string
+	}{
+		{
+			name:     "full_profile",
+			html:     sampleHTML,
+			urlStr:   "https://github.com/tstromberg",
+			username: "tstromberg",
+			wantName: "Thomas Stromberg",
+			wantBio:  "CEO @ codeGROOVE",
+			wantLoc:  "McMurdo Station, Antarctica",
+			wantWeb:  "http://localhost:8080/",
+		},
+		{
+			name: "minimal_profile",
+			html: `
+<span class="p-name vcard-fullname" itemprop="name">Jane Doe</span>
+<div data-bio-text="Developer">Developer</div>
+`,
+			urlStr:   "https://github.com/janedoe",
+			username: "janedoe",
+			wantName: "Jane Doe",
+			wantBio:  "Developer",
+			wantLoc:  "",
+			wantWeb:  "",
+		},
+		{
+			name:     "empty_html",
+			html:     "<html><body></body></html>",
+			urlStr:   "https://github.com/nobody",
+			username: "nobody",
+			wantName: "",
+			wantBio:  "",
+			wantLoc:  "",
+			wantWeb:  "",
+		},
+		{
+			name: "website_without_protocol",
+			html: `
+<li itemprop="url" data-test-selector="profile-website-url">
+<a href="example.com">example.com</a>
+</li>
+`,
+			urlStr:   "https://github.com/user",
+			username: "user",
+			wantName: "",
+			wantBio:  "",
+			wantLoc:  "",
+			wantWeb:  "https://example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prof := client.parseProfileFromHTML(ctx, tt.html, tt.urlStr, tt.username)
+
+			if prof.Platform != "github" {
+				t.Errorf("Platform = %q, want %q", prof.Platform, "github")
+			}
+			if prof.URL != tt.urlStr {
+				t.Errorf("URL = %q, want %q", prof.URL, tt.urlStr)
+			}
+			if prof.Username != tt.username {
+				t.Errorf("Username = %q, want %q", prof.Username, tt.username)
+			}
+			if prof.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", prof.Name, tt.wantName)
+			}
+			if prof.Bio != tt.wantBio {
+				t.Errorf("Bio = %q, want %q", prof.Bio, tt.wantBio)
+			}
+			if prof.Location != tt.wantLoc {
+				t.Errorf("Location = %q, want %q", prof.Location, tt.wantLoc)
+			}
+			if prof.Website != tt.wantWeb {
+				t.Errorf("Website = %q, want %q", prof.Website, tt.wantWeb)
+			}
+		})
+	}
+}
+
+func TestAPIError(t *testing.T) {
+	t.Run("rate_limit_error", func(t *testing.T) {
+		err := &APIError{
+			StatusCode:  403,
+			IsRateLimit: true,
+			Message:     "rate limit exceeded",
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "rate limited") {
+			t.Errorf("Error() = %q, want to contain 'rate limited'", errStr)
+		}
+	})
+
+	t.Run("other_error", func(t *testing.T) {
+		err := &APIError{
+			StatusCode:  401,
+			IsRateLimit: false,
+			Message:     "bad credentials",
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "401") {
+			t.Errorf("Error() = %q, want to contain '401'", errStr)
 		}
 	})
 }
