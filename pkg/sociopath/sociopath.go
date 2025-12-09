@@ -71,7 +71,7 @@ var (
 type Option func(*config)
 
 type config struct {
-	cache          *httpcache.Cache
+	cache          httpcache.Cacher
 	cookies        map[string]string
 	logger         *slog.Logger
 	githubToken    string
@@ -89,7 +89,7 @@ func WithBrowserCookies() Option {
 }
 
 // WithHTTPCache sets the HTTP cache for responses.
-func WithHTTPCache(httpCache *httpcache.Cache) Option {
+func WithHTTPCache(httpCache httpcache.Cacher) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 

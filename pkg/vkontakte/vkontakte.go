@@ -31,7 +31,7 @@ func AuthRequired() bool { return false }
 // Client handles VKontakte requests.
 type Client struct {
 	httpClient *http.Client
-	cache      *httpcache.Cache
+	cache      httpcache.Cacher
 	logger     *slog.Logger
 }
 
@@ -40,7 +40,7 @@ type Option func(*config)
 
 type config struct {
 	cookies        map[string]string
-	cache          *httpcache.Cache
+	cache          httpcache.Cacher
 	logger         *slog.Logger
 	browserCookies bool
 }
@@ -56,7 +56,7 @@ func WithBrowserCookies() Option {
 }
 
 // WithHTTPCache sets the HTTP cache.
-func WithHTTPCache(httpCache *httpcache.Cache) Option {
+func WithHTTPCache(httpCache httpcache.Cacher) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 

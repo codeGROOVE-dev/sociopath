@@ -28,7 +28,7 @@ func AuthRequired() bool { return false }
 // Client handles StackOverflow requests.
 type Client struct {
 	httpClient *http.Client
-	cache      *httpcache.Cache
+	cache      httpcache.Cacher
 	logger     *slog.Logger
 }
 
@@ -36,12 +36,12 @@ type Client struct {
 type Option func(*config)
 
 type config struct {
-	cache  *httpcache.Cache
+	cache  httpcache.Cacher
 	logger *slog.Logger
 }
 
 // WithHTTPCache sets the HTTP cache.
-func WithHTTPCache(httpCache *httpcache.Cache) Option {
+func WithHTTPCache(httpCache httpcache.Cacher) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 

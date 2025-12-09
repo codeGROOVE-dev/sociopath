@@ -22,6 +22,13 @@ import (
 	"github.com/codeGROOVE-dev/sfcache/pkg/persist/localfs"
 )
 
+// Cacher is the interface that cache implementations must satisfy.
+// This allows external packages to provide their own cache implementation.
+type Cacher interface {
+	GetSet(ctx context.Context, key string, fetch func(context.Context) ([]byte, error), ttl ...time.Duration) ([]byte, error)
+	TTL() time.Duration
+}
+
 // Cache wraps sfcache for HTTP response caching.
 type Cache struct {
 	*sfcache.TieredCache[string, []byte]
@@ -57,6 +64,11 @@ func NewWithPath(ttl time.Duration, cachePath string) (*Cache, error) {
 	return &Cache{TieredCache: tc, ttl: ttl}, nil
 }
 
+// TTL returns the default TTL for cache entries.
+func (c *Cache) TTL() time.Duration {
+	return c.ttl
+}
+
 // URLToKey converts a URL to a cache key using SHA256 hash.
 func URLToKey(rawURL string) string {
 	hash := sha256.Sum256([]byte(rawURL))
@@ -78,7 +90,7 @@ type ResponseValidator func(body []byte) bool
 
 // FetchURL fetches a URL with caching and thundering herd prevention.
 // If cache is non-nil, uses GetSet to ensure only one request is made for concurrent calls.
-func FetchURL(ctx context.Context, cache *Cache, client *http.Client, req *http.Request, logger *slog.Logger) ([]byte, error) {
+func FetchURL(ctx context.Context, cache Cacher, client *http.Client, req *http.Request, logger *slog.Logger) ([]byte, error) {
 	return FetchURLWithValidator(ctx, cache, client, req, logger, nil)
 }
 
@@ -86,7 +98,7 @@ func FetchURL(ctx context.Context, cache *Cache, client *http.Client, req *http.
 // If validator returns false, the response is returned but NOT cached.
 func FetchURLWithValidator(
 	ctx context.Context,
-	cache *Cache,
+	cache Cacher,
 	client *http.Client,
 	req *http.Request,
 	logger *slog.Logger,
@@ -123,7 +135,7 @@ func FetchURLWithValidator(
 			return nil, &validationError{data: body}
 		}
 		return body, nil
-	}, cache.ttl)
+	}, cache.TTL())
 
 	// Handle validation failure - return the data but it wasn't cached.
 	var validErr *validationError
