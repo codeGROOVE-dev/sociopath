@@ -1,3 +1,4 @@
+//nolint:gosmopolitan // Chinese platform requires Chinese characters in tests
 package weibo
 
 import (

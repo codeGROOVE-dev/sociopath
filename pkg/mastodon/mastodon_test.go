@@ -161,7 +161,7 @@ func TestFetch_ViaAPI(t *testing.T) {
 		if r.URL.Path == "/api/v1/accounts/lookup" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(mockJSON))
+			_, _ = w.Write([]byte(mockJSON)) //nolint:errcheck // test helper
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -226,7 +226,7 @@ func TestFetch_ViaHTML(t *testing.T) {
 		} else {
 			w.Header().Set("Content-Type", "text/html")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(mockHTML))
+			_, _ = w.Write([]byte(mockHTML)) //nolint:errcheck // test helper
 		}
 	}))
 	defer server.Close()

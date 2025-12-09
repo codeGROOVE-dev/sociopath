@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codeGROOVE-dev/sociopath/pkg/cache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
 
@@ -63,7 +63,7 @@ func AuthRequired() bool { return false }
 // Client handles Mastodon requests.
 type Client struct {
 	httpClient *http.Client
-	cache      cache.HTTPCache
+	cache      *httpcache.Cache
 	logger     *slog.Logger
 }
 
@@ -71,12 +71,12 @@ type Client struct {
 type Option func(*config)
 
 type config struct {
-	cache  cache.HTTPCache
+	cache  *httpcache.Cache
 	logger *slog.Logger
 }
 
 // WithHTTPCache sets the HTTP cache.
-func WithHTTPCache(httpCache cache.HTTPCache) Option {
+func WithHTTPCache(httpCache *httpcache.Cache) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 
@@ -141,7 +141,7 @@ func (c *Client) fetchViaAPI(ctx context.Context, host, username string) (*profi
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "sociopath/1.0")
 
-	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func (c *Client) fetchViaHTML(ctx context.Context, urlStr, username string) (*pr
 	}
 	req.Header.Set("User-Agent", "sociopath/1.0")
 
-	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +266,7 @@ func (c *Client) fetchStatuses(ctx context.Context, host, accountID string, limi
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "sociopath/1.0")
 
-	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return nil, ""
 	}
@@ -301,8 +301,8 @@ func (c *Client) fetchStatuses(ctx context.Context, host, accountID string, limi
 func extractUsername(path string) string {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	for _, part := range parts {
-		if strings.HasPrefix(part, "@") {
-			return strings.TrimPrefix(part, "@")
+		if username, found := strings.CutPrefix(part, "@"); found {
+			return username
 		}
 	}
 	if len(parts) >= 2 && parts[0] == "users" {

@@ -4,8 +4,8 @@ go 1.25.4
 
 require (
 	github.com/browserutils/kooky v0.2.4
-	github.com/codeGROOVE-dev/bdcache v0.6.1
-	github.com/codeGROOVE-dev/bdcache/persist/localfs v0.0.0-20251121210535-3893c2b92813
+	github.com/codeGROOVE-dev/sfcache v1.3.0
+	github.com/codeGROOVE-dev/sfcache/pkg/persist/localfs v1.3.0
 	github.com/google/go-cmp v0.7.0
 )
 

@@ -24,7 +24,7 @@ endif
 LINTERS :=
 FIXERS :=
 
-SHELLCHECK_VERSION ?= v0.10.0
+SHELLCHECK_VERSION ?= v0.11.0
 SHELLCHECK_BIN := $(LINT_ROOT)/out/linters/shellcheck-$(SHELLCHECK_VERSION)-$(LINT_ARCH)
 $(SHELLCHECK_BIN):
 	mkdir -p $(LINT_ROOT)/out/linters
@@ -45,7 +45,7 @@ shellcheck-fix: $(SHELLCHECK_BIN)
 	$(SHELLCHECK_BIN) $(shell find . -name "*.sh") -f diff | { read -t 1 line || exit 0; { echo "$$line" && cat; } | git apply -p2; }
 
 GOLANGCI_LINT_CONFIG := $(LINT_ROOT)/.golangci.yml
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.7.2
 GOLANGCI_LINT_BIN := $(LINT_ROOT)/out/linters/golangci-lint-$(GOLANGCI_LINT_VERSION)-$(LINT_ARCH)
 $(GOLANGCI_LINT_BIN):
 	mkdir -p $(LINT_ROOT)/out/linters

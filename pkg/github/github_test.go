@@ -178,11 +178,11 @@ func TestFetch(t *testing.T) {
 		if r.URL.Path == "/users/testuser" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(apiJSON))
+			_, _ = w.Write([]byte(apiJSON)) //nolint:errcheck // test helper
 		} else {
 			w.Header().Set("Content-Type", "text/html")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(htmlContent))
+			_, _ = w.Write([]byte(htmlContent)) //nolint:errcheck // test helper
 		}
 	}))
 	defer server.Close()

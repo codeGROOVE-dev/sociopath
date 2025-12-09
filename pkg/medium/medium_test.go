@@ -85,7 +85,7 @@ func TestFetch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(mockHTML))
+		_, _ = w.Write([]byte(mockHTML)) //nolint:errcheck // test helper
 	}))
 	defer server.Close()
 
@@ -131,8 +131,8 @@ func TestFetch_NotFound(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusOK) // Medium returns 200 with error page
-		_, _ = w.Write([]byte(mockHTML))
+		w.WriteHeader(http.StatusOK)     // Medium returns 200 with error page
+		_, _ = w.Write([]byte(mockHTML)) //nolint:errcheck // test helper
 	}))
 	defer server.Close()
 

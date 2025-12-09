@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/codeGROOVE-dev/sociopath/pkg/auth"
-	"github.com/codeGROOVE-dev/sociopath/pkg/cache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
 
@@ -97,7 +97,7 @@ func AuthRequired() bool { return true }
 // Client handles Twitter/X requests with authenticated cookies.
 type Client struct {
 	httpClient *http.Client
-	cache      cache.HTTPCache
+	cache      *httpcache.Cache
 	logger     *slog.Logger
 	debug      bool
 }
@@ -107,7 +107,7 @@ type Option func(*config)
 
 type config struct {
 	cookies        map[string]string
-	cache          cache.HTTPCache
+	cache          *httpcache.Cache
 	logger         *slog.Logger
 	browserCookies bool
 }
@@ -123,7 +123,7 @@ func WithBrowserCookies() Option {
 }
 
 // WithHTTPCache sets the HTTP cache.
-func WithHTTPCache(httpCache cache.HTTPCache) Option {
+func WithHTTPCache(httpCache *httpcache.Cache) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 
@@ -227,7 +227,7 @@ func (c *Client) fetchViaGraphQL(ctx context.Context, username, profileURL strin
 
 	setGraphQLHeaders(req, c.httpClient, profileURL)
 
-	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -246,7 +246,7 @@ func (c *Client) fetchViaHTML(ctx context.Context, username, profileURL string) 
 
 	setHeaders(req)
 
-	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

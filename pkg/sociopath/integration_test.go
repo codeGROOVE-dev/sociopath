@@ -1,4 +1,6 @@
 // Package sociopath_test contains integration tests for live profile fetching.
+//
+//nolint:gocognit,errcheck,maintidx // integration test with table-driven tests has inherent complexity
 package sociopath_test
 
 import (
@@ -9,10 +11,10 @@ import (
 	"time"
 
 	"github.com/codeGROOVE-dev/sociopath/pkg/bluesky"
-	"github.com/codeGROOVE-dev/sociopath/pkg/cache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/devto"
 	"github.com/codeGROOVE-dev/sociopath/pkg/github"
 	"github.com/codeGROOVE-dev/sociopath/pkg/habr"
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linkedin"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linktree"
 	"github.com/codeGROOVE-dev/sociopath/pkg/mastodon"
@@ -30,7 +32,7 @@ import (
 // getTestCache creates a persistent HTTP cache for integration tests with 24-hour TTL.
 // We use os.TempDir() instead of t.TempDir() because we need the cache to persist
 // across multiple test runs to avoid hammering external APIs.
-func getTestCache(t *testing.T) cache.HTTPCache {
+func getTestCache(t *testing.T) *httpcache.Cache {
 	t.Helper()
 
 	cacheDir := filepath.Join(os.TempDir(), "sociopath-test-cache") //nolint:usetesting // cache must persist across runs
@@ -39,12 +41,12 @@ func getTestCache(t *testing.T) cache.HTTPCache {
 	}
 
 	dbPath := filepath.Join(cacheDir, "test-cache.db")
-	bdCache, err := cache.NewWithPath(24*time.Hour, dbPath)
+	cache, err := httpcache.NewWithPath(24*time.Hour, dbPath)
 	if err != nil {
 		t.Fatalf("failed to create cache: %v", err)
 	}
 
-	return bdCache
+	return cache
 }
 
 // TestIntegrationLiveFetch tests live fetching from each platform.
@@ -59,8 +61,8 @@ func TestIntegrationLiveFetch(t *testing.T) {
 	tests := []struct {
 		name     string
 		url      string
-		setup    func(context.Context, *testing.T) interface{}
-		fetch    func(context.Context, interface{}, string) (*profile.Profile, error)
+		setup    func(context.Context, *testing.T) any
+		fetch    func(context.Context, any, string) (*profile.Profile, error)
 		want     *profile.Profile
 		authOnly bool
 		cmpOpts  []cmp.Option // Optional custom comparison options for this test
@@ -70,7 +72,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "GitHub/tstromberg",
 			url:  "https://github.com/tstromberg",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := github.New(ctx, github.WithHTTPCache(testCache))
 				if err != nil {
@@ -78,7 +80,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -92,7 +94,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "GitHub/kentcdodds",
 			url:  "https://github.com/kentcdodds",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := github.New(ctx, github.WithHTTPCache(testCache))
 				if err != nil {
@@ -100,7 +102,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -114,7 +116,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "GitHub/torvalds",
 			url:  "https://github.com/torvalds",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := github.New(ctx, github.WithHTTPCache(testCache))
 				if err != nil {
@@ -122,7 +124,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -136,7 +138,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "GitHub/gvanrossum",
 			url:  "https://github.com/gvanrossum",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := github.New(ctx, github.WithHTTPCache(testCache))
 				if err != nil {
@@ -144,7 +146,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -158,7 +160,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Mastodon/Gargron",
 			url:  "https://mastodon.social/@Gargron",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := mastodon.New(ctx, mastodon.WithHTTPCache(testCache))
 				if err != nil {
@@ -166,7 +168,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*mastodon.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -180,7 +182,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Mastodon/dansup",
 			url:  "https://mastodon.social/@dansup",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := mastodon.New(ctx, mastodon.WithHTTPCache(testCache))
 				if err != nil {
@@ -188,7 +190,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*mastodon.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -202,7 +204,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Mastodon/thomrstrom",
 			url:  "https://triangletoot.party/@thomrstrom",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := mastodon.New(ctx, mastodon.WithHTTPCache(testCache))
 				if err != nil {
@@ -210,7 +212,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*mastodon.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -228,7 +230,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Bluesky/bsky.app",
 			url:  "https://bsky.app/profile/bsky.app",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := bluesky.New(ctx, bluesky.WithHTTPCache(testCache))
 				if err != nil {
@@ -236,7 +238,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*bluesky.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -250,7 +252,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Bluesky/jack",
 			url:  "https://bsky.app/profile/jack.bsky.social",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := bluesky.New(ctx, bluesky.WithHTTPCache(testCache))
 				if err != nil {
@@ -258,7 +260,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*bluesky.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -272,7 +274,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Dev.to/tstromberg",
 			url:  "https://dev.to/tstromberg",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := devto.New(ctx, devto.WithHTTPCache(testCache))
 				if err != nil {
@@ -280,7 +282,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*devto.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -294,7 +296,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Dev.to/ben",
 			url:  "https://dev.to/ben",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := devto.New(ctx, devto.WithHTTPCache(testCache))
 				if err != nil {
@@ -302,7 +304,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*devto.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -316,7 +318,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Medium/ev",
 			url:  "https://medium.com/@ev",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := medium.New(ctx, medium.WithHTTPCache(testCache))
 				if err != nil {
@@ -324,7 +326,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*medium.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -337,7 +339,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Reddit/spez",
 			url:  "https://old.reddit.com/user/spez",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := reddit.New(ctx, reddit.WithHTTPCache(testCache))
 				if err != nil {
@@ -345,7 +347,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*reddit.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -358,7 +360,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Reddit/kn0thing",
 			url:  "https://old.reddit.com/user/kn0thing",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := reddit.New(ctx, reddit.WithHTTPCache(testCache))
 				if err != nil {
@@ -366,7 +368,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*reddit.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -379,7 +381,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Reddit/GovSchwarzenegger",
 			url:  "https://old.reddit.com/user/GovSchwarzenegger",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := reddit.New(ctx, reddit.WithHTTPCache(testCache))
 				if err != nil {
@@ -387,7 +389,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*reddit.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -400,7 +402,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Reddit/medyagh",
 			url:  "https://old.reddit.com/user/medyagh",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := reddit.New(ctx, reddit.WithHTTPCache(testCache))
 				if err != nil {
@@ -408,7 +410,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*reddit.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -421,7 +423,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "StackOverflow/jon-skeet",
 			url:  "https://stackoverflow.com/users/22656/jon-skeet",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := stackoverflow.New(ctx, stackoverflow.WithHTTPCache(testCache))
 				if err != nil {
@@ -429,7 +431,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*stackoverflow.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -442,7 +444,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "StackOverflow/gordon-linoff",
 			url:  "https://stackoverflow.com/users/1144035/gordon-linoff",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := stackoverflow.New(ctx, stackoverflow.WithHTTPCache(testCache))
 				if err != nil {
@@ -450,7 +452,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*stackoverflow.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -463,7 +465,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "YouTube/MKBHD",
 			url:  "https://youtube.com/@MKBHD",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := youtube.New(ctx, youtube.WithHTTPCache(testCache))
 				if err != nil {
@@ -471,7 +473,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*youtube.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -484,7 +486,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "YouTube/LinusTechTips",
 			url:  "https://youtube.com/@LinusTechTips",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := youtube.New(ctx, youtube.WithHTTPCache(testCache))
 				if err != nil {
@@ -492,7 +494,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*youtube.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -505,7 +507,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "YouTube/veritasium",
 			url:  "https://youtube.com/@veritasium",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := youtube.New(ctx, youtube.WithHTTPCache(testCache))
 				if err != nil {
@@ -513,7 +515,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*youtube.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -526,7 +528,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Linktree/m0nad",
 			url:  "https://linktr.ee/m0nad",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := linktree.New(ctx, linktree.WithHTTPCache(testCache))
 				if err != nil {
@@ -534,7 +536,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*linktree.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -547,7 +549,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Substack/paulabartabajo",
 			url:  "https://paulabartabajo.substack.com/",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := substack.New(ctx, substack.WithHTTPCache(testCache))
 				if err != nil {
@@ -555,7 +557,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*substack.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -568,7 +570,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		{
 			name: "Habr/rock",
 			url:  "https://habr.com/en/users/rock",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := habr.New(ctx, habr.WithHTTPCache(testCache))
 				if err != nil {
@@ -576,7 +578,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*habr.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -590,7 +592,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 			name:     "Twitter/elonmusk",
 			url:      "https://x.com/elonmusk",
 			authOnly: true,
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := twitter.New(ctx)
 				if err != nil {
@@ -598,7 +600,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*twitter.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -614,7 +616,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 			name:     "LinkedIn/williamhgates",
 			url:      "https://www.linkedin.com/in/williamhgates",
 			authOnly: false, // Auth is broken, doesn't require cookies anymore
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := linkedin.New(ctx)
 				if err != nil {
@@ -622,7 +624,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*linkedin.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -640,7 +642,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 			name:     "LinkedIn/mattmoor",
 			url:      "https://www.linkedin.com/in/mattmoor",
 			authOnly: false, // Auth is broken
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := linkedin.New(ctx)
 				if err != nil {
@@ -648,7 +650,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*linkedin.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -665,7 +667,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 			name:     "LinkedIn/austen-bryan",
 			url:      "https://www.linkedin.com/in/austen-bryan-23485a19",
 			authOnly: false, // Auth is broken
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := linkedin.New(ctx)
 				if err != nil {
@@ -673,7 +675,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*linkedin.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
@@ -747,14 +749,14 @@ func TestIntegrationErrorHandling(t *testing.T) {
 		name     string
 		platform string
 		url      string
-		setup    func(context.Context, *testing.T) interface{}
-		fetch    func(context.Context, interface{}, string) (*profile.Profile, error)
+		setup    func(context.Context, *testing.T) any
+		fetch    func(context.Context, any, string) (*profile.Profile, error)
 	}{
 		{
 			name:     "GitHub/NotFound",
 			platform: "github",
 			url:      "https://github.com/thisuserdoesnotexist12345",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := github.New(ctx, github.WithHTTPCache(testCache))
 				if err != nil {
@@ -762,7 +764,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 		},
@@ -770,7 +772,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 			name:     "Reddit/NotFound",
 			platform: "reddit",
 			url:      "https://reddit.com/user/thisuserdoesnotexist12345",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := reddit.New(ctx, reddit.WithHTTPCache(testCache))
 				if err != nil {
@@ -778,7 +780,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*reddit.Client).Fetch(ctx, url)
 			},
 		},
@@ -786,7 +788,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 			name:     "StackOverflow/NotFound",
 			platform: "stackoverflow",
 			url:      "https://stackoverflow.com/users/999999999/nonexistent",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := stackoverflow.New(ctx, stackoverflow.WithHTTPCache(testCache))
 				if err != nil {
@@ -794,7 +796,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*stackoverflow.Client).Fetch(ctx, url)
 			},
 		},
@@ -802,7 +804,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 			name:     "Mastodon/NotFound",
 			platform: "mastodon",
 			url:      "https://mastodon.social/@thisuserdoesnotexist12345",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := mastodon.New(ctx, mastodon.WithHTTPCache(testCache))
 				if err != nil {
@@ -810,7 +812,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*mastodon.Client).Fetch(ctx, url)
 			},
 		},
@@ -818,7 +820,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 			name:     "YouTube/NotFound",
 			platform: "youtube",
 			url:      "https://youtube.com/@thisuserdoesnotexist12345xyz",
-			setup: func(ctx context.Context, t *testing.T) interface{} {
+			setup: func(ctx context.Context, t *testing.T) any {
 				t.Helper()
 				client, err := youtube.New(ctx, youtube.WithHTTPCache(testCache))
 				if err != nil {
@@ -826,7 +828,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 				}
 				return client
 			},
-			fetch: func(ctx context.Context, c interface{}, url string) (*profile.Profile, error) {
+			fetch: func(ctx context.Context, c any, url string) (*profile.Profile, error) {
 				return c.(*youtube.Client).Fetch(ctx, url)
 			},
 		},

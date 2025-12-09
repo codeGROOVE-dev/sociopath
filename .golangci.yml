@@ -186,6 +186,8 @@ linters:
           arguments: [10]
         - name: flag-parameter # fixes are difficult
           disabled: true
+        - name: bare-return
+          disabled: true
 
     rowserrcheck:
       # database/sql is always checked.
@@ -231,14 +233,9 @@ linters:
       - path: _test\.go
         linters:
           - dupl
-          - errcheck
-          - gocognit
           - gosec
           - godot
-          - gosmopolitan
           - govet # alignment
-          - maintidx
-          - nestif
           - noctx
           - perfsprint
           - revive

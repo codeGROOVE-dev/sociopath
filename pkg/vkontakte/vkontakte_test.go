@@ -85,7 +85,7 @@ func TestFetch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(mockHTML))
+		_, _ = w.Write([]byte(mockHTML)) //nolint:errcheck // test helper
 	}))
 	defer server.Close()
 

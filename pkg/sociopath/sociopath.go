@@ -29,13 +29,13 @@ import (
 
 	"github.com/codeGROOVE-dev/sociopath/pkg/bilibili"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bluesky"
-	"github.com/codeGROOVE-dev/sociopath/pkg/cache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/codeberg"
 	"github.com/codeGROOVE-dev/sociopath/pkg/devto"
 	"github.com/codeGROOVE-dev/sociopath/pkg/generic"
 	"github.com/codeGROOVE-dev/sociopath/pkg/github"
 	"github.com/codeGROOVE-dev/sociopath/pkg/guess"
 	"github.com/codeGROOVE-dev/sociopath/pkg/habr"
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/instagram"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linkedin"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linktree"
@@ -55,8 +55,8 @@ import (
 type (
 	// Profile re-exports profile.Profile for convenience.
 	Profile = profile.Profile
-	// HTTPCache re-exports cache.HTTPCache for convenience.
-	HTTPCache = cache.HTTPCache
+	// HTTPCache re-exports httpcache.Cache for convenience.
+	HTTPCache = httpcache.Cache
 )
 
 // Re-export common errors.
@@ -71,7 +71,7 @@ var (
 type Option func(*config)
 
 type config struct {
-	cache          cache.HTTPCache
+	cache          *httpcache.Cache
 	cookies        map[string]string
 	logger         *slog.Logger
 	githubToken    string
@@ -89,7 +89,7 @@ func WithBrowserCookies() Option {
 }
 
 // WithHTTPCache sets the HTTP cache for responses.
-func WithHTTPCache(httpCache cache.HTTPCache) Option {
+func WithHTTPCache(httpCache *httpcache.Cache) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codeGROOVE-dev/sociopath/pkg/cache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
 
@@ -28,7 +28,7 @@ func AuthRequired() bool { return false }
 // Client handles StackOverflow requests.
 type Client struct {
 	httpClient *http.Client
-	cache      cache.HTTPCache
+	cache      *httpcache.Cache
 	logger     *slog.Logger
 }
 
@@ -36,12 +36,12 @@ type Client struct {
 type Option func(*config)
 
 type config struct {
-	cache  cache.HTTPCache
+	cache  *httpcache.Cache
 	logger *slog.Logger
 }
 
 // WithHTTPCache sets the HTTP cache.
-func WithHTTPCache(httpCache cache.HTTPCache) Option {
+func WithHTTPCache(httpCache *httpcache.Cache) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 
@@ -81,7 +81,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	}
 	req.Header.Set("User-Agent", "sociopath/1.0")
 
-	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -103,8 +103,7 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 
 	// Extract name from title - format: "User Jon Skeet - Stack Overflow"
 	title := htmlutil.Title(content)
-	if strings.HasPrefix(title, "User ") {
-		name := strings.TrimPrefix(title, "User ")
+	if name, found := strings.CutPrefix(title, "User "); found {
 		if idx := strings.Index(name, " - "); idx != -1 {
 			p.Name = strings.TrimSpace(name[:idx])
 		}

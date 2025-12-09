@@ -6,11 +6,12 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/codeGROOVE-dev/sociopath/pkg/cache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
 
@@ -32,7 +33,7 @@ func AuthRequired() bool { return false }
 // Client handles YouTube requests.
 type Client struct {
 	httpClient *http.Client
-	cache      cache.HTTPCache
+	cache      *httpcache.Cache
 	logger     *slog.Logger
 }
 
@@ -40,12 +41,12 @@ type Client struct {
 type Option func(*config)
 
 type config struct {
-	cache  cache.HTTPCache
+	cache  *httpcache.Cache
 	logger *slog.Logger
 }
 
 // WithHTTPCache sets the HTTP cache.
-func WithHTTPCache(httpCache cache.HTTPCache) Option {
+func WithHTTPCache(httpCache *httpcache.Cache) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 
@@ -85,7 +86,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
-	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -158,12 +159,7 @@ func isDefaultBio(bio string) bool {
 		"share your videos with friends, family, and the world",
 	}
 	bioLower := strings.ToLower(strings.TrimSpace(bio))
-	for _, d := range defaultBios {
-		if bioLower == d {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(defaultBios, bioLower)
 }
 
 // extractVideoTitles extracts video titles from YouTube channel HTML.

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codeGROOVE-dev/sociopath/pkg/cache"
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/sociopath"
 )
 
@@ -62,16 +62,14 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
 
 	// Setup cache
-	var httpCache *cache.BDCache
+	var httpCache *httpcache.Cache
 	if !*noCache {
 		var err error
-		httpCache, err = cache.New(*cacheTTL)
+		httpCache, err = httpcache.New(*cacheTTL)
 		if err != nil {
 			logger.Warn("failed to initialize cache, continuing without cache", "error", err)
 		} else {
 			defer func() {
-				stats := httpCache.Stats()
-				logger.Info("cache stats", "hits", stats.Hits, "misses", stats.Misses, "hit_rate", fmt.Sprintf("%.1f%%", stats.HitRate()))
 				if err := httpCache.Close(); err != nil {
 					logger.Warn("failed to close cache", "error", err)
 				}

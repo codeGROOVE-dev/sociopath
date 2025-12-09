@@ -14,12 +14,13 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/codeGROOVE-dev/sociopath/pkg/cache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
 
@@ -66,7 +67,7 @@ func AuthRequired() bool { return false }
 // Client handles GitHub requests.
 type Client struct {
 	httpClient *http.Client
-	cache      cache.HTTPCache
+	cache      *httpcache.Cache
 	logger     *slog.Logger
 	token      string
 }
@@ -75,13 +76,13 @@ type Client struct {
 type Option func(*config)
 
 type config struct {
-	cache  cache.HTTPCache
+	cache  *httpcache.Cache
 	logger *slog.Logger
 	token  string
 }
 
 // WithHTTPCache sets the HTTP cache.
-func WithHTTPCache(httpCache cache.HTTPCache) Option {
+func WithHTTPCache(httpCache *httpcache.Cache) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 
@@ -436,35 +437,46 @@ func (c *Client) doAPIRequest(ctx context.Context, req *http.Request) ([]byte, e
 		cacheKey = req.URL.String() + ":" + hex.EncodeToString(hash[:])
 	}
 
-	// Check cache first
-	if c.cache != nil {
-		if data, _, _, found := c.cache.Get(ctx, cacheKey); found {
-			c.cache.RecordHit()
-			if s := string(data); strings.HasPrefix(s, "ERROR:") {
-				code, _ := strconv.Atoi(strings.TrimPrefix(s, "ERROR:")) //nolint:errcheck // parse error defaults to 0 which is acceptable
-				c.logger.DebugContext(ctx, "cache hit (error)", "key", cacheKey, "status", code)
-				return nil, &APIError{StatusCode: code, Message: "cached error"}
-			}
-			c.logger.DebugContext(ctx, "cache hit", "key", cacheKey)
-			return data, nil
-		}
-		c.cache.RecordMiss()
-		c.logger.InfoContext(ctx, "cache miss", "url", req.URL.String())
-	} else {
+	if c.cache == nil {
 		c.logger.InfoContext(ctx, "cache disabled", "url", req.URL.String())
+		return c.executeAPIRequest(ctx, req)
 	}
 
+	data, err := c.cache.GetSet(ctx, httpcache.URLToKey(cacheKey), func(_ context.Context) ([]byte, error) {
+		body, fetchErr := c.executeAPIRequest(ctx, req)
+		if fetchErr != nil {
+			// Cache API errors to avoid hammering servers.
+			var apiErr *APIError
+			if errors.As(fetchErr, &apiErr) {
+				return fmt.Appendf(nil, "ERROR:%d", apiErr.StatusCode), nil
+			}
+			return nil, fetchErr
+		}
+		return body, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if this is a cached error.
+	if s := string(data); strings.HasPrefix(s, "ERROR:") {
+		code, _ := strconv.Atoi(strings.TrimPrefix(s, "ERROR:")) //nolint:errcheck // 0 is acceptable default
+		return nil, &APIError{StatusCode: code, Message: "cached error"}
+	}
+
+	return data, nil
+}
+
+func (c *Client) executeAPIRequest(ctx context.Context, req *http.Request) ([]byte, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // error ignored intentionally
 
-	// Parse rate limit headers (parse errors default to 0)
-	//nolint:errcheck,canonicalheader // GitHub uses non-canonical header casing, parse errors acceptable
-	rateLimitRemain, _ := strconv.Atoi(resp.Header.Get("X-RateLimit-Remaining"))
-	//nolint:errcheck,canonicalheader // GitHub uses non-canonical header casing, parse errors acceptable
-	rateLimitReset, _ := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64)
+	// Parse rate limit headers (parse errors default to 0).
+	rateLimitRemain, _ := strconv.Atoi(resp.Header.Get("X-Ratelimit-Remaining"))        //nolint:errcheck // 0 is acceptable default
+	rateLimitReset, _ := strconv.ParseInt(resp.Header.Get("X-Ratelimit-Reset"), 10, 64) //nolint:errcheck // 0 is acceptable default
 	resetTime := time.Unix(rateLimitReset, 0)
 
 	if resp.StatusCode != http.StatusOK {
@@ -491,17 +503,7 @@ func (c *Client) doAPIRequest(ctx context.Context, req *http.Request) ([]byte, e
 		return nil, apiErr
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Cache successful response
-	if c.cache != nil {
-		_ = c.cache.SetAsync(ctx, cacheKey, body, "", nil) //nolint:errcheck // async write errors are non-fatal
-	}
-
-	return body, nil
+	return io.ReadAll(resp.Body)
 }
 
 func (c *Client) fetchHTML(ctx context.Context, urlStr string) (content string, links []string) {
@@ -512,7 +514,7 @@ func (c *Client) fetchHTML(ctx context.Context, urlStr string) (content string, 
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
 
-	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		c.logger.Debug("failed to fetch HTML", "error", err)
 		return "", nil
@@ -571,14 +573,7 @@ func extractSocialLinks(html string) []string {
 		if strings.Contains(link, "github.com") || htmlutil.IsEmailURL(link) {
 			continue
 		}
-		isDuplicate := false
-		for _, existing := range links {
-			if existing == link {
-				isDuplicate = true
-				break
-			}
-		}
-		if !isDuplicate {
+		if !slices.Contains(links, link) {
 			links = append(links, link)
 		}
 	}
@@ -673,8 +668,7 @@ func parseJSON(data []byte, urlStr, _ string) (*profile.Profile, error) {
 		blogLower := strings.ToLower(blog)
 
 		// Check for mailto: links first
-		if strings.HasPrefix(blogLower, "mailto:") {
-			email := strings.TrimPrefix(blogLower, "mailto:")
+		if email, found := strings.CutPrefix(blogLower, "mailto:"); found {
 			prof.Fields["email"] = email
 		} else {
 			// GitHub sometimes stores URLs without protocol

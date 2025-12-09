@@ -4,6 +4,8 @@ package guess
 import (
 	"context"
 	"log/slog"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -434,28 +436,14 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 		// Only generate candidates for NEW usernames/names not already tried
 		newUsernames := make([]string, 0)
 		for _, u := range secondRoundUsernames {
-			alreadyTried := false
-			for _, orig := range usernames {
-				if u == orig {
-					alreadyTried = true
-					break
-				}
-			}
-			if !alreadyTried {
+			if !slices.Contains(usernames, u) {
 				newUsernames = append(newUsernames, u)
 			}
 		}
 
 		newNames := make([]string, 0)
 		for _, n := range secondRoundNames {
-			alreadyTried := false
-			for _, orig := range names {
-				if n == orig {
-					alreadyTried = true
-					break
-				}
-			}
-			if !alreadyTried {
+			if !slices.Contains(names, n) {
 				newNames = append(newNames, n)
 			}
 		}
@@ -1313,10 +1301,7 @@ func scoreName(a, b string) float64 {
 	}
 
 	if overlap > 0 {
-		maxLen := len(wordsA)
-		if len(wordsB) > maxLen {
-			maxLen = len(wordsB)
-		}
+		maxLen := max(len(wordsA), len(wordsB))
 		score := float64(overlap) / float64(maxLen)
 
 		// Penalize if first names don't match (likely different people)
@@ -1370,11 +1355,7 @@ func scoreLocation(a, b string) float64 {
 	}
 
 	if overlap > 0 {
-		maxLen := len(wordsA)
-		if len(wordsB) > maxLen {
-			maxLen = len(wordsB)
-		}
-		return float64(overlap) / float64(maxLen)
+		return float64(overlap) / float64(max(len(wordsA), len(wordsB)))
 	}
 
 	return 0
@@ -1397,20 +1378,13 @@ func scoreBioOverlap(a, b string) float64 {
 
 	var overlap int
 	for _, wa := range wordsA {
-		for _, wb := range wordsB {
-			if wa == wb {
-				overlap++
-				break
-			}
+		if slices.Contains(wordsB, wa) {
+			overlap++
 		}
 	}
 
 	if overlap >= 2 {
-		maxLen := len(wordsA)
-		if len(wordsB) > maxLen {
-			maxLen = len(wordsB)
-		}
-		return float64(overlap) / float64(maxLen)
+		return float64(overlap) / float64(max(len(wordsA), len(wordsB)))
 	}
 
 	return 0
@@ -1431,7 +1405,7 @@ func extractSignificantWords(s string) []string {
 	}
 
 	var words []string
-	for _, w := range strings.Fields(s) {
+	for w := range strings.FieldsSeq(s) {
 		w = strings.Trim(w, ".,!?;:\"'()[]{}|/\\")
 		w = strings.ToLower(w)
 		if len(w) >= 3 && !commonWords[w] {
@@ -1653,7 +1627,7 @@ func extractInterests(p *profile.Profile) map[string]bool {
 	// Extract from subreddits (Reddit profiles store these in Fields)
 	if p.Fields != nil {
 		if subs := p.Fields["subreddits"]; subs != "" {
-			for _, sub := range strings.Split(subs, ",") {
+			for sub := range strings.SplitSeq(subs, ",") {
 				sub = strings.TrimSpace(strings.ToLower(sub))
 				if sub != "" && len(sub) >= 2 {
 					interests[sub] = true
@@ -1663,7 +1637,7 @@ func extractInterests(p *profile.Profile) map[string]bool {
 
 		// Extract from GitHub organizations
 		if orgs := p.Fields["organizations"]; orgs != "" {
-			for _, org := range strings.Split(orgs, ",") {
+			for org := range strings.SplitSeq(orgs, ",") {
 				org = strings.TrimSpace(strings.ToLower(org))
 				// Normalize org names (remove common suffixes)
 				org = strings.TrimSuffix(org, "-dev")
@@ -1679,31 +1653,23 @@ func extractInterests(p *profile.Profile) map[string]bool {
 
 	// Extract interest keywords from bio
 	bioInterests := extractInterestKeywords(p.Bio)
-	for k, v := range bioInterests {
-		interests[k] = v
-	}
+	maps.Copy(interests, bioInterests)
 
 	// Extract from unstructured content (fallback for generic pages)
 	if p.Unstructured != "" {
 		unstructuredInterests := extractInterestKeywords(p.Unstructured)
-		for k, v := range unstructuredInterests {
-			interests[k] = v
-		}
+		maps.Copy(interests, unstructuredInterests)
 	}
 
 	// Extract from structured posts (Reddit comments, YouTube videos, etc.)
 	for _, post := range p.Posts {
 		if post.Title != "" {
 			titleInterests := extractInterestKeywords(post.Title)
-			for k, v := range titleInterests {
-				interests[k] = v
-			}
+			maps.Copy(interests, titleInterests)
 		}
 		if post.Content != "" {
 			contentInterests := extractInterestKeywords(post.Content)
-			for k, v := range contentInterests {
-				interests[k] = v
-			}
+			maps.Copy(interests, contentInterests)
 		}
 	}
 

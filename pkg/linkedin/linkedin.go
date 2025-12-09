@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/codeGROOVE-dev/sociopath/pkg/cache"
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
 
@@ -34,7 +34,7 @@ type Option func(*config)
 
 type config struct {
 	cookies        map[string]string
-	cache          cache.HTTPCache
+	cache          *httpcache.Cache
 	logger         *slog.Logger
 	browserCookies bool
 }
@@ -45,7 +45,7 @@ func WithCookies(cookies map[string]string) Option {
 }
 
 // WithHTTPCache sets the HTTP cache (currently unused - auth is broken).
-func WithHTTPCache(httpCache cache.HTTPCache) Option {
+func WithHTTPCache(httpCache *httpcache.Cache) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 

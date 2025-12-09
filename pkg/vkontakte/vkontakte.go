@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/codeGROOVE-dev/sociopath/pkg/auth"
-	"github.com/codeGROOVE-dev/sociopath/pkg/cache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
 
@@ -31,7 +31,7 @@ func AuthRequired() bool { return false }
 // Client handles VKontakte requests.
 type Client struct {
 	httpClient *http.Client
-	cache      cache.HTTPCache
+	cache      *httpcache.Cache
 	logger     *slog.Logger
 }
 
@@ -40,7 +40,7 @@ type Option func(*config)
 
 type config struct {
 	cookies        map[string]string
-	cache          cache.HTTPCache
+	cache          *httpcache.Cache
 	logger         *slog.Logger
 	browserCookies bool
 }
@@ -56,7 +56,7 @@ func WithBrowserCookies() Option {
 }
 
 // WithHTTPCache sets the HTTP cache.
-func WithHTTPCache(httpCache cache.HTTPCache) Option {
+func WithHTTPCache(httpCache *httpcache.Cache) Option {
 	return func(c *config) { c.cache = httpCache }
 }
 
@@ -122,7 +122,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	setHeaders(req)
 
-	body, err := cache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

@@ -1,0 +1,215 @@
+// Package httpcache provides HTTP response caching with thundering herd prevention.
+package httpcache
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/codeGROOVE-dev/sfcache"
+	"github.com/codeGROOVE-dev/sfcache/pkg/persist/localfs"
+)
+
+// Cache wraps sfcache for HTTP response caching.
+type Cache struct {
+	*sfcache.TieredCache[string, []byte]
+
+	ttl time.Duration
+}
+
+// New creates a new Cache with disk persistence at ~/.cache/sociopath.
+func New(ttl time.Duration) (*Cache, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		cacheDir = os.TempDir()
+	}
+	return NewWithPath(ttl, filepath.Join(cacheDir, "sociopath"))
+}
+
+// NewWithPath creates a new Cache with disk persistence at the specified path.
+func NewWithPath(ttl time.Duration, cachePath string) (*Cache, error) {
+	if err := os.MkdirAll(cachePath, 0o750); err != nil {
+		return nil, fmt.Errorf("create cache directory: %w", err)
+	}
+
+	persist, err := localfs.New[string, []byte]("sociopath", cachePath)
+	if err != nil {
+		return nil, fmt.Errorf("create persistence layer: %w", err)
+	}
+
+	tc, err := sfcache.NewTiered[string, []byte](persist, sfcache.TTL(ttl))
+	if err != nil {
+		return nil, fmt.Errorf("create cache: %w", err)
+	}
+
+	return &Cache{TieredCache: tc, ttl: ttl}, nil
+}
+
+// URLToKey converts a URL to a cache key using SHA256 hash.
+func URLToKey(rawURL string) string {
+	hash := sha256.Sum256([]byte(rawURL))
+	return hex.EncodeToString(hash[:])
+}
+
+// HTTPError represents an HTTP error response.
+type HTTPError struct {
+	URL        string
+	StatusCode int
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("HTTP %d fetching %s", e.StatusCode, e.URL)
+}
+
+// ResponseValidator validates a response body. Returns true if cacheable.
+type ResponseValidator func(body []byte) bool
+
+// FetchURL fetches a URL with caching and thundering herd prevention.
+// If cache is non-nil, uses GetSet to ensure only one request is made for concurrent calls.
+func FetchURL(ctx context.Context, cache *Cache, client *http.Client, req *http.Request, logger *slog.Logger) ([]byte, error) {
+	return FetchURLWithValidator(ctx, cache, client, req, logger, nil)
+}
+
+// FetchURLWithValidator fetches a URL with caching and optional response validation.
+// If validator returns false, the response is returned but NOT cached.
+func FetchURLWithValidator(
+	ctx context.Context,
+	cache *Cache,
+	client *http.Client,
+	req *http.Request,
+	logger *slog.Logger,
+	validator ResponseValidator,
+) ([]byte, error) {
+	// Build cache key - include auth marker if cookies present.
+	cacheKey := req.URL.String()
+	if client.Jar != nil && len(client.Jar.Cookies(req.URL)) > 0 {
+		cacheKey += "|auth"
+	}
+
+	if cache == nil {
+		if logger != nil {
+			logger.Info("cache disabled", "url", req.URL.String())
+		}
+		return doFetch(client, req)
+	}
+
+	data, err := cache.GetSet(ctx, URLToKey(cacheKey), func(_ context.Context) ([]byte, error) {
+		body, fetchErr := doFetch(client, req)
+		if fetchErr != nil {
+			// Cache HTTP errors to avoid hammering servers.
+			var httpErr *HTTPError
+			if errors.As(fetchErr, &httpErr) {
+				return fmt.Appendf(nil, "ERROR:%d", httpErr.StatusCode), nil
+			}
+			return nil, fetchErr
+		}
+		// If validator fails, return error to prevent caching.
+		if validator != nil && !validator(body) {
+			if logger != nil {
+				logger.Debug("skipping cache due to validation failure", "key", cacheKey)
+			}
+			return nil, &validationError{data: body}
+		}
+		return body, nil
+	}, cache.ttl)
+
+	// Handle validation failure - return the data but it wasn't cached.
+	var validErr *validationError
+	if errors.As(err, &validErr) {
+		return validErr.data, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if this is a cached error.
+	if s := string(data); strings.HasPrefix(s, "ERROR:") {
+		code, _ := strconv.Atoi(strings.TrimPrefix(s, "ERROR:")) //nolint:errcheck // 0 is acceptable default
+		return nil, &HTTPError{StatusCode: code, URL: req.URL.String()}
+	}
+
+	return data, nil
+}
+
+type validationError struct{ data []byte }
+
+func (*validationError) Error() string { return "validation failed" }
+
+func doFetch(client *http.Client, req *http.Request) ([]byte, error) {
+	globalRateLimiter.Wait(req.URL.String())
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close() //nolint:errcheck // intentional
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, &HTTPError{StatusCode: resp.StatusCode, URL: req.URL.String()}
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
+// Rate limiting.
+var globalRateLimiter = newGlobalRateLimiter()
+
+func newGlobalRateLimiter() *domainRateLimiter {
+	return &domainRateLimiter{
+		minDelay: 200 * time.Millisecond,
+		overrides: map[string]time.Duration{
+			"www.linkedin.com": 1200 * time.Millisecond,
+		},
+	}
+}
+
+type domainRateLimiter struct {
+	overrides   map[string]time.Duration
+	lastRequest sync.Map
+	mu          sync.Map
+	minDelay    time.Duration
+}
+
+func (r *domainRateLimiter) Wait(rawURL string) {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return
+	}
+	domain := u.Host
+
+	muI, _ := r.mu.LoadOrStore(domain, &sync.Mutex{})
+	mu, ok := muI.(*sync.Mutex)
+	if !ok {
+		return
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	delay := r.minDelay
+	if override, ok := r.overrides[domain]; ok {
+		delay = override
+	}
+
+	if lastI, ok := r.lastRequest.Load(domain); ok {
+		if last, ok := lastI.(time.Time); ok {
+			if elapsed := time.Since(last); elapsed < delay {
+				time.Sleep(delay - elapsed)
+			}
+		}
+	}
+
+	r.lastRequest.Store(domain, time.Now())
+}

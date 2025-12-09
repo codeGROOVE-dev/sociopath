@@ -1,6 +1,7 @@
 package guess
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
@@ -114,14 +115,7 @@ func TestGenerateCandidates_PrioritizesQualityUsernames(t *testing.T) {
 	}
 
 	// user123 should be included (has digits = higher quality)
-	hasUser123 := false
-	for _, u := range linkedinUsernames {
-		if u == "user123" {
-			hasUser123 = true
-			break
-		}
-	}
-	if !hasUser123 {
+	if !slices.Contains(linkedinUsernames, "user123") {
 		t.Errorf("expected user123 to be prioritized in LinkedIn candidates, got: %v", linkedinUsernames)
 	}
 }
