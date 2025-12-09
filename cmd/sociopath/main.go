@@ -63,11 +63,15 @@ func main() {
 
 	// Setup cache
 	var httpCache *httpcache.Cache
-	if !*noCache {
+	if *noCache {
+		httpCache = httpcache.NewNull()
+		logger.Debug("HTTP cache disabled")
+	} else {
 		var err error
 		httpCache, err = httpcache.New(*cacheTTL)
 		if err != nil {
-			logger.Warn("failed to initialize cache, continuing without cache", "error", err)
+			logger.Warn("failed to initialize cache, falling back to null cache", "error", err)
+			httpCache = httpcache.NewNull()
 		} else {
 			defer func() {
 				if err := httpCache.Close(); err != nil {
@@ -79,13 +83,12 @@ func main() {
 	}
 
 	// Build options
-	var opts []sociopath.Option
-	opts = append(opts, sociopath.WithLogger(logger))
+	opts := []sociopath.Option{
+		sociopath.WithLogger(logger),
+		sociopath.WithHTTPCache(httpCache),
+	}
 	if !*noBrowser {
 		opts = append(opts, sociopath.WithBrowserCookies())
-	}
-	if httpCache != nil {
-		opts = append(opts, sociopath.WithHTTPCache(httpCache))
 	}
 
 	ctx := context.Background()

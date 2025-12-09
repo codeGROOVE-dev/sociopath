@@ -18,12 +18,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/codeGROOVE-dev/retry"
 	"github.com/codeGROOVE-dev/sfcache"
-	"github.com/codeGROOVE-dev/sfcache/pkg/persist/localfs"
+	"github.com/codeGROOVE-dev/sfcache/pkg/store/localfs"
+	"github.com/codeGROOVE-dev/sfcache/pkg/store/null"
 )
 
-// Cacher is the interface that cache implementations must satisfy.
-// This allows external packages to provide their own cache implementation.
+// Cacher allows external cache implementations for sharing across packages.
 type Cacher interface {
 	GetSet(ctx context.Context, key string, fetch func(context.Context) ([]byte, error), ttl ...time.Duration) ([]byte, error)
 	TTL() time.Duration
@@ -43,6 +44,15 @@ func New(ttl time.Duration) (*Cache, error) {
 		cacheDir = os.TempDir()
 	}
 	return NewWithPath(ttl, filepath.Join(cacheDir, "sociopath"))
+}
+
+// NewNull creates a Cache with no persistence (all gets miss, all sets discard).
+func NewNull() *Cache {
+	tc, err := sfcache.NewTiered[string, []byte](null.New[string, []byte]())
+	if err != nil {
+		panic("sfcache.NewTiered with null store: " + err.Error())
+	}
+	return &Cache{TieredCache: tc, ttl: 0}
 }
 
 // NewWithPath creates a new Cache with disk persistence at the specified path.
@@ -114,11 +124,11 @@ func FetchURLWithValidator(
 		if logger != nil {
 			logger.Info("cache disabled", "url", req.URL.String())
 		}
-		return doFetch(client, req)
+		return doFetch(ctx, client, req, logger)
 	}
 
-	data, err := cache.GetSet(ctx, URLToKey(cacheKey), func(_ context.Context) ([]byte, error) {
-		body, fetchErr := doFetch(client, req)
+	data, err := cache.GetSet(ctx, URLToKey(cacheKey), func(ctx context.Context) ([]byte, error) {
+		body, fetchErr := doFetch(ctx, client, req, logger)
 		if fetchErr != nil {
 			// Cache HTTP errors to avoid hammering servers.
 			var httpErr *HTTPError
@@ -159,20 +169,55 @@ type validationError struct{ data []byte }
 
 func (*validationError) Error() string { return "validation failed" }
 
-func doFetch(client *http.Client, req *http.Request) ([]byte, error) {
-	globalRateLimiter.Wait(req.URL.String())
+func doFetch(ctx context.Context, client *http.Client, req *http.Request, logger *slog.Logger) ([]byte, error) {
+	return retry.DoWithData(
+		func() ([]byte, error) {
+			globalRateLimiter.Wait(req.URL.String())
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
+			resp, err := client.Do(req)
+			if err != nil {
+				return nil, err
+			}
+			defer resp.Body.Close() //nolint:errcheck // intentional
+
+			if resp.StatusCode != http.StatusOK {
+				return nil, &HTTPError{StatusCode: resp.StatusCode, URL: req.URL.String()}
+			}
+
+			return io.ReadAll(resp.Body)
+		},
+		retry.Context(ctx),
+		retry.Attempts(3),                     // ~2s total with exponential backoff
+		retry.Delay(200*time.Millisecond),     // initial delay
+		retry.MaxDelay(1*time.Second),         // cap individual delays
+		retry.DelayType(retry.BackOffDelay),   // exponential backoff
+		retry.MaxJitter(200*time.Millisecond), // add jitter to prevent thundering herd
+		retry.RetryIf(isRetryableError),       // only retry transient errors
+		retry.OnRetry(func(n uint, err error) {
+			if logger != nil {
+				logger.Debug("retrying HTTP request", "attempt", n+1, "url", req.URL.String(), "error", err)
+			}
+		}),
+	)
+}
+
+// isRetryableError returns true for transient errors that should be retried.
+func isRetryableError(err error) bool {
+	var httpErr *HTTPError
+	if errors.As(err, &httpErr) {
+		switch httpErr.StatusCode {
+		case http.StatusTooManyRequests,
+			http.StatusInternalServerError,
+			http.StatusBadGateway,
+			http.StatusServiceUnavailable,
+			http.StatusGatewayTimeout:
+			return true
+		default:
+			return false // 4xx errors (except 429) are permanent
+		}
 	}
-	defer resp.Body.Close() //nolint:errcheck // intentional
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, &HTTPError{StatusCode: resp.StatusCode, URL: req.URL.String()}
-	}
-
-	return io.ReadAll(resp.Body)
+	// Network errors, timeouts, etc. are retryable
+	return true
 }
 
 // Rate limiting.
