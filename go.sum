@@ -20,6 +20,8 @@ github.com/codeGROOVE-dev/sfcache v1.4.0 h1:F00PqIYuenn/t2uK72MJ2zUCrrhW8WC5xaV+
 github.com/codeGROOVE-dev/sfcache v1.4.0/go.mod h1:ksV5Y1RwKmOPZZiV0zXpsBOENGUCgO0fVgr/P8f/DJM=
 github.com/codeGROOVE-dev/sfcache/pkg/persist/localfs v1.3.0 h1:7zKbd7aHVzmbK2eEbdsf6Dknrte/o8+7I6GkNob8bGA=
 github.com/codeGROOVE-dev/sfcache/pkg/persist/localfs v1.3.0/go.mod h1:vHDjjehmi+yjXD+DXVG0rnc4iOBsiIknLThqpkYwA/c=
+github.com/codeGROOVE-dev/sfcache/pkg/store/localfs v1.4.0 h1:oyHwsawHd9kUFdAuXSCKYiEQTXuHAVd4y7cdBatjsLY=
+github.com/codeGROOVE-dev/sfcache/pkg/store/localfs v1.4.0/go.mod h1:D/Y1sYT1m3VXHZRkQjHjFwtKQOsb587QZP/GtfJEDSE=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
