@@ -366,9 +366,9 @@ func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, erro
 		URL:           urlStr,
 		Authenticated: true,
 		Username:      user.Login,
-		Name:          user.Name,
-		Bio:           user.Bio,
-		Location:      user.Location,
+		Name:          strings.TrimSpace(user.Name),
+		Bio:           strings.TrimSpace(user.Bio),
+		Location:      strings.TrimSpace(user.Location),
 		Fields:        make(map[string]string),
 	}
 
@@ -384,7 +384,7 @@ func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, erro
 
 	// Add company
 	if user.Company != "" {
-		company := strings.TrimPrefix(user.Company, "@")
+		company := strings.TrimSpace(strings.TrimPrefix(user.Company, "@"))
 		prof.Fields["company"] = company
 	}
 
@@ -656,9 +656,9 @@ func parseJSON(data []byte, urlStr, _ string) (*profile.Profile, error) {
 		URL:           urlStr,
 		Authenticated: false,
 		Username:      ghUser.Login,
-		Name:          ghUser.Name,
-		Bio:           ghUser.Bio,
-		Location:      ghUser.Location,
+		Name:          strings.TrimSpace(ghUser.Name),
+		Bio:           strings.TrimSpace(ghUser.Bio),
+		Location:      strings.TrimSpace(ghUser.Location),
 		Fields:        make(map[string]string),
 	}
 
@@ -696,7 +696,7 @@ func parseJSON(data []byte, urlStr, _ string) (*profile.Profile, error) {
 	// Add company
 	if ghUser.Company != "" {
 		// Remove @ prefix if present
-		company := strings.TrimPrefix(ghUser.Company, "@")
+		company := strings.TrimSpace(strings.TrimPrefix(ghUser.Company, "@"))
 		prof.Fields["company"] = company
 	}
 
