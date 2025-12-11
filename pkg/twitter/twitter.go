@@ -565,8 +565,9 @@ func parseGraphQLResponse(body []byte, profileURL, _ string) (*profile.Profile, 
 						Location string `json:"location"`
 					} `json:"location"`
 					Legacy struct {
-						Description string `json:"description"`
-						Entities    struct {
+						Description          string `json:"description"`
+						ProfileImageURLHTTPS string `json:"profile_image_url_https"`
+						Entities             struct {
 							URL struct {
 								URLs []struct {
 									ExpandedURL string `json:"expanded_url"`
@@ -596,6 +597,7 @@ func parseGraphQLResponse(body []byte, profileURL, _ string) (*profile.Profile, 
 		Authenticated: true,
 		Username:      result.Core.ScreenName,
 		Name:          result.Core.Name,
+		AvatarURL:     result.Legacy.ProfileImageURLHTTPS,
 		Bio:           result.Legacy.Description,
 		Location:      result.Location.Location,
 		Fields:        make(map[string]string),

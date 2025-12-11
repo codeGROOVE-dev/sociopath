@@ -168,6 +168,7 @@ func (*Client) parseAPIResponse(data []byte) (*profile.Profile, string, error) {
 		ID          string `json:"id"`
 		Username    string `json:"username"`
 		DisplayName string `json:"display_name"`
+		Avatar      string `json:"avatar"`
 		Note        string `json:"note"`
 		CreatedAt   string `json:"created_at"`
 		Fields      []struct {
@@ -213,6 +214,11 @@ func (*Client) parseAPIResponse(data []byte) (*profile.Profile, string, error) {
 	// Add account creation date
 	if acc.CreatedAt != "" {
 		p.CreatedAt = acc.CreatedAt
+	}
+
+	// Add avatar URL
+	if acc.Avatar != "" {
+		p.AvatarURL = acc.Avatar
 	}
 
 	return p, acc.ID, nil

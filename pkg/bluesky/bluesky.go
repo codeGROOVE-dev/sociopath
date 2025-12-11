@@ -112,6 +112,7 @@ func parseAPIResponse(data []byte, urlStr, handle string) (*profile.Profile, err
 	var resp struct {
 		Handle      string `json:"handle"`
 		DisplayName string `json:"displayName"`
+		Avatar      string `json:"avatar"`
 		Description string `json:"description"`
 		CreatedAt   string `json:"createdAt"`
 	}
@@ -126,6 +127,7 @@ func parseAPIResponse(data []byte, urlStr, handle string) (*profile.Profile, err
 		Authenticated: false,
 		Username:      handle,
 		Name:          resp.DisplayName,
+		AvatarURL:     resp.Avatar,
 		Bio:           resp.Description,
 		Fields:        make(map[string]string),
 	}

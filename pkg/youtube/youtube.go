@@ -117,6 +117,12 @@ func parseProfile(html, url string) (*profile.Profile, error) {
 		prof.Bio = bio
 	}
 
+	// Extract avatar/channel image from og:image or channelMetadataRenderer
+	avatarPattern := regexp.MustCompile(`"avatar":\{"thumbnails":\[\{"url":"([^"]+)"`)
+	if matches := avatarPattern.FindStringSubmatch(html); len(matches) > 1 {
+		prof.AvatarURL = matches[1]
+	}
+
 	// Try to extract subscriber count
 	subPattern := regexp.MustCompile(`([\d.]+[KMB]?)\s*(?:subscribers|Subscribers)`)
 	if matches := subPattern.FindStringSubmatch(html); len(matches) > 1 {

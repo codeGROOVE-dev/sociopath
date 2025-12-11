@@ -199,6 +199,11 @@ func (c *Client) parseProfile(ctx context.Context, body []byte, profileURL strin
 	if name, ok := user["nickname"].(string); ok {
 		p.Name = name
 	}
+	if avatarURL, ok := user["avatarLarger"].(string); ok {
+		p.AvatarURL = avatarURL
+	} else if avatarURL, ok := user["avatarMedium"].(string); ok {
+		p.AvatarURL = avatarURL
+	}
 	if signature, ok := user["signature"].(string); ok {
 		p.Bio = signature
 	}

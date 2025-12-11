@@ -178,6 +178,10 @@ func parseAccountInfo(p *profile.Profile, pageProps map[string]any) {
 	if desc, ok := account["description"].(string); ok {
 		p.Bio = desc
 	}
+	// Extract avatar URL from profilePictureUrl
+	if avatarURL, ok := account["profilePictureUrl"].(string); ok && avatarURL != "" {
+		p.AvatarURL = avatarURL
+	}
 }
 
 func parseLinks(p *profile.Profile, pageProps map[string]any) {

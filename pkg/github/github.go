@@ -741,7 +741,7 @@ func parseJSON(data []byte, urlStr, _ string) (*profile.Profile, error) {
 
 	// Add avatar URL
 	if ghUser.AvatarURL != "" {
-		prof.Fields["avatar_url"] = ghUser.AvatarURL
+		prof.AvatarURL = ghUser.AvatarURL
 	}
 
 	// Add account type
@@ -841,7 +841,7 @@ func (c *Client) parseProfileFromHTML(ctx context.Context, html, urlStr, usernam
 	// Extract avatar URL
 	avatarPattern := regexp.MustCompile(`<img[^>]+class="[^"]*avatar avatar-user[^"]*"[^>]+src="([^"]+)"`)
 	if matches := avatarPattern.FindStringSubmatch(html); len(matches) > 1 {
-		prof.Fields["avatar_url"] = matches[1]
+		prof.AvatarURL = matches[1]
 	}
 
 	c.logger.DebugContext(ctx, "parsed profile from HTML",

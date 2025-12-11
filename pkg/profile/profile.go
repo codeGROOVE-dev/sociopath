@@ -49,6 +49,7 @@ type Profile struct {
 	// Core profile data
 	Username  string   `json:",omitempty"` // Handle/username (without @ prefix)
 	Name      string   `json:",omitempty"` // Display name
+	AvatarURL string   `json:",omitempty"` // Profile photo/avatar URL
 	Bio       string   `json:",omitempty"` // Profile bio/description
 	Location  string   `json:",omitempty"` // Geographic location
 	Website   string   `json:",omitempty"` // Personal website URL

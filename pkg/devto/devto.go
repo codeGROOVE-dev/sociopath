@@ -122,6 +122,12 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 		p.Name = strings.TrimSpace(html.UnescapeString(m[1]))
 	}
 
+	// Extract avatar URL from profile image
+	avatarPattern := regexp.MustCompile(`<img[^>]+class="[^"]*crayons-avatar[^"]*"[^>]+src="([^"]+)"`)
+	if m := avatarPattern.FindStringSubmatch(content); len(m) > 1 {
+		p.AvatarURL = m[1]
+	}
+
 	// Fallback to og:title
 	if p.Name == "" {
 		title := htmlutil.Title(content)

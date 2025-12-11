@@ -109,6 +109,12 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 		}
 	}
 
+	// Extract avatar URL from profile image
+	avatarPattern := regexp.MustCompile(`<img[^>]+class="[^"]*s-avatar[^"]*"[^>]+src="([^"]+)"`)
+	if m := avatarPattern.FindStringSubmatch(content); len(m) > 1 {
+		p.AvatarURL = m[1]
+	}
+
 	// Extract location
 	locPattern := regexp.MustCompile(`<div[^>]*class="[^"]*wmx2[^"]*truncate[^"]*"[^>]*title="([^"]+)"`)
 	if m := locPattern.FindStringSubmatch(content); len(m) > 1 {

@@ -140,6 +140,17 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 		}
 	}
 
+	// Extract avatar URL
+	avatarURLPattern := regexp.MustCompile(`<img[^>]+class="[^"]*avatar[^"]*"[^>]+src="([^"]+)"`)
+	if m := avatarURLPattern.FindStringSubmatch(content); len(m) > 1 {
+		avatarURL := m[1]
+		// Make relative URLs absolute
+		if strings.HasPrefix(avatarURL, "/") {
+			avatarURL = "https://codeberg.org" + avatarURL
+		}
+		prof.AvatarURL = avatarURL
+	}
+
 	// Fallback: Extract from profile-avatar-name header
 	// Pattern: <span class="header text center">Woohyun Joh</span>
 	if prof.Name == "" {
