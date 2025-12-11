@@ -118,7 +118,13 @@ func main() {
 	switch {
 	case len(emails) > 0 && flag.NArg() == 0:
 		// Email-only lookup mode
-		profiles, err := sociopath.FetchEmail(ctx, emails, opts...)
+		var profiles []*sociopath.Profile
+		var err error
+		if *recursive || *guessMode {
+			profiles, err = sociopath.FetchEmailRecursive(ctx, emails, opts...)
+		} else {
+			profiles, err = sociopath.FetchEmail(ctx, emails, opts...)
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1) //nolint:gocritic // exitAfterDefer is acceptable in main

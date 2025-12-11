@@ -996,6 +996,124 @@ func GuessFromUsername(ctx context.Context, username string, opts ...Option) ([]
 	return guessed, nil
 }
 
+// FetchEmailRecursive fetches profiles from email-based services and recursively
+// follows social links. Multiple emails are treated as belonging to the same person,
+// with results deduplicated by URL.
+func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) ([]*profile.Profile, error) {
+	cfg := &config{logger: slog.Default()}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	// First, get seed profiles from all emails
+	seedProfiles, err := FetchEmail(ctx, emails, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(seedProfiles) == 0 {
+		return nil, nil
+	}
+
+	// Track visited URLs to avoid duplicates
+	visited := make(map[string]bool)
+	var allProfiles []*profile.Profile
+
+	// Add seed profiles and mark as visited
+	for _, p := range seedProfiles {
+		normalizedURL := normalizeURL(p.URL)
+		if !visited[normalizedURL] {
+			visited[normalizedURL] = true
+			allProfiles = append(allProfiles, p)
+		}
+	}
+
+	// Collect all social links from seed profiles
+	type queueItem struct {
+		url   string
+		depth int
+	}
+	const maxDepth = 3
+	const maxLinksPerPage = 8
+
+	var queue []queueItem
+	for _, p := range seedProfiles {
+		for _, link := range p.SocialLinks {
+			if !visited[normalizeURL(link)] && isValidProfileURL(link) {
+				queue = append(queue, queueItem{url: link, depth: 1})
+			}
+		}
+		if p.Website != "" && !visited[normalizeURL(p.Website)] {
+			queue = append(queue, queueItem{url: p.Website, depth: 1})
+		}
+	}
+
+	// Process queue (same logic as FetchRecursive)
+	for len(queue) > 0 {
+		item := queue[0]
+		queue = queue[1:]
+
+		normalizedURL := normalizeURL(item.url)
+		if visited[normalizedURL] {
+			continue
+		}
+		visited[normalizedURL] = true
+
+		cfg.logger.InfoContext(ctx, "fetching profile", "url", item.url, "depth", item.depth, "visited", len(visited))
+
+		p, err := Fetch(ctx, item.url, opts...)
+		if err != nil {
+			cfg.logger.WarnContext(ctx, "failed to fetch profile", "url", item.url, "error", err)
+			continue
+		}
+		allProfiles = append(allProfiles, p)
+
+		// Don't crawl further if we've hit max depth
+		if item.depth >= maxDepth {
+			continue
+		}
+
+		// From generic pages, only follow known social platform links
+		onlyKnownPlatforms := p.Platform == "generic"
+
+		var linksToQueue []string
+		for _, link := range p.SocialLinks {
+			if !visited[normalizeURL(link)] && isValidProfileURL(link) {
+				if !onlyKnownPlatforms || isSocialPlatform(link) || isSameDomainContactPage(link, item.url) {
+					linksToQueue = append(linksToQueue, link)
+				}
+			}
+		}
+
+		if p.Website != "" && !visited[normalizeURL(p.Website)] {
+			linksToQueue = append(linksToQueue, p.Website)
+		}
+
+		// Queue links from Fields map (sorted for deterministic iteration)
+		keys := make([]string, 0, len(p.Fields))
+		for k := range p.Fields {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			v := p.Fields[k]
+			if isLikelySocialURL(k, v) && !visited[normalizeURL(v)] {
+				linksToQueue = append(linksToQueue, v)
+			}
+		}
+
+		if len(linksToQueue) > maxLinksPerPage {
+			linksToQueue = linksToQueue[:maxLinksPerPage]
+		}
+
+		for _, link := range linksToQueue {
+			queue = append(queue, queueItem{url: link, depth: item.depth + 1})
+		}
+	}
+
+	return allProfiles, nil
+}
+
 // FetchEmail fetches profiles from email-based services (Gravatar, Mail.ru, Google, GitHub).
 // It returns all profiles found for the given email addresses.
 func FetchEmail(ctx context.Context, emails []string, opts ...Option) ([]*profile.Profile, error) {
