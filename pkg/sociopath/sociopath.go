@@ -23,6 +23,7 @@ package sociopath
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -33,12 +34,15 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/devto"
 	"github.com/codeGROOVE-dev/sociopath/pkg/generic"
 	"github.com/codeGROOVE-dev/sociopath/pkg/github"
+	"github.com/codeGROOVE-dev/sociopath/pkg/google"
+	"github.com/codeGROOVE-dev/sociopath/pkg/gravatar"
 	"github.com/codeGROOVE-dev/sociopath/pkg/guess"
 	"github.com/codeGROOVE-dev/sociopath/pkg/habr"
 	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/instagram"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linkedin"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linktree"
+	"github.com/codeGROOVE-dev/sociopath/pkg/mailru"
 	"github.com/codeGROOVE-dev/sociopath/pkg/mastodon"
 	"github.com/codeGROOVE-dev/sociopath/pkg/medium"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
@@ -70,12 +74,14 @@ var (
 // Option configures a Fetch call.
 type Option func(*config)
 
+//nolint:govet // fieldalignment: intentional layout for readability
 type config struct {
 	cache          httpcache.Cacher
 	cookies        map[string]string
 	logger         *slog.Logger
 	githubToken    string
 	browserCookies bool
+	emailHints     []string // Email addresses to associate with profiles
 }
 
 // WithCookies sets explicit cookie values for authenticated platforms.
@@ -103,6 +109,13 @@ func WithGitHubToken(token string) Option {
 	return func(c *config) { c.githubToken = token }
 }
 
+// WithEmailHints provides email addresses to associate with profiles.
+// These emails are stored in Fields["email_hints"] and can be used for
+// additional lookups (Gravatar, Google GAIA ID resolution, etc.).
+func WithEmailHints(emails ...string) Option {
+	return func(c *config) { c.emailHints = append(c.emailHints, emails...) }
+}
+
 // Fetch retrieves a profile from the given URL.
 // The platform is automatically detected from the URL.
 func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, error) {
@@ -111,51 +124,84 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		opt(cfg)
 	}
 
+	var p *profile.Profile
+	var err error
+
 	// Try each platform's Match function in order of specificity
 	// Note: Order matters! More specific patterns should come before generic ones.
 	// TikTok must come before Mastodon because Mastodon matches /@username pattern.
 	// Substack must come before generic because it has specific domain pattern.
 	switch {
 	case linkedin.Match(url):
-		return fetchLinkedIn(ctx, url, cfg)
+		p, err = fetchLinkedIn(ctx, url, cfg)
 	case twitter.Match(url):
-		return fetchTwitter(ctx, url, cfg)
+		p, err = fetchTwitter(ctx, url, cfg)
 	case linktree.Match(url):
-		return fetchLinktree(ctx, url, cfg)
+		p, err = fetchLinktree(ctx, url, cfg)
 	case github.Match(url):
-		return fetchGitHub(ctx, url, cfg)
+		p, err = fetchGitHub(ctx, url, cfg)
 	case medium.Match(url):
-		return fetchMedium(ctx, url, cfg)
+		p, err = fetchMedium(ctx, url, cfg)
 	case reddit.Match(url):
-		return fetchReddit(ctx, url, cfg)
+		p, err = fetchReddit(ctx, url, cfg)
 	case youtube.Match(url):
-		return fetchYouTube(ctx, url, cfg)
+		p, err = fetchYouTube(ctx, url, cfg)
 	case substack.Match(url):
-		return fetchSubstack(ctx, url, cfg)
+		p, err = fetchSubstack(ctx, url, cfg)
 	case bilibili.Match(url):
-		return fetchBilibili(ctx, url, cfg)
+		p, err = fetchBilibili(ctx, url, cfg)
 	case codeberg.Match(url):
-		return fetchCodeberg(ctx, url, cfg)
+		p, err = fetchCodeberg(ctx, url, cfg)
 	case bluesky.Match(url):
-		return fetchBlueSky(ctx, url, cfg)
+		p, err = fetchBlueSky(ctx, url, cfg)
 	case devto.Match(url):
-		return fetchDevTo(ctx, url, cfg)
+		p, err = fetchDevTo(ctx, url, cfg)
 	case stackoverflow.Match(url):
-		return fetchStackOverflow(ctx, url, cfg)
+		p, err = fetchStackOverflow(ctx, url, cfg)
 	case habr.Match(url):
-		return fetchHabr(ctx, url, cfg)
+		p, err = fetchHabr(ctx, url, cfg)
 	case instagram.Match(url):
-		return fetchInstagram(ctx, url, cfg)
+		p, err = fetchInstagram(ctx, url, cfg)
 	case tiktok.Match(url):
-		return fetchTikTok(ctx, url, cfg)
+		p, err = fetchTikTok(ctx, url, cfg)
 	case vkontakte.Match(url):
-		return fetchVKontakte(ctx, url, cfg)
+		p, err = fetchVKontakte(ctx, url, cfg)
 	case weibo.Match(url):
-		return fetchWeibo(ctx, url, cfg)
+		p, err = fetchWeibo(ctx, url, cfg)
+	case mailru.Match(url):
+		p, err = fetchMailRu(ctx, url, cfg)
+	case google.Match(url):
+		p, err = fetchGoogle(ctx, url, cfg)
+	case gravatar.Match(url):
+		p, err = fetchGravatar(ctx, url, cfg)
 	case mastodon.Match(url):
-		return fetchMastodon(ctx, url, cfg)
+		p, err = fetchMastodon(ctx, url, cfg)
 	default:
-		return fetchGeneric(ctx, url, cfg)
+		p, err = fetchGeneric(ctx, url, cfg)
+	}
+
+	// Apply email hints to the profile
+	if err == nil && p != nil && len(cfg.emailHints) > 0 {
+		applyEmailHints(p, cfg.emailHints)
+	}
+
+	return p, err
+}
+
+// applyEmailHints adds email addresses to the profile's Fields.
+func applyEmailHints(p *profile.Profile, emails []string) {
+	if p.Fields == nil {
+		p.Fields = make(map[string]string)
+	}
+	for i, email := range emails {
+		key := "email"
+		if i > 0 {
+			key = fmt.Sprintf("email_%d", i+1)
+		}
+		// Don't overwrite existing email fields
+		if _, exists := p.Fields[key]; !exists {
+			p.Fields[key] = email
+		}
 	}
 }
 
@@ -385,6 +431,54 @@ func fetchGitHub(ctx context.Context, url string, cfg *config) (*profile.Profile
 	}
 
 	client, err := github.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGoogle(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []google.Option
+	if cfg.cache != nil {
+		opts = append(opts, google.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, google.WithLogger(cfg.logger))
+	}
+
+	client, err := google.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGravatar(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []gravatar.Option
+	if cfg.cache != nil {
+		opts = append(opts, gravatar.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, gravatar.WithLogger(cfg.logger))
+	}
+
+	client, err := gravatar.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchMailRu(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []mailru.Option
+	if cfg.cache != nil {
+		opts = append(opts, mailru.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, mailru.WithLogger(cfg.logger))
+	}
+
+	client, err := mailru.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -648,6 +742,9 @@ func isSocialPlatform(url string) bool {
 		linktree.Match(url) ||
 		github.Match(url) ||
 		codeberg.Match(url) ||
+		google.Match(url) ||
+		gravatar.Match(url) ||
+		mailru.Match(url) ||
 		medium.Match(url) ||
 		reddit.Match(url) ||
 		youtube.Match(url) ||
@@ -750,6 +847,8 @@ func PlatformForURL(url string) string {
 		return "github"
 	case codeberg.Match(url):
 		return "codeberg"
+	case google.Match(url):
+		return "google"
 	case medium.Match(url):
 		return "medium"
 	case reddit.Match(url):
@@ -778,6 +877,10 @@ func PlatformForURL(url string) string {
 		return "weibo"
 	case mastodon.Match(url):
 		return "mastodon"
+	case gravatar.Match(url):
+		return "gravatar"
+	case mailru.Match(url):
+		return "mailru"
 	default:
 		return "generic"
 	}
@@ -790,6 +893,8 @@ func platformMatches(url, platform string) bool {
 		return github.Match(url)
 	case "codeberg":
 		return codeberg.Match(url)
+	case "google":
+		return google.Match(url)
 	case "linkedin":
 		return linkedin.Match(url)
 	case "twitter":
@@ -814,6 +919,10 @@ func platformMatches(url, platform string) bool {
 		return vkontakte.Match(url)
 	case "weibo":
 		return weibo.Match(url)
+	case "gravatar":
+		return gravatar.Match(url)
+	case "mailru":
+		return mailru.Match(url)
 	default:
 		return false
 	}
@@ -885,4 +994,85 @@ func GuessFromUsername(ctx context.Context, username string, opts ...Option) ([]
 	guessed := guess.Related(ctx, []*profile.Profile{seedProfile}, guessCfg)
 
 	return guessed, nil
+}
+
+// FetchEmail fetches profiles from email-based services (Gravatar, Mail.ru, Google, GitHub).
+// It returns all profiles found for the given email addresses.
+func FetchEmail(ctx context.Context, emails []string, opts ...Option) ([]*profile.Profile, error) {
+	cfg := &config{logger: slog.Default()}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	var profiles []*profile.Profile
+	hasGitHub := false
+
+	for _, email := range emails {
+		// Always try Gravatar (works for any email)
+		if p, err := fetchGravatar(ctx, email, cfg); err == nil && p != nil {
+			profiles = append(profiles, p)
+		}
+
+		// Try Mail.ru for Mail.ru domain emails
+		if mailru.Match(email) {
+			if p, err := fetchMailRu(ctx, email, cfg); err == nil && p != nil {
+				profiles = append(profiles, p)
+			}
+		}
+
+		// Try Google for Gmail addresses
+		if google.Match(email) {
+			if p, err := fetchGoogle(ctx, email, cfg); err == nil && p != nil {
+				profiles = append(profiles, p)
+			}
+		}
+
+		// Try to find GitHub username from email (if we don't have a GitHub profile yet)
+		if !hasGitHub {
+			if p := fetchGitHubByEmail(ctx, email, cfg); p != nil {
+				profiles = append(profiles, p)
+				hasGitHub = true
+			}
+		}
+	}
+
+	return profiles, nil
+}
+
+// fetchGitHubByEmail looks up a GitHub profile by email address.
+func fetchGitHubByEmail(ctx context.Context, email string, cfg *config) *profile.Profile {
+	ghOpts := []github.Option{github.WithLogger(cfg.logger)}
+	if cfg.cache != nil {
+		ghOpts = append(ghOpts, github.WithHTTPCache(cfg.cache))
+	}
+	if cfg.githubToken != "" {
+		ghOpts = append(ghOpts, github.WithToken(cfg.githubToken))
+	}
+
+	client, err := github.New(ctx, ghOpts...)
+	if err != nil {
+		cfg.logger.WarnContext(ctx, "failed to create GitHub client for email lookup", "error", err)
+		return nil
+	}
+
+	username := client.UsernameFromEmail(ctx, email)
+	if username == "" {
+		return nil
+	}
+
+	// Fetch the full profile
+	profileURL := fmt.Sprintf("https://github.com/%s", username)
+	p, err := client.Fetch(ctx, profileURL)
+	if err != nil {
+		cfg.logger.WarnContext(ctx, "failed to fetch GitHub profile", "username", username, "error", err)
+		return nil
+	}
+
+	// Add the email to the profile fields
+	if p.Fields == nil {
+		p.Fields = make(map[string]string)
+	}
+	p.Fields["lookup_email"] = email
+
+	return p
 }

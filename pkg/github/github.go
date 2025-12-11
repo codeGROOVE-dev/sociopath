@@ -280,41 +280,115 @@ func (c *Client) fetchAPI(ctx context.Context, urlStr, username string) (*profil
 	return parseJSON(body, urlStr, username)
 }
 
-func (c *Client) fetchGraphQL(ctx context.Context, urlStr, username string) (*profile.Profile, error) {
-	query := `
-	query($login: String!) {
-		user(login: $login) {
-			name
-			login
-			location
-			bio
-			company
-			websiteUrl
-			twitterUsername
-			createdAt
-			updatedAt
+// graphQLUserFields contains all the fields we want to fetch from the User object.
+// email requires user:email scope, so we have a separate query without it as fallback.
+const graphQLUserFieldsWithEmail = `
+	name
+	login
+	location
+	bio
+	company
+	email
+	websiteUrl
+	twitterUsername
+	avatarUrl
+	pronouns
+	isHireable
+	isBountyHunter
+	isCampusExpert
+	isDeveloperProgramMember
+	isGitHubStar
+	isSiteAdmin
+	hasSponsorsListing
+	createdAt
+	updatedAt
 
-			socialAccounts(first: 10) {
-				nodes {
-					provider
-					url
-					displayName
-				}
-			}
+	status {
+		message
+		emoji
+	}
 
-			followers {
-				totalCount
-			}
-			following {
-				totalCount
-			}
-
-			repositories(first: 1, ownerAffiliations: OWNER) {
-				totalCount
-			}
+	socialAccounts(first: 10) {
+		nodes {
+			provider
+			url
+			displayName
 		}
 	}
-	`
+
+	followers {
+		totalCount
+	}
+	following {
+		totalCount
+	}
+
+	repositories(first: 1, ownerAffiliations: OWNER) {
+		totalCount
+	}
+`
+
+const graphQLUserFieldsWithoutEmail = `
+	name
+	login
+	location
+	bio
+	company
+	websiteUrl
+	twitterUsername
+	avatarUrl
+	pronouns
+	isHireable
+	isBountyHunter
+	isCampusExpert
+	isDeveloperProgramMember
+	isGitHubStar
+	isSiteAdmin
+	hasSponsorsListing
+	createdAt
+	updatedAt
+
+	status {
+		message
+		emoji
+	}
+
+	socialAccounts(first: 10) {
+		nodes {
+			provider
+			url
+			displayName
+		}
+	}
+
+	followers {
+		totalCount
+	}
+	following {
+		totalCount
+	}
+
+	repositories(first: 1, ownerAffiliations: OWNER) {
+		totalCount
+	}
+`
+
+func (c *Client) fetchGraphQL(ctx context.Context, urlStr, username string) (*profile.Profile, error) {
+	// Try with email field first
+	prof, err := c.executeGraphQL(ctx, urlStr, username, graphQLUserFieldsWithEmail)
+	if err != nil {
+		// Check if error is due to missing email scope
+		if strings.Contains(err.Error(), "email") || strings.Contains(err.Error(), "scope") {
+			c.logger.DebugContext(ctx, "GraphQL email field failed, retrying without email", "error", err)
+			return c.executeGraphQL(ctx, urlStr, username, graphQLUserFieldsWithoutEmail)
+		}
+		return nil, err
+	}
+	return prof, nil
+}
+
+func (c *Client) executeGraphQL(ctx context.Context, urlStr, username, fields string) (*profile.Profile, error) {
+	query := `query($login: String!) { user(login: $login) { ` + fields + ` } }`
 
 	variables := map[string]string{"login": username}
 	reqBody := map[string]any{
@@ -344,21 +418,36 @@ func (c *Client) fetchGraphQL(ctx context.Context, urlStr, username string) (*pr
 }
 
 func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, error) {
+	//nolint:govet // fieldalignment: intentional layout for readability
 	var response struct {
 		Errors []struct {
 			Message string `json:"message"`
 		} `json:"errors"`
 		Data struct {
 			User struct {
-				Name           string `json:"name"`
-				Login          string `json:"login"`
-				Location       string `json:"location"`
-				Bio            string `json:"bio"`
-				Company        string `json:"company"`
-				WebsiteURL     string `json:"websiteUrl"`
-				TwitterUser    string `json:"twitterUsername"`
-				CreatedAt      string `json:"createdAt"`
-				UpdatedAt      string `json:"updatedAt"`
+				Name                     string `json:"name"`
+				Login                    string `json:"login"`
+				Location                 string `json:"location"`
+				Bio                      string `json:"bio"`
+				Company                  string `json:"company"`
+				Email                    string `json:"email"`
+				WebsiteURL               string `json:"websiteUrl"`
+				TwitterUser              string `json:"twitterUsername"`
+				AvatarURL                string `json:"avatarUrl"`
+				Pronouns                 string `json:"pronouns"`
+				IsHireable               bool   `json:"isHireable"`
+				IsBountyHunter           bool   `json:"isBountyHunter"`
+				IsCampusExpert           bool   `json:"isCampusExpert"`
+				IsDeveloperProgramMember bool   `json:"isDeveloperProgramMember"`
+				IsGitHubStar             bool   `json:"isGitHubStar"`
+				IsSiteAdmin              bool   `json:"isSiteAdmin"`
+				HasSponsorsListing       bool   `json:"hasSponsorsListing"`
+				CreatedAt                string `json:"createdAt"`
+				UpdatedAt                string `json:"updatedAt"`
+				Status                   *struct {
+					Message string `json:"message"`
+					Emoji   string `json:"emoji"`
+				} `json:"status"`
 				SocialAccounts struct {
 					Nodes []struct {
 						URL         string `json:"url"`
@@ -432,6 +521,57 @@ func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, erro
 		if social.URL != "" {
 			prof.SocialLinks = append(prof.SocialLinks, social.URL)
 		}
+	}
+
+	// Add avatar URL
+	if user.AvatarURL != "" {
+		prof.AvatarURL = user.AvatarURL
+	}
+
+	// Add pronouns
+	if user.Pronouns != "" {
+		prof.Fields["pronouns"] = user.Pronouns
+	}
+
+	// Add hireable status
+	if user.IsHireable {
+		prof.Fields["hireable"] = "true"
+	}
+
+	// Add GitHub program badges
+	if user.IsBountyHunter {
+		prof.Fields["bounty_hunter"] = "true"
+	}
+	if user.IsCampusExpert {
+		prof.Fields["campus_expert"] = "true"
+	}
+	if user.IsDeveloperProgramMember {
+		prof.Fields["developer_program_member"] = "true"
+	}
+	if user.IsGitHubStar {
+		prof.Fields["github_star"] = "true"
+	}
+	if user.IsSiteAdmin {
+		prof.Fields["site_admin"] = "true"
+	}
+	if user.HasSponsorsListing {
+		prof.Fields["sponsors_listing"] = "true"
+	}
+
+	// Add status
+	if user.Status != nil {
+		if user.Status.Message != "" {
+			status := user.Status.Message
+			if user.Status.Emoji != "" {
+				status = user.Status.Emoji + " " + status
+			}
+			prof.Fields["status"] = status
+		}
+	}
+
+	// Add email
+	if user.Email != "" {
+		prof.Fields["email"] = user.Email
 	}
 
 	// Add account timestamps
@@ -853,4 +993,103 @@ func (c *Client) parseProfileFromHTML(ctx context.Context, html, urlStr, usernam
 	)
 
 	return prof
+}
+
+// UsernameFromEmail looks up a GitHub username from an email address.
+// It first searches users with the email, then falls back to searching commits.
+// Returns empty string if no username is found.
+func (c *Client) UsernameFromEmail(ctx context.Context, email string) string {
+	// First, try searching users with email
+	if username := c.searchUsersByEmail(ctx, email); username != "" {
+		return username
+	}
+
+	// Fall back to searching commits by author email
+	return c.searchCommitsByEmail(ctx, email)
+}
+
+func (c *Client) searchUsersByEmail(ctx context.Context, email string) string {
+	searchURL := fmt.Sprintf("https://api.github.com/search/users?q=%s+in:email", email)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, http.NoBody)
+	if err != nil {
+		c.logger.WarnContext(ctx, "failed to create user search request", "error", err)
+		return ""
+	}
+
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "sociopath/1.0")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	body, err := c.doAPIRequest(ctx, req)
+	if err != nil {
+		c.logger.DebugContext(ctx, "user search failed", "email", email, "error", err)
+		return ""
+	}
+
+	var result struct {
+		Items []struct {
+			Login string `json:"login"`
+		} `json:"items"`
+		TotalCount int `json:"total_count"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		c.logger.WarnContext(ctx, "failed to parse user search response", "error", err)
+		return ""
+	}
+
+	if result.TotalCount > 0 && len(result.Items) > 0 {
+		c.logger.InfoContext(ctx, "found GitHub user by email search",
+			"email", email, "username", result.Items[0].Login)
+		return result.Items[0].Login
+	}
+
+	return ""
+}
+
+func (c *Client) searchCommitsByEmail(ctx context.Context, email string) string {
+	searchURL := fmt.Sprintf("https://api.github.com/search/commits?q=author-email:%s&sort=author-date&per_page=1", email)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, http.NoBody)
+	if err != nil {
+		c.logger.WarnContext(ctx, "failed to create commit search request", "error", err)
+		return ""
+	}
+
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "sociopath/1.0")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	body, err := c.doAPIRequest(ctx, req)
+	if err != nil {
+		c.logger.DebugContext(ctx, "commit search failed", "email", email, "error", err)
+		return ""
+	}
+
+	var result struct {
+		Items []struct {
+			Author struct {
+				Login string `json:"login"`
+			} `json:"author"`
+		} `json:"items"`
+		TotalCount int `json:"total_count"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		c.logger.WarnContext(ctx, "failed to parse commit search response", "error", err)
+		return ""
+	}
+
+	if result.TotalCount > 0 && len(result.Items) > 0 && result.Items[0].Author.Login != "" {
+		c.logger.InfoContext(ctx, "found GitHub user by commit search",
+			"email", email, "username", result.Items[0].Author.Login)
+		return result.Items[0].Author.Login
+	}
+
+	return ""
 }
