@@ -26,6 +26,24 @@ import (
 
 const platform = "github"
 
+// profileTimezoneRegex extracts the UTC offset from GitHub's profile-timezone element.
+// Example: <profile-timezone data-hours-ahead-of-utc="-8.0">(UTC -08:00)</profile-timezone>.
+var profileTimezoneRegex = regexp.MustCompile(`<profile-timezone[^>]*data-hours-ahead-of-utc="([^"]*)"`)
+
+// extractUTCOffset parses the UTC offset from GitHub profile HTML.
+// Returns nil if no timezone is found or the value is invalid.
+func extractUTCOffset(html string) *float64 {
+	matches := profileTimezoneRegex.FindStringSubmatch(html)
+	if len(matches) < 2 || matches[1] == "" {
+		return nil
+	}
+	offset, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return nil
+	}
+	return &offset
+}
+
 // Match returns true if the URL is a GitHub profile URL.
 func Match(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
@@ -182,8 +200,11 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	prof.SocialLinks = append(prof.SocialLinks, htmlLinks...)
 
-	// Extract README and organizations from HTML if available
+	// Extract README, organizations, and UTC offset from HTML if available
 	if htmlContent != "" {
+		// Extract UTC offset from profile-timezone element
+		prof.UTCOffset = extractUTCOffset(htmlContent)
+
 		// Extract organizations
 		orgs := extractOrganizations(htmlContent)
 		if len(orgs) > 0 {

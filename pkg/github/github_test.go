@@ -400,6 +400,85 @@ func TestDedupeLinks(t *testing.T) {
 	}
 }
 
+func TestExtractUTCOffset(t *testing.T) {
+	tests := []struct {
+		name string
+		html string
+		want *float64
+	}{
+		{
+			name: "negative offset (PST)",
+			html: `<profile-timezone class="color-fg-muted" data-hours-ahead-of-utc="-8.0">(UTC -08:00)</profile-timezone>`,
+			want: ptr(-8.0),
+		},
+		{
+			name: "negative offset (Hawaii)",
+			html: `<profile-timezone class="color-fg-muted d-inline" data-hours-ahead-of-utc="-11.0">(UTC -11:00)</profile-timezone>`,
+			want: ptr(-11.0),
+		},
+		{
+			name: "positive offset (IST)",
+			html: `<profile-timezone data-hours-ahead-of-utc="5.5">(UTC +05:30)</profile-timezone>`,
+			want: ptr(5.5),
+		},
+		{
+			name: "zero offset (UTC)",
+			html: `<profile-timezone data-hours-ahead-of-utc="0">(UTC +00:00)</profile-timezone>`,
+			want: ptr(0.0),
+		},
+		{
+			name: "positive offset (CET)",
+			html: `<profile-timezone data-hours-ahead-of-utc="1">(UTC +01:00)</profile-timezone>`,
+			want: ptr(1.0),
+		},
+		{
+			name: "fractional offset (Nepal)",
+			html: `<profile-timezone data-hours-ahead-of-utc="5.75">(UTC +05:45)</profile-timezone>`,
+			want: ptr(5.75),
+		},
+		{
+			name: "no profile-timezone element",
+			html: `<div class="profile-info">No timezone here</div>`,
+			want: nil,
+		},
+		{
+			name: "empty data-hours-ahead-of-utc",
+			html: `<profile-timezone data-hours-ahead-of-utc="">(UTC)</profile-timezone>`,
+			want: nil,
+		},
+		{
+			name: "embedded in full page",
+			html: `<!DOCTYPE html><html><body>
+				<div class="sidebar">
+					<profile-timezone class="color-fg-muted d-inline" data-hours-ahead-of-utc="-7.0">(UTC -07:00)</profile-timezone>
+				</div>
+			</body></html>`,
+			want: ptr(-7.0),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractUTCOffset(tt.html)
+			if tt.want == nil {
+				if got != nil {
+					t.Errorf("extractUTCOffset() = %v, want nil", *got)
+				}
+			} else {
+				if got == nil {
+					t.Errorf("extractUTCOffset() = nil, want %v", *tt.want)
+				} else if *got != *tt.want {
+					t.Errorf("extractUTCOffset() = %v, want %v", *got, *tt.want)
+				}
+			}
+		})
+	}
+}
+
+func ptr(f float64) *float64 {
+	return &f
+}
+
 func TestParseJSON_WithEmailInBlog(t *testing.T) {
 	// Test case where blog field contains an email (which should be extracted)
 	sampleJSON := `{

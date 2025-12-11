@@ -47,13 +47,14 @@ type Profile struct {
 	Error         string `json:",omitempty"` // Error message if fetch failed (e.g., "login required")
 
 	// Core profile data
-	Username  string `json:",omitempty"` // Handle/username (without @ prefix)
-	Name      string `json:",omitempty"` // Display name
-	Bio       string `json:",omitempty"` // Profile bio/description
-	Location  string `json:",omitempty"` // Geographic location
-	Website   string `json:",omitempty"` // Personal website URL
-	CreatedAt string `json:",omitempty"` // Account creation date (ISO timestamp)
-	UpdatedAt string `json:",omitempty"` // Most recent activity or profile update (ISO timestamp)
+	Username  string   `json:",omitempty"` // Handle/username (without @ prefix)
+	Name      string   `json:",omitempty"` // Display name
+	Bio       string   `json:",omitempty"` // Profile bio/description
+	Location  string   `json:",omitempty"` // Geographic location
+	Website   string   `json:",omitempty"` // Personal website URL
+	CreatedAt string   `json:",omitempty"` // Account creation date (ISO timestamp)
+	UpdatedAt string   `json:",omitempty"` // Most recent activity or profile update (ISO timestamp)
+	UTCOffset *float64 `json:",omitempty"` // UTC offset in hours (e.g., -8 for PST, 5.5 for IST)
 
 	// Platform-specific fields
 	Fields map[string]string `json:",omitempty"` // Additional platform-specific data (headline, employer, etc.)
