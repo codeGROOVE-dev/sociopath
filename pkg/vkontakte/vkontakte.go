@@ -178,19 +178,9 @@ func parseProfile(html, url string) (*profile.Profile, error) {
 		}
 	}
 
-	// Extract city (Russian: Город)
-	cityPattern := regexp.MustCompile(`(?i)city[^>]*>([^<]+)</|город[^>]*>([^<]+)</`)
-	if matches := cityPattern.FindStringSubmatch(html); len(matches) > 1 {
-		for i := 1; i < len(matches); i++ {
-			if matches[i] != "" {
-				city := strings.TrimSpace(matches[i])
-				if city != "" {
-					prof.Location = city
-					break
-				}
-			}
-		}
-	}
+	// Extract city - look for VK profile info row patterns
+	// VK uses patterns like <span class="ProfileInfoRow__content">City Name</span>
+	prof.Location = extractLocation(html)
 
 	// Extract education (Russian: Образование)
 	eduPattern := regexp.MustCompile(`(?i)education[^>]*>([^<]+)</|образование[^>]*>([^<]+)</|studied at[^>]*>([^<]+)</|учился[^>]*>([^<]+)</`)
@@ -219,6 +209,61 @@ func parseProfile(html, url string) (*profile.Profile, error) {
 	prof.SocialLinks = filtered
 
 	return prof, nil
+}
+
+const maxLocationLen = 64
+
+// Pre-compiled location patterns.
+var locationPatterns = []*regexp.Regexp{
+	// ProfileInfoRow with city/город label
+	regexp.MustCompile(`(?i)ProfileInfoRow[^>]*город[^>]*>[^<]*<[^>]*class="[^"]*content[^"]*"[^>]*>([^<]+)</`),
+	regexp.MustCompile(`(?i)ProfileInfoRow[^>]*city[^>]*>[^<]*<[^>]*class="[^"]*content[^"]*"[^>]*>([^<]+)</`),
+	// General profile info content after city label - match <span class="city">Value</span>
+	regexp.MustCompile(`(?i)<[^>]+class="[^"]*\bcity\b[^"]*"[^>]*>([^<]+)</`),
+	regexp.MustCompile(`(?i)<[^>]+class="город"[^>]*>([^<]+)</`),
+	// Hometown patterns
+	regexp.MustCompile(`(?i)<[^>]+class="[^"]*\bhometown\b[^"]*"[^>]*>([^<]+)</`),
+	regexp.MustCompile(`(?i)родной город[^>]*>([^<]+)</`),
+}
+
+// extractLocation extracts location from VK HTML, with validation.
+func extractLocation(html string) string {
+	for _, pattern := range locationPatterns {
+		if matches := pattern.FindStringSubmatch(html); len(matches) > 1 {
+			loc := strings.TrimSpace(matches[1])
+			if isValidLocation(loc) {
+				return truncateLocation(loc)
+			}
+		}
+	}
+	return ""
+}
+
+// isValidLocation checks if the extracted location is valid (not CSS/code).
+func isValidLocation(loc string) bool {
+	if loc == "" {
+		return false
+	}
+	// Reject if it looks like CSS/code
+	cssIndicators := []string{"{", "}", "var(", "px", "rgb", "rgba", "color:", "margin:", "padding:", "display:", "font-"}
+	for _, indicator := range cssIndicators {
+		if strings.Contains(loc, indicator) {
+			return false
+		}
+	}
+	// Reject if too long (real locations are rarely > 64 chars)
+	if len(loc) > maxLocationLen {
+		return false
+	}
+	return true
+}
+
+// truncateLocation truncates location to maximum length.
+func truncateLocation(loc string) string {
+	if len(loc) <= maxLocationLen {
+		return loc
+	}
+	return loc[:maxLocationLen]
 }
 
 func extractUsername(urlStr string) string {

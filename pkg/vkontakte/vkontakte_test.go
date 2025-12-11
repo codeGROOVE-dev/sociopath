@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -199,6 +200,107 @@ func TestParseProfile(t *testing.T) {
 			}
 			if tt.wantBio != "" && profile.Bio != tt.wantBio {
 				t.Errorf("Bio = %q, want %q", profile.Bio, tt.wantBio)
+			}
+		})
+	}
+}
+
+func TestExtractLocation(t *testing.T) {
+	tests := []struct {
+		name string
+		html string
+		want string
+	}{
+		{
+			name: "simple city class",
+			html: `<span class="city">Moscow</span>`,
+			want: "Moscow",
+		},
+		{
+			name: "vkitTextClamp location",
+			html: `<span class="vkitTextClamp__root--nWHhg vkitTextClamp__rootSingleLine--7YAg4">Barnaul</span>`,
+			want: "", // Too generic pattern, we don't use vkitTextClamp
+		},
+		{
+			name: "CSS content rejected",
+			html: `<style>.city{color:var(--vkui--color_text_primary);}</style>`,
+			want: "",
+		},
+		{
+			name: "CSS in location rejected",
+			html: `<span class="city">svg{max-height:var(--left-menu-icon-size);}</span>`,
+			want: "",
+		},
+		{
+			name: "long location truncated",
+			html: `<span class="city">This is a very long location name that exceeds the maximum allowed length for a location field</span>`,
+			want: "",
+		},
+		{
+			name: "empty location",
+			html: `<span class="city"></span>`,
+			want: "",
+		},
+		{
+			name: "Russian city class",
+			html: `<span class="город">Санкт-Петербург</span>`,
+			want: "Санкт-Петербург",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractLocation(tt.html)
+			if got != tt.want {
+				t.Errorf("extractLocation() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsValidLocation(t *testing.T) {
+	tests := []struct {
+		loc  string
+		want bool
+	}{
+		{"Moscow", true},
+		{"New York, USA", true},
+		{"Санкт-Петербург", true},
+		{"", false},
+		{"svg{max-height:var(--left-menu-icon-size);}", false},
+		{"color: rgb(0,0,0)", false},
+		{"margin: 10px", false},
+		{".class{display:none}", false},
+		{strings.Repeat("a", 65), false}, // Too long
+		{strings.Repeat("a", 64), true},  // Exactly at limit
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.loc, func(t *testing.T) {
+			got := isValidLocation(tt.loc)
+			if got != tt.want {
+				t.Errorf("isValidLocation(%q) = %v, want %v", tt.loc, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTruncateLocation(t *testing.T) {
+	tests := []struct {
+		loc  string
+		want string
+	}{
+		{"Moscow", "Moscow"},
+		{strings.Repeat("a", 64), strings.Repeat("a", 64)},
+		{strings.Repeat("a", 100), strings.Repeat("a", 64)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.loc[:min(10, len(tt.loc))], func(t *testing.T) {
+			got := truncateLocation(tt.loc)
+			if got != tt.want {
+				t.Errorf("truncateLocation() = %q (len %d), want %q (len %d)",
+					got, len(got), tt.want, len(tt.want))
 			}
 		})
 	}
