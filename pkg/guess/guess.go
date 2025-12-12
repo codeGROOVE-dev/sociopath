@@ -64,12 +64,52 @@ var platformPatterns = []struct {
 	{"crates", "https://crates.io/users/%s"},
 	{"dockerhub", "https://hub.docker.com/u/%s"},
 	{"keybase", "https://keybase.io/%s"},
+	{"arstechnica", "https://arstechnica.com/civis/search/8784651/?c[users]=%s&o=date"},
+	{"codeberg", "https://codeberg.org/%s"},
+	{"disqus", "https://disqus.com/by/%s"},
+	{"hackernews", "https://news.ycombinator.com/user?id=%s"},
+	{"lobsters", "https://lobste.rs/~%s"},
+	{"twitch", "https://twitch.tv/%s"},
+	{"hashnode", "https://hashnode.com/@%s"},
+	{"hexpm", "https://hex.pm/users/%s"},
+	{"qiita", "https://qiita.com/%s"},
+	{"zenn", "https://zenn.dev/%s"},
+	{"velog", "https://velog.io/@%s"},
+	{"v2ex", "https://v2ex.com/member/%s"},
+	{"gitee", "https://gitee.com/%s"},
+	{"csdn", "https://blog.csdn.net/%s"},
+	{"rubygems", "https://rubygems.org/profiles/%s"},
+	{"leetcode", "https://leetcode.com/u/%s"},
+	{"linktree", "https://linktr.ee/%s"},
+	{"intensedebate", "https://intensedebate.com/people/%s"},
+	{"sessionize", "https://sessionize.com/%s"},
+	{"steam", "https://steamcommunity.com/id/%s"},
+	{"douban", "https://www.douban.com/people/%s"},
+	{"substack", "https://%s.substack.com"},
+	{"npm", "https://www.npmjs.com/~%s"},
+	{"pypi", "https://pypi.org/user/%s/"},
+	{"dribbble", "https://dribbble.com/%s"},
+	{"tryhackme", "https://tryhackme.com/p/%s"},
+	{"bitbucket", "https://bitbucket.org/%s/"},
+	{"huggingface", "https://huggingface.co/%s"},
+	{"replit", "https://replit.com/@%s"},
+	{"asciinema", "https://asciinema.org/~%s"},
+	{"speakerdeck", "https://speakerdeck.com/%s"},
+	{"hackerone", "https://hackerone.com/%s"},
+	{"bugcrowd", "https://bugcrowd.com/%s"},
+	{"codewars", "https://www.codewars.com/users/%s"},
+	{"aboutme", "https://about.me/%s"},
+	{"gumroad", "https://gumroad.com/%s"},
+	{"scratch", "https://scratch.mit.edu/users/%s"},
+	{"geeksforgeeks", "https://auth.geeksforgeeks.org/user/%s"},
+	{"observable", "https://observablehq.com/@%s"},
+	{"opencollective", "https://opencollective.com/%s"},
 }
 
 // isValidUsernameForPlatform checks if a username meets the platform's requirements.
 // Each platform has different rules for valid usernames.
 //
-//nolint:gocognit,maintidx,staticcheck // platform-specific validation; QF1001 De Morgan reduces readability
+//nolint:gocognit,maintidx,staticcheck,revive // platform-specific validation; QF1001 De Morgan reduces readability
 func isValidUsernameForPlatform(username, platform string) bool {
 	switch platform {
 	case "linkedin":
@@ -177,7 +217,7 @@ func isValidUsernameForPlatform(username, platform string) bool {
 		}
 		return true
 
-	case "medium", "mastodon", "devto", "habr":
+	case "medium", "mastodon", "devto", "habr", "observable":
 		// These platforms share similar rules: 1-30 chars, alphanumeric and underscores
 		if len(username) < 1 || len(username) > 30 {
 			return false
@@ -291,6 +331,204 @@ func isValidUsernameForPlatform(username, platform string) bool {
 		}
 		return true
 
+	case "arstechnica":
+		// Ars Technica forum: 3-50 chars, alphanumeric, underscores, hyphens
+		if len(username) < 3 || len(username) > 50 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "codeberg", "gitee", "bitbucket", "huggingface", "speakerdeck", "aboutme", "gumroad", "opencollective":
+		// Similar to GitHub: 1-39 chars, alphanumeric and hyphens
+		if len(username) < 1 || len(username) > 39 {
+			return false
+		}
+		if strings.HasPrefix(username, "-") {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "disqus", "intensedebate":
+		// Comment platforms: 3-30 chars, alphanumeric, underscores, hyphens
+		if len(username) < 3 || len(username) > 30 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "hackernews":
+		// HN: 2-15 chars, alphanumeric, underscores
+		if len(username) < 2 || len(username) > 15 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+				return false
+			}
+		}
+		return true
+
+	case "lobsters":
+		// Lobsters: 2-24 chars, alphanumeric, underscores
+		if len(username) < 2 || len(username) > 24 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+				return false
+			}
+		}
+		return true
+
+	case "twitch":
+		// Twitch: 4-25 chars, alphanumeric, underscores
+		if len(username) < 4 || len(username) > 25 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+				return false
+			}
+		}
+		return true
+
+	case "hashnode", "velog":
+		// Blog platforms: 3-30 chars, alphanumeric, underscores, hyphens
+		if len(username) < 3 || len(username) > 30 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "hexpm", "rubygems", "npm", "pypi":
+		// Package registries: 2-40 chars, alphanumeric, underscores, hyphens
+		if len(username) < 2 || len(username) > 40 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "qiita", "zenn":
+		// Japanese dev platforms: 3-24 chars, alphanumeric, underscores
+		if len(username) < 3 || len(username) > 24 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+				return false
+			}
+		}
+		return true
+
+	case "v2ex", "csdn":
+		// Chinese dev platforms: 3-30 chars, alphanumeric, underscores, hyphens
+		if len(username) < 3 || len(username) > 30 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "leetcode", "hackerone", "bugcrowd", "codewars":
+		// Coding challenge/security platforms: 3-20 chars, alphanumeric, underscores, hyphens
+		if len(username) < 3 || len(username) > 20 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "linktree", "dribbble", "replit", "scratch", "geeksforgeeks":
+		// Platforms with underscores and periods: 3-30 chars, alphanumeric, underscores, periods
+		if len(username) < 3 || len(username) > 30 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.') {
+				return false
+			}
+		}
+		return true
+
+	case "sessionize":
+		// Sessionize: 3-50 chars, alphanumeric, underscores, hyphens
+		if len(username) < 3 || len(username) > 50 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "steam", "tryhackme", "asciinema":
+		// Gaming/security/dev platforms: 3-32 chars, alphanumeric, underscores
+		if len(username) < 3 || len(username) > 32 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+				return false
+			}
+		}
+		return true
+
+	case "douban":
+		// Douban: alphanumeric, hyphens, 1-30 chars
+		if len(username) < 1 || len(username) > 30 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "substack":
+		// Substack subdomains: 3-63 chars, alphanumeric, hyphens (valid subdomain)
+		if len(username) < 3 || len(username) > 63 {
+			return false
+		}
+		if strings.HasPrefix(username, "-") || strings.HasSuffix(username, "-") {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+				return false
+			}
+		}
+		return true
+
 	default:
 		// Unknown platform, be permissive
 		return len(username) >= 1
@@ -307,7 +545,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 	}
 
 	// Extract all known usernames
-	usernames := extractUsernames(known)
+	usernames := extractUsernamesWithLogger(known, cfg.Logger)
 	cfg.Logger.Debug("extracted usernames for guessing", "count", len(usernames))
 
 	// Extract names for LinkedIn slug guessing
@@ -491,7 +729,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 		}
 
 		// Also extract usernames for username-based guessing
-		secondRoundUsernames := extractUsernames(guessed)
+		secondRoundUsernames := extractUsernamesWithLogger(guessed, cfg.Logger)
 		// For name-based guessing (especially LinkedIn), only use names from high-confidence profiles
 		// to avoid using incorrect names from low-confidence guesses (e.g., "Trevor Pope" from TikTok
 		// when the original GitHub profile has "Tim Pope")
@@ -689,6 +927,10 @@ type candidateURL struct {
 }
 
 func extractUsernames(profiles []*profile.Profile) []string {
+	return extractUsernamesWithLogger(profiles, nil)
+}
+
+func extractUsernamesWithLogger(profiles []*profile.Profile, logger *slog.Logger) []string {
 	seen := make(map[string]bool)
 	var usernames []string
 
@@ -699,6 +941,10 @@ func extractUsernames(profiles []*profile.Profile) []string {
 			if isValidUsername(u) && !seen[u] {
 				seen[u] = true
 				usernames = append(usernames, u)
+				if logger != nil {
+					logger.Debug("discovered username for guessing",
+						"username", u, "source_platform", p.Platform, "source_url", p.URL)
+				}
 			}
 		}
 
@@ -709,6 +955,10 @@ func extractUsernames(profiles []*profile.Profile) []string {
 				if isValidUsername(u) && !seen[u] {
 					seen[u] = true
 					usernames = append(usernames, u)
+					if logger != nil {
+						logger.Debug("discovered username from URL for guessing",
+							"username", u, "source_platform", p.Platform, "source_url", p.URL)
+					}
 				}
 			}
 		}
@@ -807,12 +1057,13 @@ func isValidUsername(u string) bool {
 		return false
 	}
 
-	// Skip common non-username strings
+	// Skip common non-username strings (page paths, not user profiles)
 	invalid := map[string]bool{
 		"users": true, "user": true, "profile": true, "settings": true,
 		"about": true, "help": true, "terms": true, "privacy": true,
 		"home": true, "index": true, "search": true, "login": true,
 		"logout": true, "signup": true, "register": true, "api": true,
+		"people": true, // e.g., intensedebate.com/people is a directory, not a profile
 	}
 	return !invalid[u]
 }
@@ -829,7 +1080,7 @@ func extractUsernameFromURL(url string) string {
 
 	// Common path segments to skip
 	skipPaths := map[string]bool{
-		"in": true, "profile": true, "users": true, "user": true,
+		"in": true, "profile": true, "profiles": true, "users": true, "user": true,
 		"p": true, "u": true, "status": true, "posts": true,
 	}
 

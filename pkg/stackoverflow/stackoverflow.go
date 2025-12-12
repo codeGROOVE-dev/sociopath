@@ -2,8 +2,12 @@
 package stackoverflow
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -59,7 +63,7 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: 3 * time.Second,
+			Timeout: 15 * time.Second,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // needed for corporate proxies
 			},
@@ -69,11 +73,37 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 	}, nil
 }
 
+// apiResponse represents the Stack Exchange API wrapper.
+type apiResponse struct {
+	Items []apiQuestion `json:"items"`
+}
+
+// apiQuestion represents a question from the API.
+type apiQuestion struct { //nolint:govet // field order matches API response
+	Tags       []string `json:"tags"`
+	Title      string   `json:"title"`
+	Link       string   `json:"link"`
+	QuestionID int      `json:"question_id"`
+}
+
+// apiAnswerResponse represents answers from the API.
+type apiAnswerResponse struct {
+	Items []apiAnswer `json:"items"`
+}
+
+// apiAnswer represents an answer from the API.
+type apiAnswer struct {
+	AnswerID   int `json:"answer_id"`
+	QuestionID int `json:"question_id"`
+	Score      int `json:"score"`
+}
+
 // Fetch retrieves a StackOverflow profile.
 func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, error) {
 	username := extractUsername(urlStr)
+	userID := extractUserID(urlStr)
 
-	c.logger.InfoContext(ctx, "fetching stackoverflow profile", "url", urlStr, "username", username)
+	c.logger.InfoContext(ctx, "fetching stackoverflow profile", "url", urlStr, "username", username, "user_id", userID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
 	if err != nil {
@@ -86,7 +116,15 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, err
 	}
 
-	return parseHTML(body, urlStr, username), nil
+	p := parseHTML(body, urlStr, username)
+
+	// Fetch recent questions and answers if we have a user ID
+	if userID != "" {
+		posts := c.fetchRecentPosts(ctx, userID, 10)
+		p.Posts = posts
+	}
+
+	return p, nil
 }
 
 func parseHTML(data []byte, urlStr, username string) *profile.Profile {
@@ -160,4 +198,130 @@ func extractUsername(urlStr string) string {
 		return m[1]
 	}
 	return ""
+}
+
+func extractUserID(urlStr string) string {
+	re := regexp.MustCompile(`/users/(\d+)`)
+	if m := re.FindStringSubmatch(urlStr); len(m) > 1 {
+		return m[1]
+	}
+	return ""
+}
+
+// fetchRecentPosts fetches recent questions and answers from the Stack Exchange API.
+func (c *Client) fetchRecentPosts(ctx context.Context, userID string, maxItems int) []profile.Post {
+	var posts []profile.Post
+
+	// Fetch recent questions
+	questionsURL := "https://api.stackexchange.com/2.3/users/%s/questions?order=desc&sort=creation&site=stackoverflow&pagesize=%d"
+	questions := c.fetchQuestions(ctx, fmt.Sprintf(questionsURL, userID, maxItems))
+	for _, q := range questions {
+		posts = append(posts, profile.Post{
+			Type:  profile.PostTypeQuestion,
+			Title: q.Title,
+			URL:   q.Link,
+		})
+	}
+
+	// Fetch recent answers
+	answersURL := "https://api.stackexchange.com/2.3/users/%s/answers?order=desc&sort=creation&site=stackoverflow&pagesize=%d"
+	answers := c.fetchAnswers(ctx, fmt.Sprintf(answersURL, userID, maxItems))
+	for _, a := range answers {
+		posts = append(posts, profile.Post{
+			Type: profile.PostTypeAnswer,
+			URL:  fmt.Sprintf("https://stackoverflow.com/a/%d", a.AnswerID),
+		})
+	}
+
+	// Limit total posts
+	if len(posts) > maxItems {
+		posts = posts[:maxItems]
+	}
+
+	return posts
+}
+
+func (c *Client) fetchQuestions(ctx context.Context, apiURL string) []apiQuestion {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to create questions request", "error", err)
+		return nil
+	}
+	req.Header.Set("User-Agent", "sociopath/1.0")
+
+	// Use direct fetch - SE API requires gzip and returns it automatically
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to fetch questions", "error", err)
+		return nil
+	}
+	defer resp.Body.Close() //nolint:errcheck // defer closes body
+
+	if resp.StatusCode != http.StatusOK {
+		c.logger.DebugContext(ctx, "questions API returned error", "status", resp.StatusCode)
+		return nil
+	}
+
+	body, err := readCompressedBody(resp)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to read questions body", "error", err)
+		return nil
+	}
+
+	var apiResp apiResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		c.logger.DebugContext(ctx, "failed to parse questions response", "error", err)
+		return nil
+	}
+
+	return apiResp.Items
+}
+
+func (c *Client) fetchAnswers(ctx context.Context, apiURL string) []apiAnswer {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to create answers request", "error", err)
+		return nil
+	}
+	req.Header.Set("User-Agent", "sociopath/1.0")
+
+	// Use direct fetch - SE API requires gzip and returns it automatically
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to fetch answers", "error", err)
+		return nil
+	}
+	defer resp.Body.Close() //nolint:errcheck // defer closes body
+
+	if resp.StatusCode != http.StatusOK {
+		c.logger.DebugContext(ctx, "answers API returned error", "status", resp.StatusCode)
+		return nil
+	}
+
+	body, err := readCompressedBody(resp)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to read answers body", "error", err)
+		return nil
+	}
+
+	var apiResp apiAnswerResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		c.logger.DebugContext(ctx, "failed to parse answers response", "error", err)
+		return nil
+	}
+
+	return apiResp.Items
+}
+
+// readCompressedBody reads a response body, handling gzip compression if present.
+func readCompressedBody(resp *http.Response) ([]byte, error) {
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gr, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		defer gr.Close() //nolint:errcheck // defer closes reader
+		return io.ReadAll(gr)
+	}
+	return io.ReadAll(resp.Body)
 }

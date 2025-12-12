@@ -42,7 +42,7 @@ score based on username match, name similarity, location, bio keywords, and cros
 ```
 -r, --recursive   Follow social links recursively (max depth: 3)
 --guess           Discover related profiles on other platforms
---no-browser      Disable automatic browser cookie extraction
+--browser         Enable browser cookie extraction for authenticated platforms
 --no-cache        Disable HTTP caching (default: 75-day TTL)
 -v, --debug       Enable verbose logging
 ```

@@ -30,6 +30,16 @@ var knownInstances = map[string]bool{
 	"octodon.social": true, "social.coop": true, "sfba.social": true,
 }
 
+// Sites that use /@username pattern but are NOT Mastodon instances.
+var nonMastodonSites = map[string]bool{
+	"holopin.io":       true,
+	"www.holopin.io":   true,
+	"replit.com":       true,
+	"www.replit.com":   true,
+	"observablehq.com": true,
+	"www.observablehq": true,
+}
+
 // Match returns true if the URL is a Mastodon profile URL.
 func Match(urlStr string) bool {
 	parsed, err := url.Parse(urlStr)
@@ -38,6 +48,11 @@ func Match(urlStr string) bool {
 	}
 
 	host := strings.ToLower(parsed.Host)
+
+	// Exclude known non-Mastodon sites that use /@username pattern
+	if nonMastodonSites[host] {
+		return false
+	}
 
 	// Check known instances
 	if knownInstances[host] {

@@ -21,6 +21,7 @@ var platformDomains = map[string]string{
 	"twitter":   "x.com",
 	"vkontakte": "vk.com",
 	"weibo":     "weibo.com",
+	"google":    "google.com",
 }
 
 // platformEssentialCookies maps platform names to their required cookie names.
@@ -52,6 +53,8 @@ func (s *BrowserSource) Cookies(ctx context.Context, platform string) (map[strin
 	if !ok {
 		return nil, nil //nolint:nilnil // no cookies for unknown platform is not an error
 	}
+
+	s.logger.DebugContext(ctx, "reading browser cookies", "platform", platform, "domain", domain)
 
 	// Try Zen Browser first (Firefox-based, not auto-detected by kooky)
 	cookies := s.tryZenBrowser(ctx, domain, platform)

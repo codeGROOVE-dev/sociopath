@@ -33,7 +33,7 @@ func (e *emailList) Set(v string) error {
 func main() {
 	debug := flag.Bool("debug", false, "enable debug logging")
 	verbose := flag.Bool("v", false, "verbose logging (same as -debug)")
-	noBrowser := flag.Bool("no-browser", false, "disable reading cookies from browser stores (enabled by default)")
+	useBrowser := flag.Bool("browser", false, "enable reading cookies from browser stores (disabled by default)")
 	noCache := flag.Bool("no-cache", false, "disable HTTP caching (enabled by default with 75-day TTL)")
 	cacheTTL := flag.Duration("cache-ttl", 75*24*time.Hour, "cache time-to-live (default: 75 days, use 24h for testing)")
 	recursive := flag.Bool("r", false, "recursively fetch social media profiles from discovered links")
@@ -49,8 +49,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "\nOptions:")
 		flag.PrintDefaults()
 		fmt.Fprintln(os.Stderr, "\nSupported platforms:")
-		fmt.Fprintln(os.Stderr, "  - LinkedIn (reads browser cookies by default)")
-		fmt.Fprintln(os.Stderr, "  - Twitter/X (reads browser cookies by default)")
+		fmt.Fprintln(os.Stderr, "  - LinkedIn (use --browser for auth)")
+		fmt.Fprintln(os.Stderr, "  - Twitter/X (use --browser for auth)")
 		fmt.Fprintln(os.Stderr, "  - Mastodon (no auth)")
 		fmt.Fprintln(os.Stderr, "  - BlueSky (no auth)")
 		fmt.Fprintln(os.Stderr, "  - Dev.to (no auth)")
@@ -106,7 +106,7 @@ func main() {
 		sociopath.WithLogger(logger),
 		sociopath.WithHTTPCache(httpCache),
 	}
-	if !*noBrowser {
+	if *useBrowser {
 		opts = append(opts, sociopath.WithBrowserCookies())
 	}
 	if len(emails) > 0 {

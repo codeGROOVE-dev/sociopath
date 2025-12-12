@@ -28,36 +28,63 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/codeGROOVE-dev/sociopath/pkg/arstechnica"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bilibili"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bluesky"
+	"github.com/codeGROOVE-dev/sociopath/pkg/bugcrowd"
 	"github.com/codeGROOVE-dev/sociopath/pkg/codeberg"
 	"github.com/codeGROOVE-dev/sociopath/pkg/crates"
+	"github.com/codeGROOVE-dev/sociopath/pkg/csdn"
 	"github.com/codeGROOVE-dev/sociopath/pkg/devto"
+	"github.com/codeGROOVE-dev/sociopath/pkg/disqus"
 	"github.com/codeGROOVE-dev/sociopath/pkg/dockerhub"
+	"github.com/codeGROOVE-dev/sociopath/pkg/douban"
 	"github.com/codeGROOVE-dev/sociopath/pkg/generic"
+	"github.com/codeGROOVE-dev/sociopath/pkg/gitee"
 	"github.com/codeGROOVE-dev/sociopath/pkg/github"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gitlab"
+	"github.com/codeGROOVE-dev/sociopath/pkg/goodreads"
 	"github.com/codeGROOVE-dev/sociopath/pkg/google"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gravatar"
 	"github.com/codeGROOVE-dev/sociopath/pkg/guess"
 	"github.com/codeGROOVE-dev/sociopath/pkg/habr"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hackernews"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hackerone"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hashnode"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hexpm"
+	"github.com/codeGROOVE-dev/sociopath/pkg/holopin"
 	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
+	"github.com/codeGROOVE-dev/sociopath/pkg/huggingface"
 	"github.com/codeGROOVE-dev/sociopath/pkg/instagram"
+	"github.com/codeGROOVE-dev/sociopath/pkg/intensedebate"
+	"github.com/codeGROOVE-dev/sociopath/pkg/juejin"
 	"github.com/codeGROOVE-dev/sociopath/pkg/keybase"
+	"github.com/codeGROOVE-dev/sociopath/pkg/leetcode"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linkedin"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linktree"
+	"github.com/codeGROOVE-dev/sociopath/pkg/lobsters"
 	"github.com/codeGROOVE-dev/sociopath/pkg/mailru"
 	"github.com/codeGROOVE-dev/sociopath/pkg/mastodon"
 	"github.com/codeGROOVE-dev/sociopath/pkg/medium"
+	"github.com/codeGROOVE-dev/sociopath/pkg/orcid"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
+	"github.com/codeGROOVE-dev/sociopath/pkg/qiita"
 	"github.com/codeGROOVE-dev/sociopath/pkg/reddit"
+	"github.com/codeGROOVE-dev/sociopath/pkg/rubygems"
+	"github.com/codeGROOVE-dev/sociopath/pkg/sessionize"
 	"github.com/codeGROOVE-dev/sociopath/pkg/stackoverflow"
+	"github.com/codeGROOVE-dev/sociopath/pkg/steam"
+	"github.com/codeGROOVE-dev/sociopath/pkg/strava"
 	"github.com/codeGROOVE-dev/sociopath/pkg/substack"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tiktok"
+	"github.com/codeGROOVE-dev/sociopath/pkg/twitch"
 	"github.com/codeGROOVE-dev/sociopath/pkg/twitter"
+	"github.com/codeGROOVE-dev/sociopath/pkg/v2ex"
+	"github.com/codeGROOVE-dev/sociopath/pkg/velog"
 	"github.com/codeGROOVE-dev/sociopath/pkg/vkontakte"
 	"github.com/codeGROOVE-dev/sociopath/pkg/weibo"
 	"github.com/codeGROOVE-dev/sociopath/pkg/youtube"
+	"github.com/codeGROOVE-dev/sociopath/pkg/zenn"
 )
 
 type (
@@ -128,7 +155,7 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		opt(cfg)
 	}
 
-	var p *profile.Profile
+	var p *profile.Profile //nolint:varnamelen // short name is clear in this switch context
 	var err error
 
 	// Try each platform's Match function in order of specificity
@@ -170,6 +197,10 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		p, err = fetchKeybase(ctx, url, cfg)
 	case crates.Match(url):
 		p, err = fetchCrates(ctx, url, cfg)
+	case disqus.Match(url):
+		p, err = fetchDisqus(ctx, url, cfg)
+	case intensedebate.Match(url):
+		p, err = fetchIntenseDebate(ctx, url, cfg)
 	case dockerhub.Match(url):
 		p, err = fetchDockerHub(ctx, url, cfg)
 	case gitlab.Match(url):
@@ -186,6 +217,56 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		p, err = fetchGoogle(ctx, url, cfg)
 	case gravatar.Match(url):
 		p, err = fetchGravatar(ctx, url, cfg)
+	case hackernews.Match(url):
+		p, err = fetchHackerNews(ctx, url, cfg)
+	case hackerone.Match(url):
+		p, err = fetchHackerOne(ctx, url, cfg)
+	case bugcrowd.Match(url):
+		p, err = fetchBugcrowd(ctx, url, cfg)
+	case lobsters.Match(url):
+		p, err = fetchLobsters(ctx, url, cfg)
+	case arstechnica.Match(url):
+		p, err = fetchArsTechnica(ctx, url, cfg)
+	case sessionize.Match(url):
+		p, err = fetchSessionize(ctx, url, cfg)
+	case strava.Match(url):
+		p, err = fetchStrava(ctx, url, cfg)
+	case douban.Match(url):
+		p, err = fetchDouban(ctx, url, cfg)
+	case juejin.Match(url):
+		p, err = fetchJuejin(ctx, url, cfg)
+	case csdn.Match(url):
+		p, err = fetchCSDN(ctx, url, cfg)
+	case v2ex.Match(url):
+		p, err = fetchV2EX(ctx, url, cfg)
+	case gitee.Match(url):
+		p, err = fetchGitee(ctx, url, cfg)
+	case velog.Match(url):
+		p, err = fetchVelog(ctx, url, cfg)
+	case qiita.Match(url):
+		p, err = fetchQiita(ctx, url, cfg)
+	case zenn.Match(url):
+		p, err = fetchZenn(ctx, url, cfg)
+	case hashnode.Match(url):
+		p, err = fetchHashnode(ctx, url, cfg)
+	case orcid.Match(url):
+		p, err = fetchORCID(ctx, url, cfg)
+	case hexpm.Match(url):
+		p, err = fetchHexpm(ctx, url, cfg)
+	case twitch.Match(url):
+		p, err = fetchTwitch(ctx, url, cfg)
+	case steam.Match(url):
+		p, err = fetchSteam(ctx, url, cfg)
+	case leetcode.Match(url):
+		p, err = fetchLeetCode(ctx, url, cfg)
+	case goodreads.Match(url):
+		p, err = fetchGoodreads(ctx, url, cfg)
+	case rubygems.Match(url):
+		p, err = fetchRubyGems(ctx, url, cfg)
+	case huggingface.Match(url):
+		p, err = fetchHuggingFace(ctx, url, cfg)
+	case holopin.Match(url):
+		p, err = fetchHolopin(ctx, url, cfg)
 	case mastodon.Match(url):
 		p, err = fetchMastodon(ctx, url, cfg)
 	default:
@@ -380,6 +461,38 @@ func fetchCrates(ctx context.Context, url string, cfg *config) (*profile.Profile
 	}
 
 	client, err := crates.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchDisqus(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []disqus.Option
+	if cfg.cache != nil {
+		opts = append(opts, disqus.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, disqus.WithLogger(cfg.logger))
+	}
+
+	client, err := disqus.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchIntenseDebate(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []intensedebate.Option
+	if cfg.cache != nil {
+		opts = append(opts, intensedebate.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, intensedebate.WithLogger(cfg.logger))
+	}
+
+	client, err := intensedebate.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -657,6 +770,403 @@ func fetchCodeberg(ctx context.Context, url string, cfg *config) (*profile.Profi
 	return client.Fetch(ctx, url)
 }
 
+func fetchHackerNews(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hackernews.Option
+	if cfg.cache != nil {
+		opts = append(opts, hackernews.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hackernews.WithLogger(cfg.logger))
+	}
+
+	client, err := hackernews.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHackerOne(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hackerone.Option
+	if cfg.cache != nil {
+		opts = append(opts, hackerone.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hackerone.WithLogger(cfg.logger))
+	}
+
+	client, err := hackerone.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchBugcrowd(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []bugcrowd.Option
+	if cfg.cache != nil {
+		opts = append(opts, bugcrowd.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, bugcrowd.WithLogger(cfg.logger))
+	}
+
+	client, err := bugcrowd.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchLobsters(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []lobsters.Option
+	if cfg.cache != nil {
+		opts = append(opts, lobsters.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, lobsters.WithLogger(cfg.logger))
+	}
+
+	client, err := lobsters.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchArsTechnica(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []arstechnica.Option
+	if cfg.logger != nil {
+		opts = append(opts, arstechnica.WithLogger(cfg.logger))
+	}
+
+	client, err := arstechnica.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchSessionize(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []sessionize.Option
+	if cfg.cache != nil {
+		opts = append(opts, sessionize.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, sessionize.WithLogger(cfg.logger))
+	}
+
+	client, err := sessionize.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchStrava(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []strava.Option
+	if cfg.cache != nil {
+		opts = append(opts, strava.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, strava.WithLogger(cfg.logger))
+	}
+
+	client, err := strava.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchDouban(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []douban.Option
+	if cfg.cache != nil {
+		opts = append(opts, douban.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, douban.WithLogger(cfg.logger))
+	}
+
+	client, err := douban.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchJuejin(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []juejin.Option
+	if cfg.cache != nil {
+		opts = append(opts, juejin.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, juejin.WithLogger(cfg.logger))
+	}
+
+	client, err := juejin.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCSDN(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []csdn.Option
+	if cfg.cache != nil {
+		opts = append(opts, csdn.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, csdn.WithLogger(cfg.logger))
+	}
+
+	client, err := csdn.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchV2EX(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []v2ex.Option
+	if cfg.cache != nil {
+		opts = append(opts, v2ex.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, v2ex.WithLogger(cfg.logger))
+	}
+
+	client, err := v2ex.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGitee(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []gitee.Option
+	if cfg.cache != nil {
+		opts = append(opts, gitee.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, gitee.WithLogger(cfg.logger))
+	}
+
+	client, err := gitee.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchVelog(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []velog.Option
+	if cfg.cache != nil {
+		opts = append(opts, velog.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, velog.WithLogger(cfg.logger))
+	}
+
+	client, err := velog.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchQiita(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []qiita.Option
+	if cfg.cache != nil {
+		opts = append(opts, qiita.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, qiita.WithLogger(cfg.logger))
+	}
+
+	client, err := qiita.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchZenn(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []zenn.Option
+	if cfg.cache != nil {
+		opts = append(opts, zenn.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, zenn.WithLogger(cfg.logger))
+	}
+
+	client, err := zenn.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHashnode(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hashnode.Option
+	if cfg.cache != nil {
+		opts = append(opts, hashnode.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hashnode.WithLogger(cfg.logger))
+	}
+
+	client, err := hashnode.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchORCID(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []orcid.Option
+	if cfg.cache != nil {
+		opts = append(opts, orcid.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, orcid.WithLogger(cfg.logger))
+	}
+
+	client, err := orcid.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHexpm(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hexpm.Option
+	if cfg.cache != nil {
+		opts = append(opts, hexpm.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hexpm.WithLogger(cfg.logger))
+	}
+
+	client, err := hexpm.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchTwitch(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []twitch.Option
+	if cfg.cache != nil {
+		opts = append(opts, twitch.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, twitch.WithLogger(cfg.logger))
+	}
+
+	client, err := twitch.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchSteam(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []steam.Option
+	if cfg.cache != nil {
+		opts = append(opts, steam.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, steam.WithLogger(cfg.logger))
+	}
+
+	client, err := steam.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchLeetCode(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []leetcode.Option
+	if cfg.cache != nil {
+		opts = append(opts, leetcode.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, leetcode.WithLogger(cfg.logger))
+	}
+
+	client, err := leetcode.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGoodreads(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []goodreads.Option
+	if cfg.cache != nil {
+		opts = append(opts, goodreads.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, goodreads.WithLogger(cfg.logger))
+	}
+
+	client, err := goodreads.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchRubyGems(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []rubygems.Option
+	if cfg.cache != nil {
+		opts = append(opts, rubygems.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, rubygems.WithLogger(cfg.logger))
+	}
+
+	client, err := rubygems.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHuggingFace(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []huggingface.Option
+	if cfg.cache != nil {
+		opts = append(opts, huggingface.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, huggingface.WithLogger(cfg.logger))
+	}
+
+	client, err := huggingface.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHolopin(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []holopin.Option
+	if cfg.cache != nil {
+		opts = append(opts, holopin.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, holopin.WithLogger(cfg.logger))
+	}
+
+	client, err := holopin.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 func fetchGeneric(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []generic.Option
 	if cfg.cache != nil {
@@ -845,7 +1355,10 @@ func isSocialPlatform(url string) bool {
 		keybase.Match(url) ||
 		crates.Match(url) ||
 		dockerhub.Match(url) ||
-		mastodon.Match(url)
+		mastodon.Match(url) ||
+		hackerone.Match(url) ||
+		bugcrowd.Match(url) ||
+		holopin.Match(url)
 }
 
 // isSameDomainContactPage returns true if the link is a contact/about page on the same domain as baseURL.
@@ -1006,6 +1519,14 @@ func PlatformForURL(url string) string {
 		return "gravatar"
 	case mailru.Match(url):
 		return "mailru"
+	case huggingface.Match(url):
+		return "huggingface"
+	case hackerone.Match(url):
+		return "hackerone"
+	case bugcrowd.Match(url):
+		return "bugcrowd"
+	case holopin.Match(url):
+		return "holopin"
 	default:
 		return "website"
 	}
@@ -1056,6 +1577,14 @@ func platformMatches(url, platform string) bool {
 		return crates.Match(url)
 	case "dockerhub":
 		return dockerhub.Match(url)
+	case "huggingface":
+		return huggingface.Match(url)
+	case "hackerone":
+		return hackerone.Match(url)
+	case "bugcrowd":
+		return bugcrowd.Match(url)
+	case "holopin":
+		return holopin.Match(url)
 	default:
 		return false
 	}

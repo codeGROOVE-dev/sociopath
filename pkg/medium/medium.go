@@ -3,6 +3,7 @@ package medium
 
 import (
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -68,6 +69,21 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 	}, nil
 }
 
+// rssFeed represents a Medium RSS feed.
+type rssFeed struct {
+	XMLName xml.Name   `xml:"rss"`
+	Channel rssChannel `xml:"channel"`
+}
+
+type rssChannel struct {
+	Items []rssItem `xml:"item"`
+}
+
+type rssItem struct {
+	Title string `xml:"title"`
+	Link  string `xml:"link"`
+}
+
 // Fetch retrieves a Medium profile.
 func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, error) {
 	username := extractUsername(urlStr)
@@ -91,7 +107,16 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, fmt.Errorf("fetch failed: %w", err)
 	}
 
-	return parseProfile(string(body), normalizedURL, username)
+	p, err := parseProfile(string(body), normalizedURL, username)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch recent posts from RSS feed
+	posts := c.fetchRecentPosts(ctx, username, 15)
+	p.Posts = posts
+
+	return p, nil
 }
 
 func parseProfile(html, url, username string) (*profile.Profile, error) {
@@ -181,4 +206,45 @@ func extractUsername(urlStr string) string {
 	}
 
 	return ""
+}
+
+// fetchRecentPosts fetches recent posts from the Medium RSS feed.
+func (c *Client) fetchRecentPosts(ctx context.Context, username string, maxItems int) []profile.Post {
+	feedURL := fmt.Sprintf("https://medium.com/feed/@%s", username)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, http.NoBody)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to create RSS request", "error", err)
+		return nil
+	}
+	req.Header.Set("User-Agent", "sociopath/1.0 (social profile aggregator)")
+	req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml")
+
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to fetch RSS feed", "error", err)
+		return nil
+	}
+
+	var feed rssFeed
+	if err := xml.Unmarshal(body, &feed); err != nil {
+		c.logger.DebugContext(ctx, "failed to parse RSS feed", "error", err)
+		return nil
+	}
+
+	items := feed.Channel.Items
+	if len(items) > maxItems {
+		items = items[:maxItems]
+	}
+
+	var posts []profile.Post
+	for _, item := range items {
+		posts = append(posts, profile.Post{
+			Type:  profile.PostTypeArticle,
+			Title: item.Title,
+			URL:   item.Link,
+		})
+	}
+
+	return posts
 }

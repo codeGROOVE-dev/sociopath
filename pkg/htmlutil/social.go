@@ -330,6 +330,8 @@ func isSocialPlatformURL(u string) bool {
 		"discord.com", "discordapp.com",
 		"medium.com", "reddit.com", "substack.com",
 		"weibo.com", "weibo.cn", "zhihu.com", "bilibili.com",
+		"matrix.to", "matrix.org", "keybase.io",
+		"observablehq.com", "opencollective.com", "holopin.io",
 	}
 	for _, p := range platforms {
 		if strings.Contains(lower, p) {
@@ -391,4 +393,15 @@ var socialPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`https?://infosec\.exchange/@\w+`),
 	// General Mastodon instance pattern - must come after TikTok (which also uses /@user)
 	regexp.MustCompile(`https?://[\w.-]+\.\w{2,}/@\w+`),
+	// Matrix
+	regexp.MustCompile(`https?://matrix\.to/#/@[\w.-]+:[\w.-]+`),
+	regexp.MustCompile(`https?://(?:www\.)?matrix\.org/[\w.-]+`),
+	// Keybase
+	regexp.MustCompile(`https?://(?:www\.)?keybase\.io/[\w.-]+`),
+	// Observable
+	regexp.MustCompile(`https?://(?:www\.)?observablehq\.com/@[\w-]+`),
+	// Open Collective
+	regexp.MustCompile(`https?://(?:www\.)?opencollective\.com/[\w-]+`),
+	// Holopin
+	regexp.MustCompile(`https?://(?:www\.)?holopin\.io/@[\w-]+`),
 }

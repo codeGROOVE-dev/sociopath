@@ -228,7 +228,13 @@ func categorizePrimaryLink(p *profile.Profile, url, title string) {
 	case strings.Contains(lowerURL, "tiktok.com"):
 		p.Fields["tiktok"] = url
 		p.SocialLinks = append(p.SocialLinks, url)
-	case strings.Contains(lowerURL, "mastodon") || strings.HasSuffix(lowerURL, ".social"):
+	case strings.Contains(lowerURL, "matrix.to") || strings.Contains(lowerURL, "matrix.org"):
+		p.Fields["matrix"] = url
+		p.SocialLinks = append(p.SocialLinks, url)
+	case strings.Contains(lowerURL, "keybase.io"):
+		p.Fields["keybase"] = url
+		p.SocialLinks = append(p.SocialLinks, url)
+	case isMastodonURL(lowerURL):
 		p.Fields["mastodon"] = url
 		p.SocialLinks = append(p.SocialLinks, url)
 	case strings.Contains(lowerTitle, "website") || strings.Contains(lowerTitle, "site"):
@@ -239,10 +245,28 @@ func categorizePrimaryLink(p *profile.Profile, url, title string) {
 	case strings.HasPrefix(url, "mailto:"):
 		p.Fields["email"] = strings.TrimPrefix(url, "mailto:")
 	default:
-		if p.Website == "" && !strings.Contains(lowerURL, "linktr.ee") {
+		// Add any unrecognized external links to SocialLinks
+		if !strings.Contains(lowerURL, "linktr.ee") {
 			p.SocialLinks = append(p.SocialLinks, url)
 		}
 	}
+}
+
+// isMastodonURL checks if a URL is likely a Mastodon instance.
+func isMastodonURL(lowerURL string) bool {
+	// Common Mastodon instance patterns
+	mastodonPatterns := []string{
+		"mastodon.", ".social/@", "infosec.exchange", "hachyderm.io",
+		"fosstodon.org", "mstdn.social", "mas.to", "techhub.social",
+		"chaos.social", "toot.", "todon.", "masto.",
+	}
+	for _, pattern := range mastodonPatterns {
+		if strings.Contains(lowerURL, pattern) {
+			return true
+		}
+	}
+	// Check for /@username pattern which is common on Mastodon
+	return strings.Contains(lowerURL, "/@")
 }
 
 func parseSocialIcons(p *profile.Profile, pageProps map[string]any) {

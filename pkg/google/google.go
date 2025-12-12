@@ -18,11 +18,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/codeGROOVE-dev/sociopath/pkg/auth"
 	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
@@ -66,8 +68,10 @@ type Client struct {
 type Option func(*config)
 
 type config struct {
-	cache  httpcache.Cacher
-	logger *slog.Logger
+	cache          httpcache.Cacher
+	logger         *slog.Logger
+	cookies        map[string]string
+	browserCookies bool
 }
 
 // WithHTTPCache sets the HTTP cache.
@@ -80,18 +84,57 @@ func WithLogger(logger *slog.Logger) Option {
 	return func(c *config) { c.logger = logger }
 }
 
+// WithCookies sets explicit cookie values.
+func WithCookies(cookies map[string]string) Option {
+	return func(c *config) { c.cookies = cookies }
+}
+
+// WithBrowserCookies enables reading cookies from browser stores.
+func WithBrowserCookies() Option {
+	return func(c *config) { c.browserCookies = true }
+}
+
 // New creates a Google OSINT client.
-func New(_ context.Context, opts ...Option) (*Client, error) {
+func New(ctx context.Context, opts ...Option) (*Client, error) {
 	cfg := &config{logger: slog.Default()}
 	for _, opt := range opts {
 		opt(cfg)
 	}
 
-	return &Client{
+	client := &Client{
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		cache:      cfg.cache,
 		logger:     cfg.logger,
-	}, nil
+	}
+
+	// Configure authentication if cookies are provided or requested
+	if len(cfg.cookies) > 0 || cfg.browserCookies {
+		cfg.logger.DebugContext(ctx, "configuring google auth", "static", len(cfg.cookies) > 0, "browser", cfg.browserCookies)
+		var sources []auth.Source
+		if len(cfg.cookies) > 0 {
+			sources = append(sources, auth.NewStaticSource(cfg.cookies))
+		}
+		if cfg.browserCookies {
+			sources = append(sources, auth.NewBrowserSource(cfg.logger))
+		}
+
+		cookies, err := auth.ChainSources(ctx, "google", sources...)
+		switch {
+		case err != nil:
+			cfg.logger.WarnContext(ctx, "failed to read google cookies", "error", err)
+		case len(cookies) == 0:
+			cfg.logger.DebugContext(ctx, "no google cookies found in sources")
+		default:
+			cfg.logger.InfoContext(ctx, "found google cookies", "count", len(cookies))
+			jar, err := auth.NewCookieJar("google.com", cookies)
+			if err != nil {
+				return nil, fmt.Errorf("initializing cookie jar: %w", err)
+			}
+			client.httpClient.Jar = jar
+		}
+	}
+
+	return client, nil
 }
 
 // Fetch retrieves Google profile data from a Gmail address or GAIA ID.
@@ -131,13 +174,25 @@ func (c *Client) Fetch(ctx context.Context, input string) (*profile.Profile, err
 		Fields:   make(map[string]string),
 	}
 
-	// Handle Gmail address (store for future use)
+	// Handle Gmail address
 	if email != "" {
 		prof.Username = strings.TrimSuffix(email, "@gmail.com")
 		prof.Fields["email"] = email
 		prof.URL = "mailto:" + email
-		// Without GAIA ID, we can only store the email for future lookups
-		return prof, nil
+
+		// Try to resolve GAIA ID if we have auth
+		id, err := c.fetchGaiaID(ctx, email)
+		if err != nil || id == "" {
+			if errors.Is(err, profile.ErrAuthRequired) {
+				c.logger.DebugContext(ctx, "skipping gaia id resolution (no auth)", "email", email)
+			} else {
+				c.logger.WarnContext(ctx, "failed to resolve gaia id", "email", email, "error", err)
+				prof.Error = fmt.Sprintf("gaia resolution failed: %v", err)
+			}
+			// Without GAIA ID, we can only store the email
+			return prof, nil
+		}
+		gaiaID = id // Found it! Proceed to fetch Maps data
 	}
 
 	// Handle GAIA ID - fetch Maps data
@@ -176,6 +231,67 @@ type mapsResult struct {
 	stats   map[string]int
 	reviews []profile.Post
 	photos  []profile.Post
+}
+
+// fetchGaiaID resolves a Gmail address to a GAIA ID using the internal People API.
+// This requires a valid authenticated session (cookies).
+func (c *Client) fetchGaiaID(ctx context.Context, email string) (string, error) {
+	// Check if we have cookies (jar is set)
+	if c.httpClient.Jar == nil {
+		return "", profile.ErrAuthRequired
+	}
+
+	apiURL := "https://people-pa.clients6.google.com/v2/people/lookup"
+
+	// Construct the form-encoded body
+	// id=<email>&type=EMAIL&request_mask.include_field.paths=person.metadata
+	params := url.Values{}
+	params.Set("id", email)
+	params.Set("type", "EMAIL")
+	params.Set("request_mask.include_field.paths", "person.metadata")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, strings.NewReader(params.Encode()))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+	body, err := c.doRequest(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	var resp peopleLookupResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", fmt.Errorf("parsing lookup response: %w", err)
+	}
+
+	if len(resp.FoundPeople) == 0 || len(resp.FoundPeople[0].Person.Metadata.Sources) == 0 {
+		return "", errors.New("person not found")
+	}
+
+	for _, source := range resp.FoundPeople[0].Person.Metadata.Sources {
+		if source.Type == "PROFILE" && source.ID != "" {
+			return source.ID, nil
+		}
+	}
+
+	return "", errors.New("no profile ID found")
+}
+
+type peopleLookupResponse struct {
+	FoundPeople []struct {
+		Person struct {
+			Metadata struct {
+				Sources []struct {
+					Type string `json:"type"`
+					ID   string `json:"id"`
+				} `json:"sources"`
+			} `json:"metadata"`
+		} `json:"person"`
+	} `json:"foundPeople"`
 }
 
 // fetchMapsData retrieves reviews and photos from Google Maps for a GAIA ID.
@@ -283,25 +399,16 @@ func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, erro
 }
 
 // Protobuf parameter builders - these are opaque strings based on GHunt's analysis.
+//
+//nolint:lll // protobuf templates must remain intact
 var (
-	statsPBTemplate = "!1s%s!2m3!1sYE3rYc2rEsqOlwSHx534DA!7e81!15i14416" +
-		"!6m2!4b1!7b1!9m0!16m4!1i100!4b1!5b1!6BQ0FFU0JrVm5TVWxEenc9PQ"
+	statsPBTemplate = "!1s%s!2m3!1sYE3rYc2rEsqOlwSHx534DA!7e81!15i14416!6m2!4b1!7b1!9m0!16m4!1i100!4b1!5b1!6BQ0FFU0JrVm5TVWxEenc9PQ"
 
-	reviewsPBTemplate = "!1s%s!2m5!1soViSYcvVG6iJytMPk6amiA8%%3A1" +
-		"!2zMWk6NCx0OjE0MzIzLGU6MCxwOm9WaVNZY3ZWRzZpSnl0TVBrNmFtaUE4OjE" +
-		"!4m1!2i14323!7e81!6m2!4b1!7b1!9m0!10m6!1b1!2b1!5b1!8b1!9m1!1e3" +
-		"!14m69!1m57!1m4!1m3!1e3!1e2!1e4!3m5!2m4!3m3!1m2!1i260!2i365!4m1!3i10" +
-		"!10b1!11m42!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3" +
-		"!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e9!2b1!3e2" +
-		"!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!2b1!4b1" +
-		"!2m5!1e1!1e4!1e3!1e5!1e2!3b0!4b1!5m1!1e1!7b1!16m3!1i10!4b1!5b1"
+	//nolint:revive // protobuf template must remain intact
+	reviewsPBTemplate = "!1s%s!2m5!1soViSYcvVG6iJytMPk6amiA8%%3A1!2zMWk6NCx0OjE0MzIzLGU6MCxwOm9WaVNZY3ZWRzZpSnl0TVBrNmFtaUE4OjE!4m1!2i14323!7e81!6m2!4b1!7b1!9m0!10m6!1b1!2b1!5b1!8b1!9m1!1e3!14m69!1m57!1m4!1m3!1e3!1e2!1e4!3m5!2m4!3m3!1m2!1i260!2i365!4m1!3i10!10b1!11m42!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e9!2b1!3e2!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!2b1!4b1!2m5!1e1!1e4!1e3!1e5!1e2!3b0!4b1!5m1!1e1!7b1!16m3!1i10!4b1!5b1"
 
-	photosPBTemplate = "!1s%s!2m3!1spQUAYoPQLcOTlwT9u6-gDA!7e81!15i18404!9m0" +
-		"!14m69!1m57!1m4!1m3!1e3!1e2!1e4!3m5!2m4!3m3!1m2!1i260!2i365!4m1!3i10" +
-		"!10b1!11m42!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3" +
-		"!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e9!2b1!3e2" +
-		"!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!2b1!4b1" +
-		"!2m5!1e1!1e4!1e3!1e5!1e2!3b1!4b1!5m1!1e1!7b1"
+	//nolint:revive // protobuf template must remain intact
+	photosPBTemplate = "!1s%s!2m3!1spQUAYoPQLcOTlwT9u6-gDA!7e81!15i18404!9m0!14m69!1m57!1m4!1m3!1e3!1e2!1e4!3m5!2m4!3m3!1m2!1i260!2i365!4m1!3i10!10b1!11m42!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e9!2b1!3e2!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!2b1!4b1!2m5!1e1!1e4!1e3!1e5!1e2!3b1!4b1!5m1!1e1!7b1"
 )
 
 func buildStatsPB(gaiaID string) string   { return fmt.Sprintf(statsPBTemplate, gaiaID) }
