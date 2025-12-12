@@ -172,6 +172,10 @@ type validationError struct{ data []byte }
 func (*validationError) Error() string { return "validation failed" }
 
 func doFetch(ctx context.Context, client *http.Client, req *http.Request, logger *slog.Logger) ([]byte, error) {
+	// Limit total retry time to 2 seconds
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
 	return retry.DoWithData(
 		func() ([]byte, error) {
 			globalRateLimiter.Wait(req.URL.String())
@@ -189,11 +193,9 @@ func doFetch(ctx context.Context, client *http.Client, req *http.Request, logger
 			return io.ReadAll(resp.Body)
 		},
 		retry.Context(ctx),
-		retry.Attempts(3),                     // ~2s total with exponential backoff
-		retry.Delay(200*time.Millisecond),     // initial delay
-		retry.MaxDelay(1*time.Second),         // cap individual delays
-		retry.DelayType(retry.BackOffDelay),   // exponential backoff
-		retry.MaxJitter(200*time.Millisecond), // add jitter to prevent thundering herd
+		retry.Attempts(2),                     // single retry
+		retry.Delay(200*time.Millisecond),     // delay before retry
+		retry.MaxJitter(100*time.Millisecond), // small jitter
 		retry.RetryIf(isRetryableError),       // only retry transient errors
 		retry.OnRetry(func(n uint, err error) {
 			if logger != nil {

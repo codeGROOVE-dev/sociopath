@@ -256,8 +256,9 @@ func extractPosts(html string, limit int) []profile.Post {
 	}
 
 	// Extract comments - look for "thing ... comment" divs
+	// Use a more permissive pattern that captures the entire md content including links
 	commentRE := `(?s)<div[^>]+class="[^"]*\bcomment\b[^"]*"[^>]+data-subreddit="([^"]+)"[^>]*>` +
-		`.*?<div class="md"[^>]*><p>([^<]+)</p>`
+		`.*?<div class="md"[^>]*>(.*?)</div>`
 	commentPattern := regexp.MustCompile(commentRE)
 	commentMatches := commentPattern.FindAllStringSubmatch(html, -1)
 
@@ -267,6 +268,7 @@ func extractPosts(html string, limit int) []profile.Post {
 		}
 
 		subreddit := match[1]
+		// Strip HTML tags to get plain text (handles links, formatting, etc.)
 		text := strings.TrimSpace(stripHTML(match[2]))
 
 		// Skip very short comments

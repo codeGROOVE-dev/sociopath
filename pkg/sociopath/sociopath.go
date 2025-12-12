@@ -31,15 +31,19 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/bilibili"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bluesky"
 	"github.com/codeGROOVE-dev/sociopath/pkg/codeberg"
+	"github.com/codeGROOVE-dev/sociopath/pkg/crates"
 	"github.com/codeGROOVE-dev/sociopath/pkg/devto"
+	"github.com/codeGROOVE-dev/sociopath/pkg/dockerhub"
 	"github.com/codeGROOVE-dev/sociopath/pkg/generic"
 	"github.com/codeGROOVE-dev/sociopath/pkg/github"
+	"github.com/codeGROOVE-dev/sociopath/pkg/gitlab"
 	"github.com/codeGROOVE-dev/sociopath/pkg/google"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gravatar"
 	"github.com/codeGROOVE-dev/sociopath/pkg/guess"
 	"github.com/codeGROOVE-dev/sociopath/pkg/habr"
 	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/instagram"
+	"github.com/codeGROOVE-dev/sociopath/pkg/keybase"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linkedin"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linktree"
 	"github.com/codeGROOVE-dev/sociopath/pkg/mailru"
@@ -162,6 +166,14 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		p, err = fetchHabr(ctx, url, cfg)
 	case instagram.Match(url):
 		p, err = fetchInstagram(ctx, url, cfg)
+	case keybase.Match(url):
+		p, err = fetchKeybase(ctx, url, cfg)
+	case crates.Match(url):
+		p, err = fetchCrates(ctx, url, cfg)
+	case dockerhub.Match(url):
+		p, err = fetchDockerHub(ctx, url, cfg)
+	case gitlab.Match(url):
+		p, err = fetchGitLab(ctx, url, cfg)
 	case tiktok.Match(url):
 		p, err = fetchTikTok(ctx, url, cfg)
 	case vkontakte.Match(url):
@@ -336,6 +348,70 @@ func fetchInstagram(ctx context.Context, url string, cfg *config) (*profile.Prof
 	}
 
 	client, err := instagram.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchKeybase(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []keybase.Option
+	if cfg.cache != nil {
+		opts = append(opts, keybase.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, keybase.WithLogger(cfg.logger))
+	}
+
+	client, err := keybase.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCrates(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []crates.Option
+	if cfg.cache != nil {
+		opts = append(opts, crates.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, crates.WithLogger(cfg.logger))
+	}
+
+	client, err := crates.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchDockerHub(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []dockerhub.Option
+	if cfg.cache != nil {
+		opts = append(opts, dockerhub.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, dockerhub.WithLogger(cfg.logger))
+	}
+
+	client, err := dockerhub.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGitLab(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []gitlab.Option
+	if cfg.cache != nil {
+		opts = append(opts, gitlab.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, gitlab.WithLogger(cfg.logger))
+	}
+
+	client, err := gitlab.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -747,6 +823,7 @@ func isSocialPlatform(url string) bool {
 		twitter.Match(url) ||
 		linktree.Match(url) ||
 		github.Match(url) ||
+		gitlab.Match(url) ||
 		codeberg.Match(url) ||
 		google.Match(url) ||
 		gravatar.Match(url) ||
@@ -765,6 +842,9 @@ func isSocialPlatform(url string) bool {
 		instagram.Match(url) ||
 		tiktok.Match(url) ||
 		vkontakte.Match(url) ||
+		keybase.Match(url) ||
+		crates.Match(url) ||
+		dockerhub.Match(url) ||
 		mastodon.Match(url)
 }
 
@@ -882,6 +962,8 @@ func PlatformForURL(url string) string {
 		return "linktree"
 	case github.Match(url):
 		return "github"
+	case gitlab.Match(url):
+		return "gitlab"
 	case codeberg.Match(url):
 		return "codeberg"
 	case google.Match(url):
@@ -906,6 +988,12 @@ func PlatformForURL(url string) string {
 		return "habr"
 	case instagram.Match(url):
 		return "instagram"
+	case keybase.Match(url):
+		return "keybase"
+	case crates.Match(url):
+		return "crates"
+	case dockerhub.Match(url):
+		return "dockerhub"
 	case tiktok.Match(url):
 		return "tiktok"
 	case vkontakte.Match(url):
@@ -928,6 +1016,8 @@ func platformMatches(url, platform string) bool {
 	switch platform {
 	case "github":
 		return github.Match(url)
+	case "gitlab":
+		return gitlab.Match(url)
 	case "codeberg":
 		return codeberg.Match(url)
 	case "google":
@@ -960,6 +1050,12 @@ func platformMatches(url, platform string) bool {
 		return gravatar.Match(url)
 	case "mailru":
 		return mailru.Match(url)
+	case "keybase":
+		return keybase.Match(url)
+	case "crates":
+		return crates.Match(url)
+	case "dockerhub":
+		return dockerhub.Match(url)
 	default:
 		return false
 	}

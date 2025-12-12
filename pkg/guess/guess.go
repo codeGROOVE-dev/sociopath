@@ -50,6 +50,7 @@ var platformPatterns = []struct {
 	{"bluesky", "https://bsky.app/profile/%s.bsky.social"},
 	{"twitter", "https://twitter.com/%s"},
 	{"github", "https://github.com/%s"},
+	{"gitlab", "https://gitlab.com/%s"},
 	{"devto", "https://dev.to/%s"},
 	{"instagram", "https://instagram.com/%s"},
 	{"tiktok", "https://tiktok.com/@%s"},
@@ -60,6 +61,9 @@ var platformPatterns = []struct {
 	{"medium", "https://medium.com/@%s"},
 	{"habr", "https://habr.com/users/%s"},
 	{"vkontakte", "https://vk.com/%s"},
+	{"crates", "https://crates.io/users/%s"},
+	{"dockerhub", "https://hub.docker.com/u/%s"},
+	{"keybase", "https://keybase.io/%s"},
 }
 
 // isValidUsernameForPlatform checks if a username meets the platform's requirements.
@@ -225,6 +229,67 @@ func isValidUsernameForPlatform(username, platform string) bool {
 	case "weibo", "zhihu":
 		// These platforms use various ID formats, be permissive
 		return len(username) >= 1 && len(username) <= 50
+
+	case "gitlab":
+		// GitLab: 2-255 chars, alphanumeric, underscores, hyphens, periods
+		// Cannot start/end with hyphen, period, or underscore
+		// Cannot have consecutive special characters
+		if len(username) < 2 || len(username) > 255 {
+			return false
+		}
+		first, last := username[0], username[len(username)-1]
+		if first == '-' || first == '.' || first == '_' ||
+			last == '-' || last == '.' || last == '_' {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') {
+				return false
+			}
+		}
+		return true
+
+	case "crates":
+		// crates.io: alphanumeric, underscores, hyphens
+		// Similar to GitHub username rules
+		if len(username) < 1 || len(username) > 64 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+				return false
+			}
+		}
+		return true
+
+	case "dockerhub":
+		// Docker Hub: 4-30 chars, lowercase alphanumeric, underscores, hyphens
+		// Cannot start with hyphen or underscore
+		if len(username) < 4 || len(username) > 30 {
+			return false
+		}
+		first := username[0]
+		if first == '-' || first == '_' {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+				return false
+			}
+		}
+		return true
+
+	case "keybase":
+		// Keybase: 2-16 chars, lowercase alphanumeric, underscores
+		if len(username) < 2 || len(username) > 16 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
+				return false
+			}
+		}
+		return true
 
 	default:
 		// Unknown platform, be permissive
