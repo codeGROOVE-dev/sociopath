@@ -257,7 +257,7 @@ func TestExtractUsernames(t *testing.T) {
 		{
 			name: "skip generic platform",
 			profiles: []*profile.Profile{
-				{Platform: "generic", Username: "should_skip"},
+				{Platform: "website", Username: "should_skip"},
 				{Platform: "github", Username: "keep_this"},
 			},
 			want: []string{"keep_this"},

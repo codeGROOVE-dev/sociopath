@@ -88,7 +88,7 @@ func TestPlatformDetection(t *testing.T) {
 		{"https://instagram.com/johndoe", "instagram"},
 		{"https://tiktok.com/@johndoe", "tiktok"},
 		{"https://vk.com/johndoe", "vkontakte"},
-		{"https://example.com/about", "generic"},
+		{"https://example.com/about", "website"},
 	}
 
 	// Import all platform packages to verify Match functions

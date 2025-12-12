@@ -262,7 +262,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 		for _, link := range p.SocialLinks {
 			knownURLs[normalizeURL(link)] = true
 			if cfg.PlatformDetector != nil {
-				if platform := cfg.PlatformDetector(link); platform != "" && platform != "generic" {
+				if platform := cfg.PlatformDetector(link); platform != "" && platform != "website" {
 					knownPlatforms[platform] = true
 					vouchedPlatforms[platform] = true
 				}
@@ -348,7 +348,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 				// For lower confidence profiles, skip if we already have this platform
 				if cfg.PlatformDetector != nil {
 					linkPlatform := cfg.PlatformDetector(link)
-					if linkPlatform != "" && linkPlatform != "generic" && knownPlatforms[linkPlatform] {
+					if linkPlatform != "" && linkPlatform != "website" && knownPlatforms[linkPlatform] {
 						continue
 					}
 				}
@@ -731,7 +731,7 @@ func slugifyName(name string) string {
 func isSocialPlatform(platform string) bool {
 	// Platforms that should NOT be used for username extraction/guessing
 	nonSocial := map[string]bool{
-		"generic": true, // generic websites don't have meaningful usernames
+		"website": true, // generic websites don't have meaningful usernames
 	}
 	return !nonSocial[strings.ToLower(platform)]
 }

@@ -4,6 +4,7 @@ package httpcache
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/codeGROOVE-dev/sfcache"
 	"github.com/codeGROOVE-dev/sfcache/pkg/store/localfs"
 	"github.com/codeGROOVE-dev/sfcache/pkg/store/null"
+	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
 )
 
 // Cacher allows external cache implementations for sharing across packages.
@@ -269,4 +271,113 @@ func (r *domainRateLimiter) Wait(rawURL string) {
 	}
 
 	r.lastRequest.Store(domain, time.Now())
+}
+
+// ResolveRedirects follows HTTP, HTML meta refresh, and JavaScript redirects.
+// Returns the final URL after following all redirects (up to maxRedirects).
+// If no redirects are found, returns the original URL unchanged.
+func ResolveRedirects(ctx context.Context, rawURL string, logger *slog.Logger) string {
+	const maxRedirects = 5
+
+	// Create a client that doesn't follow redirects automatically
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // needed for corporate proxies
+		},
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse // Don't follow redirects automatically
+		},
+	}
+
+	currentURL := rawURL
+	for range maxRedirects {
+		globalRateLimiter.Wait(currentURL)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, currentURL, http.NoBody)
+		if err != nil {
+			if logger != nil {
+				logger.Debug("failed to create request for redirect resolution", "url", currentURL, "error", err)
+			}
+			break
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			if logger != nil {
+				logger.Debug("failed to fetch URL for redirect resolution", "url", currentURL, "error", err)
+			}
+			break
+		}
+
+		// Check for HTTP redirect (3xx status codes)
+		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			location := resp.Header.Get("Location")
+			resp.Body.Close() //nolint:errcheck,gosec // intentional
+			if location == "" {
+				break
+			}
+			// Resolve relative redirect URLs
+			nextURL := resolveRelativeURL(currentURL, location)
+			if logger != nil {
+				logger.Debug("following HTTP redirect", "from", currentURL, "to", nextURL, "status", resp.StatusCode)
+			}
+			currentURL = nextURL
+			continue
+		}
+
+		// For 200 OK responses, check for HTML/JS redirects
+		if resp.StatusCode == http.StatusOK {
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024)) // Read up to 64KB
+			resp.Body.Close()                                           //nolint:errcheck,gosec // intentional
+			if err != nil {
+				break
+			}
+
+			redirectURL := htmlutil.ExtractRedirectURL(string(body))
+			if redirectURL == "" {
+				break // No redirect found, we're done
+			}
+
+			// Resolve relative redirect URLs
+			nextURL := resolveRelativeURL(currentURL, redirectURL)
+			if logger != nil {
+				logger.Debug("following HTML/JS redirect", "from", currentURL, "to", nextURL)
+			}
+			currentURL = nextURL
+			continue
+		}
+
+		resp.Body.Close() //nolint:errcheck,gosec // intentional
+		break             // Non-redirect, non-OK status
+	}
+
+	return currentURL
+}
+
+// resolveRelativeURL resolves a potentially relative URL against a base URL.
+func resolveRelativeURL(baseURL, ref string) string {
+	// Already absolute
+	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+		return ref
+	}
+
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return ref
+	}
+
+	// Handle protocol-relative URLs
+	if strings.HasPrefix(ref, "//") {
+		return base.Scheme + ":" + ref
+	}
+
+	refURL, err := url.Parse(ref)
+	if err != nil {
+		return ref
+	}
+
+	return base.ResolveReference(refURL).String()
 }

@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	platform     = "generic"
+	platform     = "website"
 	maxBlogPosts = 50
 )
 

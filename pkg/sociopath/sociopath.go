@@ -624,6 +624,9 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 		item := queue[0]
 		queue = queue[1:]
 
+		// Resolve redirects before fetching
+		item.url = resolveURLRedirects(ctx, item.url, cfg.logger)
+
 		normalizedURL := normalizeURL(item.url)
 		if visited[normalizedURL] {
 			continue
@@ -672,7 +675,7 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 		}
 
 		// From generic pages, only follow known social platform links to avoid runaway crawling
-		onlyKnownPlatforms := p.Platform == "generic"
+		onlyKnownPlatforms := p.Platform == "website"
 
 		// Collect links to queue, then limit
 		var linksToQueue []string
@@ -714,6 +717,9 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 		if len(linksToQueue) > maxLinksPerPage {
 			linksToQueue = linksToQueue[:maxLinksPerPage]
 		}
+
+		// Deduplicate links (redirects are resolved when URLs are fetched from queue)
+		linksToQueue = dedupeLinks(linksToQueue, visited)
 
 		for _, link := range linksToQueue {
 			queue = append(queue, queueItem{url: link, depth: item.depth + 1})
@@ -806,6 +812,37 @@ func normalizeURL(url string) string {
 	return strings.ToLower(url)
 }
 
+// resolveURLRedirects resolves any redirects for a URL and logs if changed.
+func resolveURLRedirects(ctx context.Context, url string, logger *slog.Logger) string {
+	resolved := httpcache.ResolveRedirects(ctx, url, logger)
+	if resolved != url {
+		logger.InfoContext(ctx, "resolved redirect", "original", url, "resolved", resolved)
+	}
+	return resolved
+}
+
+// dedupeLinks removes duplicates from a list of links, considering already-visited URLs.
+func dedupeLinks(links []string, visited map[string]bool) []string {
+	var result []string
+	seen := make(map[string]bool)
+
+	// Copy visited into seen to avoid duplicates with already-visited URLs
+	for k := range visited {
+		seen[k] = true
+	}
+
+	for _, link := range links {
+		normalized := normalizeURL(link)
+		if seen[normalized] {
+			continue
+		}
+		seen[normalized] = true
+		result = append(result, link)
+	}
+
+	return result
+}
+
 // isLikelySocialURL checks if a field value looks like a social media URL worth crawling.
 func isLikelySocialURL(key, value string) bool {
 	if !strings.HasPrefix(value, "http") {
@@ -833,7 +870,7 @@ func isSingleAccountPlatform(platform string) bool {
 	}
 }
 
-// PlatformForURL returns the platform name for a URL, or "generic" if unknown.
+// PlatformForURL returns the platform name for a URL, or "website" if unknown.
 // This uses the same matching logic as Fetch() to ensure consistency.
 func PlatformForURL(url string) string {
 	switch {
@@ -882,7 +919,7 @@ func PlatformForURL(url string) string {
 	case mailru.Match(url):
 		return "mailru"
 	default:
-		return "generic"
+		return "website"
 	}
 }
 
@@ -1053,6 +1090,9 @@ func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) (
 		item := queue[0]
 		queue = queue[1:]
 
+		// Resolve redirects before fetching
+		item.url = resolveURLRedirects(ctx, item.url, cfg.logger)
+
 		normalizedURL := normalizeURL(item.url)
 		if visited[normalizedURL] {
 			continue
@@ -1074,7 +1114,7 @@ func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) (
 		}
 
 		// From generic pages, only follow known social platform links
-		onlyKnownPlatforms := p.Platform == "generic"
+		onlyKnownPlatforms := p.Platform == "website"
 
 		var linksToQueue []string
 		for _, link := range p.SocialLinks {
@@ -1105,6 +1145,9 @@ func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) (
 		if len(linksToQueue) > maxLinksPerPage {
 			linksToQueue = linksToQueue[:maxLinksPerPage]
 		}
+
+		// Deduplicate links (redirects are resolved when URLs are fetched from queue)
+		linksToQueue = dedupeLinks(linksToQueue, visited)
 
 		for _, link := range linksToQueue {
 			queue = append(queue, queueItem{url: link, depth: item.depth + 1})
