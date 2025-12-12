@@ -128,8 +128,8 @@ func WithBrowserCookies() Option {
 }
 
 // WithHTTPCache sets the HTTP cache for responses.
-func WithHTTPCache(httpCache httpcache.Cacher) Option {
-	return func(c *config) { c.cache = httpCache }
+func WithHTTPCache(cache httpcache.Cacher) Option {
+	return func(c *config) { c.cache = cache }
 }
 
 // WithLogger sets a custom logger.
@@ -151,6 +151,8 @@ func WithEmailHints(emails ...string) Option {
 
 // Fetch retrieves a profile from the given URL.
 // The platform is automatically detected from the URL.
+//
+//nolint:maintidx // complexity is inherent to supporting 55+ platforms
 func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, error) {
 	cfg := &config{logger: slog.Default()}
 	for _, opt := range opts {
@@ -1222,10 +1224,7 @@ func fetchGeneric(ctx context.Context, url string, cfg *config) (*profile.Profil
 }
 
 // FetchRecursive fetches a profile and recursively fetches all social links found.
-// It returns all discovered profiles, avoiding duplicates by tracking visited URLs.
-// Only links that match known social media platforms are followed.
-// For platforms with single-account-per-person assumption (GitHub, LinkedIn, Twitter, etc.),
-// it skips recursing into additional profiles from the same platform.
+// It deduplicates by URL and skips same-platform links for single-account platforms.
 func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile.Profile, error) {
 	cfg := &config{logger: slog.Default()}
 	for _, opt := range opts {
@@ -1233,135 +1232,113 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 	}
 
 	visited := make(map[string]bool)
-	var profiles []*profile.Profile
-	initialPlatform := "" // Track the platform we started from
+	var out []*profile.Profile
+	initial := ""
 
-	type queueItem struct {
+	type item struct {
 		url   string
 		depth int
 	}
-	const maxDepth = 3
-	const maxLinksPerPage = 8
+	const maxDepth, maxLinks = 3, 8
 
-	queue := []queueItem{{url: url, depth: 0}}
+	queue := []item{{url, 0}}
 	for len(queue) > 0 {
-		item := queue[0]
+		cur := queue[0]
 		queue = queue[1:]
 
-		// Resolve redirects before fetching
-		item.url = resolveURLRedirects(ctx, item.url, cfg.logger)
+		// Resolve redirects
+		if resolved := httpcache.ResolveRedirects(ctx, cur.url, cfg.logger); resolved != cur.url {
+			cfg.logger.InfoContext(ctx, "resolved redirect", "from", cur.url, "to", resolved)
+			cur.url = resolved
+		}
 
-		normalizedURL := normalizeURL(item.url)
-		if visited[normalizedURL] {
+		norm := normalizeURL(cur.url)
+		if visited[norm] {
 			continue
 		}
-		visited[normalizedURL] = true
+		visited[norm] = true
 
-		cfg.logger.InfoContext(ctx, "fetching profile", "url", item.url, "depth", item.depth, "visited", len(visited))
+		cfg.logger.InfoContext(ctx, "fetching profile", "url", cur.url, "depth", cur.depth, "visited", len(visited))
 
-		p, err := Fetch(ctx, item.url, opts...)
+		p, err := Fetch(ctx, cur.url, opts...)
 		if err != nil {
-			// For auth-required platforms, try generic parser on any error (except LinkedIn)
-			// LinkedIn's generic HTML contains dozens of "People Also Viewed" links that cause runaway crawling
-			tryGeneric := (twitter.Match(item.url) || instagram.Match(item.url) ||
-				tiktok.Match(item.url) || vkontakte.Match(item.url)) && !linkedin.Match(item.url)
-
-			if !tryGeneric {
-				cfg.logger.WarnContext(ctx, "failed to fetch profile", "url", item.url, "error", err)
-				// If it's an auth-related error, add a stub profile with the error
+			// For auth-required platforms (except LinkedIn), try generic parser
+			// LinkedIn's generic HTML has "People Also Viewed" links that cause runaway crawling
+			authPlatform := twitter.Match(cur.url) || instagram.Match(cur.url) ||
+				tiktok.Match(cur.url) || vkontakte.Match(cur.url)
+			if !authPlatform || linkedin.Match(cur.url) {
+				cfg.logger.WarnContext(ctx, "failed to fetch profile", "url", cur.url, "error", err)
 				if errors.Is(err, profile.ErrNoCookies) || errors.Is(err, profile.ErrAuthRequired) {
-					profiles = append(profiles, &profile.Profile{
-						Platform: PlatformForURL(item.url),
-						URL:      item.url,
+					out = append(out, &profile.Profile{
+						Platform: PlatformForURL(cur.url),
+						URL:      cur.url,
 						Error:    "login required",
 					})
 				}
 				continue
 			}
-
-			cfg.logger.InfoContext(ctx, "fetch failed, trying generic parser", "url", item.url, "error", err)
-			p, err = fetchGeneric(ctx, item.url, cfg)
-			if err != nil {
-				cfg.logger.WarnContext(ctx, "generic fetch also failed", "url", item.url, "error", err)
+			cfg.logger.InfoContext(ctx, "fetch failed, trying generic", "url", cur.url, "error", err)
+			if p, err = fetchGeneric(ctx, cur.url, cfg); err != nil {
+				cfg.logger.WarnContext(ctx, "generic fetch failed", "url", cur.url, "error", err)
 				continue
 			}
 		}
-		profiles = append(profiles, p)
+		out = append(out, p)
 
-		// Remember the platform we started from (depth 0)
-		if item.depth == 0 {
-			initialPlatform = p.Platform
+		if cur.depth == 0 {
+			initial = p.Platform
 		}
-
-		// Don't crawl further if we've hit max depth
-		if item.depth >= maxDepth {
+		if cur.depth >= maxDepth {
 			continue
 		}
 
-		// From generic pages, only follow known social platform links to avoid runaway crawling
-		onlyKnownPlatforms := p.Platform == "website"
+		// From generic pages, only follow known social platforms
+		onlyKnown := p.Platform == "website"
 
-		// Collect links to queue, then limit
-		var linksToQueue []string
-
-		// Queue social links for crawling
+		var links []string
 		for _, link := range p.SocialLinks {
-			if !visited[normalizeURL(link)] && isValidProfileURL(link) {
-				// Skip links that are the same platform as our initial URL (single-account-per-person platforms)
-				if isSingleAccountPlatform(initialPlatform) && platformMatches(link, initialPlatform) {
-					continue
-				}
-
-				// For generic pages, only follow if it's a known social platform or same-domain contact/about page
-				if !onlyKnownPlatforms || isSocialPlatform(link) || isSameDomainContactPage(link, item.url) {
-					linksToQueue = append(linksToQueue, link)
-				}
+			if visited[normalizeURL(link)] || !isValidProfileURL(link) {
+				continue
+			}
+			if isSingleAccountPlatform(initial) && platformMatches(link, initial) {
+				continue
+			}
+			if !onlyKnown || isSocialPlatform(link) || isSameDomainContactPage(link, cur.url) {
+				links = append(links, link)
 			}
 		}
-
-		// Also queue website if present
 		if p.Website != "" && !visited[normalizeURL(p.Website)] {
-			linksToQueue = append(linksToQueue, p.Website)
+			links = append(links, p.Website)
 		}
 
-		// Queue links from Fields map (sorted for deterministic iteration order)
+		// Check Fields for social URLs (sorted for determinism)
 		keys := make([]string, 0, len(p.Fields))
 		for k := range p.Fields {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			v := p.Fields[k]
-			if isLikelySocialURL(k, v) && !visited[normalizeURL(v)] {
-				linksToQueue = append(linksToQueue, v)
+			if v := p.Fields[k]; isLikelySocialURL(k, v) && !visited[normalizeURL(v)] {
+				links = append(links, v)
 			}
 		}
 
-		// Limit links per page to avoid explosion
-		if len(linksToQueue) > maxLinksPerPage {
-			linksToQueue = linksToQueue[:maxLinksPerPage]
+		if len(links) > maxLinks {
+			links = links[:maxLinks]
 		}
-
-		// Deduplicate links (redirects are resolved when URLs are fetched from queue)
-		linksToQueue = dedupeLinks(linksToQueue, visited)
-
-		for _, link := range linksToQueue {
-			queue = append(queue, queueItem{url: link, depth: item.depth + 1})
+		for _, link := range dedupeLinks(links, visited) {
+			queue = append(queue, item{link, cur.depth + 1})
 		}
 	}
 
-	return profiles, nil
+	return out, nil
 }
 
-// isValidProfileURL filters out URLs that are not actual user profiles.
-// Delegates to platform-specific validators when available.
-func isValidProfileURL(urlStr string) bool {
-	// Use platform-specific validation for Twitter/X
-	if twitter.Match(urlStr) {
-		return twitter.IsValidProfileURL(urlStr)
+// isValidProfileURL filters out non-profile URLs (e.g. twitter.com/home).
+func isValidProfileURL(url string) bool {
+	if twitter.Match(url) {
+		return twitter.IsValidProfileURL(url)
 	}
-
-	// Other platforms: no filtering for now
 	return true
 }
 
@@ -1400,90 +1377,60 @@ func isSocialPlatform(url string) bool {
 		holopin.Match(url)
 }
 
-// isSameDomainContactPage returns true if the link is a contact/about page on the same domain as baseURL.
-func isSameDomainContactPage(link, baseURL string) bool {
-	linkLower := strings.ToLower(link)
-	baseLower := strings.ToLower(baseURL)
-
-	// Extract domains (simple approach - get hostname)
-	getDomain := func(url string) string {
-		url = strings.TrimPrefix(url, "https://")
-		url = strings.TrimPrefix(url, "http://")
-		url = strings.TrimPrefix(url, "www.")
-		if idx := strings.Index(url, "/"); idx >= 0 {
-			url = url[:idx]
+// isSameDomainContactPage returns true if link is a contact/about page on same domain.
+func isSameDomainContactPage(link, base string) bool {
+	host := func(u string) string {
+		u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+		u = strings.TrimPrefix(u, "www.")
+		if i := strings.Index(u, "/"); i >= 0 {
+			u = u[:i]
 		}
-		return url
+		return strings.ToLower(u)
 	}
-
-	linkDomain := getDomain(linkLower)
-	baseDomain := getDomain(baseLower)
-
-	// Only follow if same domain
-	if linkDomain != baseDomain {
+	if host(link) != host(base) {
 		return false
 	}
-
-	// Check if it looks like a contact/about page
-	contactPaths := []string{"/about", "/contact", "/links", "/connect", "/socials"}
-	for _, path := range contactPaths {
-		if strings.Contains(linkLower, path) {
+	lower := strings.ToLower(link)
+	for _, p := range []string{"/about", "/contact", "/links", "/connect", "/socials"} {
+		if strings.Contains(lower, p) {
 			return true
 		}
 	}
-
 	return false
 }
 
-// normalizeURL normalizes a URL for deduplication (removes trailing slash, lowercases host).
+// normalizeURL normalizes a URL for deduplication.
 func normalizeURL(url string) string {
-	url = strings.TrimSuffix(url, "/")
-	url = strings.TrimPrefix(url, "https://")
-	url = strings.TrimPrefix(url, "http://")
+	url = strings.TrimPrefix(strings.TrimPrefix(url, "https://"), "http://")
 	url = strings.TrimPrefix(url, "www.")
-	return strings.ToLower(url)
+	return strings.ToLower(strings.TrimSuffix(url, "/"))
 }
 
-// resolveURLRedirects resolves any redirects for a URL and logs if changed.
-func resolveURLRedirects(ctx context.Context, url string, logger *slog.Logger) string {
-	resolved := httpcache.ResolveRedirects(ctx, url, logger)
-	if resolved != url {
-		logger.InfoContext(ctx, "resolved redirect", "original", url, "resolved", resolved)
-	}
-	return resolved
-}
-
-// dedupeLinks removes duplicates from a list of links, considering already-visited URLs.
+// dedupeLinks removes duplicates from links, considering visited URLs.
 func dedupeLinks(links []string, visited map[string]bool) []string {
-	var result []string
-	seen := make(map[string]bool)
-
-	// Copy visited into seen to avoid duplicates with already-visited URLs
+	seen := make(map[string]bool, len(visited))
 	for k := range visited {
 		seen[k] = true
 	}
-
+	var out []string
 	for _, link := range links {
-		normalized := normalizeURL(link)
-		if seen[normalized] {
-			continue
+		norm := normalizeURL(link)
+		if !seen[norm] {
+			seen[norm] = true
+			out = append(out, link)
 		}
-		seen[normalized] = true
-		result = append(result, link)
 	}
-
-	return result
+	return out
 }
 
-// isLikelySocialURL checks if a field value looks like a social media URL worth crawling.
+// isLikelySocialURL checks if a field value looks like a social URL.
 func isLikelySocialURL(key, value string) bool {
 	if !strings.HasPrefix(value, "http") {
 		return false
 	}
-	// Known social field keys
-	socialKeys := []string{"twitter", "linkedin", "github", "instagram", "youtube", "tiktok", "mastodon", "bluesky", "website"}
-	for _, k := range socialKeys {
-		if strings.Contains(strings.ToLower(key), k) {
+	lower := strings.ToLower(key)
+	for _, k := range []string{"twitter", "linkedin", "github", "instagram", "youtube", "tiktok", "mastodon", "bluesky", "website"} {
+		if strings.Contains(lower, k) {
 			return true
 		}
 	}
@@ -1705,128 +1652,109 @@ func GuessFromUsername(ctx context.Context, username string, opts ...Option) ([]
 	return guessed, nil
 }
 
-// FetchEmailRecursive fetches profiles from email-based services and recursively
-// follows social links. Multiple emails are treated as belonging to the same person,
-// with results deduplicated by URL.
+// FetchEmailRecursive fetches profiles from email-based services and recursively follows links.
 func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) ([]*profile.Profile, error) {
 	cfg := &config{logger: slog.Default()}
 	for _, opt := range opts {
 		opt(cfg)
 	}
 
-	// First, get seed profiles from all emails
-	seedProfiles, err := FetchEmail(ctx, emails, opts...)
+	seeds, err := FetchEmail(ctx, emails, opts...)
 	if err != nil {
 		return nil, err
 	}
-
-	if len(seedProfiles) == 0 {
+	if len(seeds) == 0 {
 		return nil, nil
 	}
 
-	// Track visited URLs to avoid duplicates
 	visited := make(map[string]bool)
-	var allProfiles []*profile.Profile
-
-	// Add seed profiles and mark as visited
-	for _, p := range seedProfiles {
-		normalizedURL := normalizeURL(p.URL)
-		if !visited[normalizedURL] {
-			visited[normalizedURL] = true
-			allProfiles = append(allProfiles, p)
+	var out []*profile.Profile
+	for _, p := range seeds {
+		if norm := normalizeURL(p.URL); !visited[norm] {
+			visited[norm] = true
+			out = append(out, p)
 		}
 	}
 
-	// Collect all social links from seed profiles
-	type queueItem struct {
+	type item struct {
 		url   string
 		depth int
 	}
-	const maxDepth = 3
-	const maxLinksPerPage = 8
+	const maxDepth, maxLinks = 3, 8
 
-	var queue []queueItem
-	for _, p := range seedProfiles {
+	var queue []item
+	for _, p := range seeds {
 		for _, link := range p.SocialLinks {
 			if !visited[normalizeURL(link)] && isValidProfileURL(link) {
-				queue = append(queue, queueItem{url: link, depth: 1})
+				queue = append(queue, item{link, 1})
 			}
 		}
 		if p.Website != "" && !visited[normalizeURL(p.Website)] {
-			queue = append(queue, queueItem{url: p.Website, depth: 1})
+			queue = append(queue, item{p.Website, 1})
 		}
 	}
 
-	// Process queue (same logic as FetchRecursive)
 	for len(queue) > 0 {
-		item := queue[0]
+		cur := queue[0]
 		queue = queue[1:]
 
-		// Resolve redirects before fetching
-		item.url = resolveURLRedirects(ctx, item.url, cfg.logger)
+		if resolved := httpcache.ResolveRedirects(ctx, cur.url, cfg.logger); resolved != cur.url {
+			cfg.logger.InfoContext(ctx, "resolved redirect", "from", cur.url, "to", resolved)
+			cur.url = resolved
+		}
 
-		normalizedURL := normalizeURL(item.url)
-		if visited[normalizedURL] {
+		norm := normalizeURL(cur.url)
+		if visited[norm] {
 			continue
 		}
-		visited[normalizedURL] = true
+		visited[norm] = true
 
-		cfg.logger.InfoContext(ctx, "fetching profile", "url", item.url, "depth", item.depth, "visited", len(visited))
+		cfg.logger.InfoContext(ctx, "fetching profile", "url", cur.url, "depth", cur.depth, "visited", len(visited))
 
-		p, err := Fetch(ctx, item.url, opts...)
+		p, err := Fetch(ctx, cur.url, opts...)
 		if err != nil {
-			cfg.logger.WarnContext(ctx, "failed to fetch profile", "url", item.url, "error", err)
+			cfg.logger.WarnContext(ctx, "failed to fetch profile", "url", cur.url, "error", err)
 			continue
 		}
-		allProfiles = append(allProfiles, p)
+		out = append(out, p)
 
-		// Don't crawl further if we've hit max depth
-		if item.depth >= maxDepth {
+		if cur.depth >= maxDepth {
 			continue
 		}
 
-		// From generic pages, only follow known social platform links
-		onlyKnownPlatforms := p.Platform == "website"
-
-		var linksToQueue []string
+		onlyKnown := p.Platform == "website"
+		var links []string
 		for _, link := range p.SocialLinks {
 			if !visited[normalizeURL(link)] && isValidProfileURL(link) {
-				if !onlyKnownPlatforms || isSocialPlatform(link) || isSameDomainContactPage(link, item.url) {
-					linksToQueue = append(linksToQueue, link)
+				if !onlyKnown || isSocialPlatform(link) || isSameDomainContactPage(link, cur.url) {
+					links = append(links, link)
 				}
 			}
 		}
-
 		if p.Website != "" && !visited[normalizeURL(p.Website)] {
-			linksToQueue = append(linksToQueue, p.Website)
+			links = append(links, p.Website)
 		}
 
-		// Queue links from Fields map (sorted for deterministic iteration)
 		keys := make([]string, 0, len(p.Fields))
 		for k := range p.Fields {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			v := p.Fields[k]
-			if isLikelySocialURL(k, v) && !visited[normalizeURL(v)] {
-				linksToQueue = append(linksToQueue, v)
+			if v := p.Fields[k]; isLikelySocialURL(k, v) && !visited[normalizeURL(v)] {
+				links = append(links, v)
 			}
 		}
 
-		if len(linksToQueue) > maxLinksPerPage {
-			linksToQueue = linksToQueue[:maxLinksPerPage]
+		if len(links) > maxLinks {
+			links = links[:maxLinks]
 		}
-
-		// Deduplicate links (redirects are resolved when URLs are fetched from queue)
-		linksToQueue = dedupeLinks(linksToQueue, visited)
-
-		for _, link := range linksToQueue {
-			queue = append(queue, queueItem{url: link, depth: item.depth + 1})
+		for _, link := range dedupeLinks(links, visited) {
+			queue = append(queue, item{link, cur.depth + 1})
 		}
 	}
 
-	return allProfiles, nil
+	return out, nil
 }
 
 // FetchEmail fetches profiles from email-based services (Gravatar, Mail.ru, Google, GitHub).
