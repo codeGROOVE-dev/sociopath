@@ -106,17 +106,17 @@ func TestGenerateCandidates_PrioritizesQualityUsernames(t *testing.T) {
 	vouchedPlatforms := map[string]bool{}
 	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms)
 
-	// Find the LinkedIn candidates (limited to 3)
-	var linkedinUsernames []string
+	// Find the GitHub candidates (limited to 3)
+	var githubUsernames []string
 	for _, c := range candidates {
-		if c.platform == "linkedin" {
-			linkedinUsernames = append(linkedinUsernames, c.username)
+		if c.platform == "github" {
+			githubUsernames = append(githubUsernames, c.username)
 		}
 	}
 
 	// user123 should be included (has digits = higher quality)
-	if !slices.Contains(linkedinUsernames, "user123") {
-		t.Errorf("expected user123 to be prioritized in LinkedIn candidates, got: %v", linkedinUsernames)
+	if !slices.Contains(githubUsernames, "user123") {
+		t.Errorf("expected user123 to be prioritized in GitHub candidates, got: %v", githubUsernames)
 	}
 }
 
@@ -357,85 +357,22 @@ func TestHasTechTitle(t *testing.T) {
 	}
 }
 
-func TestGenerateCandidates_SkipsLinkedInWhenVouched(t *testing.T) {
-	// When we have a vouched LinkedIn profile, skip all LinkedIn guessing
+func TestGenerateCandidates_NoLinkedInGuessing(t *testing.T) {
+	// LinkedIn guessing is disabled - we can't verify profiles without auth
+	// LinkedIn profiles should only come from actual links
 	usernames := []string{"dlorenc"}
 	names := []string{"Dan Lorenc"}
 
 	knownURLs := map[string]bool{}
-	knownPlatforms := map[string]bool{"linkedin": true}
-	vouchedPlatforms := map[string]bool{"linkedin": true} // LinkedIn is vouched
+	knownPlatforms := map[string]bool{}
+	vouchedPlatforms := map[string]bool{}
 
 	candidates := generateCandidates(usernames, names, knownURLs, knownPlatforms, vouchedPlatforms)
 
 	// Should not generate any LinkedIn candidates
 	for _, c := range candidates {
 		if c.platform == "linkedin" {
-			t.Errorf("generateCandidates should not include LinkedIn when vouched, got: %s", c.url)
-		}
-	}
-}
-
-func TestGenerateCandidates_AllowsNameBasedLinkedInWhenOnlyGuessed(t *testing.T) {
-	// When we have a guessed LinkedIn (username match, may be wrong person),
-	// still generate name-based LinkedIn candidates
-	usernames := []string{"dlorenc"}
-	names := []string{"Dan Lorenc"}
-
-	knownURLs := map[string]bool{
-		"linkedin.com/in/dlorenc": true, // Username-based guess already tried
-	}
-	knownPlatforms := map[string]bool{"linkedin": true} // Have a LinkedIn profile
-	vouchedPlatforms := map[string]bool{}               // But NOT vouched
-
-	candidates := generateCandidates(usernames, names, knownURLs, knownPlatforms, vouchedPlatforms)
-
-	// Should generate name-based LinkedIn candidates (dan-lorenc, danlorenc)
-	var linkedinCandidates []string
-	for _, c := range candidates {
-		if c.platform == "linkedin" {
-			linkedinCandidates = append(linkedinCandidates, c.url)
-		}
-	}
-
-	if len(linkedinCandidates) == 0 {
-		t.Error("generateCandidates should generate name-based LinkedIn candidates when only guessed (not vouched)")
-	}
-
-	// Verify we got the expected name-based slugs
-	foundDanLorenc := false
-	foundDanlorenc := false
-	for _, url := range linkedinCandidates {
-		if url == "https://www.linkedin.com/in/dan-lorenc/" {
-			foundDanLorenc = true
-		}
-		if url == "https://www.linkedin.com/in/danlorenc/" {
-			foundDanlorenc = true
-		}
-	}
-	if !foundDanLorenc {
-		t.Error("expected dan-lorenc LinkedIn candidate")
-	}
-	if !foundDanlorenc {
-		t.Error("expected danlorenc LinkedIn candidate")
-	}
-}
-
-func TestGenerateCandidates_SkipsUsernameLinkedInWhenKnown(t *testing.T) {
-	// Username-based LinkedIn guessing should be skipped when we have any LinkedIn profile
-	usernames := []string{"dlorenc"}
-	names := []string{} // No names, so no name-based guessing
-
-	knownURLs := map[string]bool{}
-	knownPlatforms := map[string]bool{"linkedin": true} // Have a LinkedIn profile (guessed)
-	vouchedPlatforms := map[string]bool{}               // Not vouched
-
-	candidates := generateCandidates(usernames, names, knownURLs, knownPlatforms, vouchedPlatforms)
-
-	// Should NOT generate username-based LinkedIn candidates
-	for _, c := range candidates {
-		if c.platform == "linkedin" && c.matchType == "username" {
-			t.Errorf("generateCandidates should skip username-based LinkedIn when knownPlatforms has linkedin, got: %s", c.url)
+			t.Errorf("generateCandidates should not include LinkedIn (guessing disabled), got: %s", c.url)
 		}
 	}
 }

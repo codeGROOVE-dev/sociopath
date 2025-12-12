@@ -1,6 +1,9 @@
 package htmlutil
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestExtractEmailFromURL(t *testing.T) {
 	tests := []struct {
@@ -79,6 +82,56 @@ func TestIsEmailURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := IsEmailURL(tt.url); got != tt.want {
 				t.Errorf("IsEmailURL(%q) = %v, want %v", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEmailAddresses(t *testing.T) {
+	tests := []struct {
+		name    string
+		html    string
+		want    []string
+		notWant []string
+	}{
+		{
+			name:    "valid email",
+			html:    `<p>Contact me at test@gmail.com</p>`,
+			want:    []string{"test@gmail.com"},
+			notWant: nil,
+		},
+		{
+			name:    "bogus TLD filtered",
+			html:    `<p>u+tko@hrdacmqtem.sqdro</p>`,
+			want:    nil,
+			notWant: []string{"u+tko@hrdacmqtem.sqdro"},
+		},
+		{
+			name:    "noreply filtered",
+			html:    `<p>noreply@example.com</p>`,
+			want:    nil,
+			notWant: []string{"noreply@example.com"},
+		},
+		{
+			name:    "multiple with bogus filtered",
+			html:    `<p>valid@gmail.com and bogus@xyzqw.tklrm</p>`,
+			want:    []string{"valid@gmail.com"},
+			notWant: []string{"bogus@xyzqw.tklrm"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EmailAddresses(tt.html)
+			for _, want := range tt.want {
+				if !slices.Contains(got, want) {
+					t.Errorf("EmailAddresses() missing %q, got %v", want, got)
+				}
+			}
+			for _, notWant := range tt.notWant {
+				if slices.Contains(got, notWant) {
+					t.Errorf("EmailAddresses() should not contain %q, got %v", notWant, got)
+				}
 			}
 		})
 	}

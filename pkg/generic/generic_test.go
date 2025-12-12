@@ -45,6 +45,9 @@ func TestValidateURL(t *testing.T) {
 		{"https://foo.internal", true},
 		{"https://[::1]", true},
 		{"https://172.16.0.1", true},
+		{"https://example.com/support", true},
+		{"https://example.com/foo/support", true},
+		{"https://example.com/supported", false}, // not exactly /support
 	}
 
 	for _, tt := range tests {
@@ -312,6 +315,20 @@ func TestExtractBlogPosts(t *testing.T) {
 			baseURL:   "https://example.com/",
 			wantCount: 2,
 			wantFirst: "Post One",
+		},
+		{
+			name: "hugo microblog style",
+			html: `<html>
+				<head><link rel="alternate" href="/feed.xml" type="application/rss+xml"></head>
+				<body>
+				<a href="/2025/12/12/rethinking-sudo.html"><h1>Rethinking sudo with object capabilities</h1></a>
+				<time datetime="2025-12-12">2025-12-12</time>
+				<a href="/2025/12/02/i-want-you.html"><h1>I want you to understand</h1></a>
+				<time datetime="2025-12-02">2025-12-02</time>
+				</body></html>`,
+			baseURL:   "https://ariadne.space/",
+			wantCount: 2,
+			wantFirst: "Rethinking sudo with object capabilities",
 		},
 		{
 			name: "not a blog",

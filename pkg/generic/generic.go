@@ -324,6 +324,29 @@ func extractBlogPosts(content, baseURL string) (posts []profile.Post, lastActive
 		}
 	}
 
+	if len(bposts) > 0 {
+		return toBlogPosts(bposts)
+	}
+
+	// Pattern 7: Links containing headings followed by time elements (Hugo/Micro.blog style)
+	// e.g., <a href="URL"><h1>Title</h1></a> ... <time datetime="...">DATE</time>
+	headingLinkRe := `(?is)<a[^>]+href=["']([^"']+)["'][^>]*>\s*<h[1-6][^>]*>([^<]+)</h[1-6]>\s*</a>` +
+		`.*?<time[^>]*(?:datetime=["']([^"']+)["'])?[^>]*>\s*(\d{4}-\d{2}-\d{2})`
+	headingLinkPattern := regexp.MustCompile(headingLinkRe)
+	for _, m := range headingLinkPattern.FindAllStringSubmatch(content, maxBlogPosts) {
+		postURL := resolveURL(base, m[1])
+		title := html.UnescapeString(strings.TrimSpace(m[2]))
+		date := m[4] // The visible date
+		bposts = append(bposts, blogPost{
+			post: profile.Post{
+				Type:  profile.PostTypeArticle,
+				Title: title,
+				URL:   postURL,
+			},
+			date: date,
+		})
+	}
+
 	return toBlogPosts(bposts)
 }
 
@@ -468,11 +491,17 @@ func dedupeLinks(links []string) []string {
 	return result
 }
 
-// validateURL checks for SSRF vulnerabilities.
+// validateURL checks for SSRF vulnerabilities and non-profile paths.
 func validateURL(urlStr string) error {
 	parsed, err := url.Parse(urlStr)
 	if err != nil {
 		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	// Block common non-profile paths
+	path := strings.ToLower(parsed.Path)
+	if strings.HasSuffix(path, "/support") || path == "/support" {
+		return errors.New("blocked: support page")
 	}
 
 	host := strings.ToLower(parsed.Hostname())

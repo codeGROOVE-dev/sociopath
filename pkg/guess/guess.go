@@ -54,7 +54,7 @@ var platformPatterns = []struct {
 	{"devto", "https://dev.to/%s"},
 	{"instagram", "https://instagram.com/%s"},
 	{"tiktok", "https://tiktok.com/@%s"},
-	{"linkedin", "https://linkedin.com/in/%s"},
+	// LinkedIn removed from guessing - we can't verify profiles without auth
 	{"bilibili", "https://space.bilibili.com/%s"},
 	{"reddit", "https://reddit.com/user/%s"},
 	{"youtube", "https://youtube.com/@%s"},
@@ -935,7 +935,7 @@ func extractUsernamesWithLogger(profiles []*profile.Profile, logger *slog.Logger
 	var usernames []string
 
 	for _, p := range profiles {
-		// Extract username from profile (only from recognized social platforms)
+		// Only use verified usernames from successfully fetched profiles
 		if p.Username != "" && isSocialPlatform(p.Platform) {
 			u := strings.ToLower(p.Username)
 			if isValidUsername(u) && !seen[u] {
@@ -944,21 +944,6 @@ func extractUsernamesWithLogger(profiles []*profile.Profile, logger *slog.Logger
 				if logger != nil {
 					logger.Debug("discovered username for guessing",
 						"username", u, "source_platform", p.Platform, "source_url", p.URL)
-				}
-			}
-		}
-
-		// Extract username from URL path (only for social platforms)
-		if isSocialPlatform(p.Platform) {
-			if u := extractUsernameFromURL(p.URL); u != "" {
-				u = strings.ToLower(u)
-				if isValidUsername(u) && !seen[u] {
-					seen[u] = true
-					usernames = append(usernames, u)
-					if logger != nil {
-						logger.Debug("discovered username from URL for guessing",
-							"username", u, "source_platform", p.Platform, "source_url", p.URL)
-					}
 				}
 			}
 		}
@@ -1063,67 +1048,22 @@ func isValidUsername(u string) bool {
 		"about": true, "help": true, "terms": true, "privacy": true,
 		"home": true, "index": true, "search": true, "login": true,
 		"logout": true, "signup": true, "register": true, "api": true,
-		"people": true, // e.g., intensedebate.com/people is a directory, not a profile
+		"people":    true, // e.g., intensedebate.com/people is a directory, not a profile
+		"civis":     true, // e.g., arstechnica.com/civis is a forum, not a profile
+		"slideshow": true, // e.g., slideshare.net/slideshow is a content path, not a profile
 	}
 	return !invalid[u]
-}
-
-func extractUsernameFromURL(url string) string {
-	// Remove protocol and domain
-	url = strings.TrimPrefix(url, "https://")
-	url = strings.TrimPrefix(url, "http://")
-
-	parts := strings.Split(url, "/")
-	if len(parts) < 2 {
-		return ""
-	}
-
-	// Common path segments to skip
-	skipPaths := map[string]bool{
-		"in": true, "profile": true, "profiles": true, "users": true, "user": true,
-		"p": true, "u": true, "status": true, "posts": true,
-	}
-
-	// Handle @username patterns
-	for _, part := range parts[1:] {
-		part = strings.TrimPrefix(part, "@")
-		part = strings.Split(part, "?")[0] // Remove query string
-		part = strings.TrimSpace(part)
-
-		if part == "" || skipPaths[strings.ToLower(part)] {
-			continue
-		}
-
-		// Skip if it looks like a numeric ID
-		if isNumeric(part) {
-			continue
-		}
-
-		return part
-	}
-
-	return ""
-}
-
-func isNumeric(s string) bool {
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return s != ""
 }
 
 // maxCandidatesPerPlatform limits how many URLs we try per platform to avoid excessive requests.
 const maxCandidatesPerPlatform = 3
 
-//nolint:gocognit // candidate generation with platform-specific rules is inherently complex
 func generateCandidates(
 	usernames []string,
-	names []string,
+	_ []string, // names - unused after removing LinkedIn name-based guessing
 	knownURLs map[string]bool,
 	knownPlatforms map[string]bool,
-	vouchedPlatforms map[string]bool,
+	_ map[string]bool, // vouchedPlatforms - unused after removing LinkedIn name-based guessing
 ) []candidateURL {
 	// Track candidates per platform, prioritizing higher-quality guesses
 	platformCandidates := make(map[string][]candidateURL)
@@ -1188,47 +1128,8 @@ func generateCandidates(
 		}
 	}
 
-	// Generate name-based LinkedIn candidates only if we don't have a vouched LinkedIn profile
-	// and haven't hit the limit yet
-	if !vouchedPlatforms["linkedin"] && len(platformCandidates["linkedin"]) < maxCandidatesPerPlatform {
-		for _, name := range names {
-			if len(platformCandidates["linkedin"]) >= maxCandidatesPerPlatform {
-				break
-			}
-
-			slug := slugifyName(name)
-			if slug == "" || len(slug) < 3 {
-				continue
-			}
-
-			// Try hyphenated version (e.g., dan-lorenc)
-			url := "https://www.linkedin.com/in/" + slug + "/"
-			if !knownURLs[normalizeURL(url)] && len(platformCandidates["linkedin"]) < maxCandidatesPerPlatform {
-				platformCandidates["linkedin"] = append(platformCandidates["linkedin"], candidateURL{
-					url:        url,
-					username:   slug,
-					platform:   "linkedin",
-					matchType:  "name",
-					sourceName: name,
-				})
-			}
-
-			// Also try without hyphens (e.g., danlorenc)
-			slugNoHyphens := strings.ReplaceAll(slug, "-", "")
-			if slugNoHyphens != slug && len(slugNoHyphens) >= 3 {
-				urlNoHyphens := "https://www.linkedin.com/in/" + slugNoHyphens + "/"
-				if !knownURLs[normalizeURL(urlNoHyphens)] && len(platformCandidates["linkedin"]) < maxCandidatesPerPlatform {
-					platformCandidates["linkedin"] = append(platformCandidates["linkedin"], candidateURL{
-						url:        urlNoHyphens,
-						username:   slugNoHyphens,
-						platform:   "linkedin",
-						matchType:  "name",
-						sourceName: name,
-					})
-				}
-			}
-		}
-	}
+	// LinkedIn name-based guessing removed - we can't verify profiles without auth
+	// LinkedIn profiles will only be included when discovered via actual links
 
 	// Flatten the map into a slice
 	var candidates []candidateURL

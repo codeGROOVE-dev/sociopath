@@ -66,12 +66,14 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/mailru"
 	"github.com/codeGROOVE-dev/sociopath/pkg/mastodon"
 	"github.com/codeGROOVE-dev/sociopath/pkg/medium"
+	"github.com/codeGROOVE-dev/sociopath/pkg/microblog"
 	"github.com/codeGROOVE-dev/sociopath/pkg/orcid"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 	"github.com/codeGROOVE-dev/sociopath/pkg/qiita"
 	"github.com/codeGROOVE-dev/sociopath/pkg/reddit"
 	"github.com/codeGROOVE-dev/sociopath/pkg/rubygems"
 	"github.com/codeGROOVE-dev/sociopath/pkg/sessionize"
+	"github.com/codeGROOVE-dev/sociopath/pkg/slideshare"
 	"github.com/codeGROOVE-dev/sociopath/pkg/stackoverflow"
 	"github.com/codeGROOVE-dev/sociopath/pkg/steam"
 	"github.com/codeGROOVE-dev/sociopath/pkg/strava"
@@ -173,6 +175,8 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		p, err = fetchGitHub(ctx, url, cfg)
 	case medium.Match(url):
 		p, err = fetchMedium(ctx, url, cfg)
+	case microblog.Match(url):
+		p, err = fetchMicroblog(ctx, url, cfg)
 	case reddit.Match(url):
 		p, err = fetchReddit(ctx, url, cfg)
 	case youtube.Match(url):
@@ -229,6 +233,8 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		p, err = fetchArsTechnica(ctx, url, cfg)
 	case sessionize.Match(url):
 		p, err = fetchSessionize(ctx, url, cfg)
+	case slideshare.Match(url):
+		p, err = fetchSlideshare(ctx, url, cfg)
 	case strava.Match(url):
 		p, err = fetchStrava(ctx, url, cfg)
 	case douban.Match(url):
@@ -690,6 +696,22 @@ func fetchMedium(ctx context.Context, url string, cfg *config) (*profile.Profile
 	return client.Fetch(ctx, url)
 }
 
+func fetchMicroblog(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []microblog.Option
+	if cfg.cache != nil {
+		opts = append(opts, microblog.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, microblog.WithLogger(cfg.logger))
+	}
+
+	client, err := microblog.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 func fetchReddit(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []reddit.Option
 	if cfg.cache != nil {
@@ -857,6 +879,22 @@ func fetchSessionize(ctx context.Context, url string, cfg *config) (*profile.Pro
 	}
 
 	client, err := sessionize.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchSlideshare(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []slideshare.Option
+	if cfg.cache != nil {
+		opts = append(opts, slideshare.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, slideshare.WithLogger(cfg.logger))
+	}
+
+	client, err := slideshare.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1339,6 +1377,7 @@ func isSocialPlatform(url string) bool {
 		gravatar.Match(url) ||
 		mailru.Match(url) ||
 		medium.Match(url) ||
+		microblog.Match(url) ||
 		reddit.Match(url) ||
 		youtube.Match(url) ||
 		substack.Match(url) ||
@@ -1483,6 +1522,8 @@ func PlatformForURL(url string) string {
 		return "google"
 	case medium.Match(url):
 		return "medium"
+	case microblog.Match(url):
+		return "microblog"
 	case reddit.Match(url):
 		return "reddit"
 	case youtube.Match(url):
@@ -1527,6 +1568,8 @@ func PlatformForURL(url string) string {
 		return "bugcrowd"
 	case holopin.Match(url):
 		return "holopin"
+	case slideshare.Match(url):
+		return "slideshare"
 	default:
 		return "website"
 	}
@@ -1559,6 +1602,8 @@ func platformMatches(url, platform string) bool {
 		return mastodon.Match(url)
 	case "medium":
 		return medium.Match(url)
+	case "microblog":
+		return microblog.Match(url)
 	case "instagram":
 		return instagram.Match(url)
 	case "tiktok":
@@ -1585,6 +1630,8 @@ func platformMatches(url, platform string) bool {
 		return bugcrowd.Match(url)
 	case "holopin":
 		return holopin.Match(url)
+	case "slideshare":
+		return slideshare.Match(url)
 	default:
 		return false
 	}

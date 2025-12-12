@@ -74,6 +74,17 @@ type apiProfile struct {
 	ID     int    `json:"id"`
 }
 
+// apiGem represents a gem in the RubyGems API response.
+//
+//nolint:govet // fieldalignment not critical for JSON parsing
+type apiGem struct {
+	Name       string `json:"name"`
+	Info       string `json:"info"`
+	Downloads  int    `json:"downloads"`
+	Version    string `json:"version"`
+	ProjectURI string `json:"project_uri"`
+}
+
 // Fetch retrieves a RubyGems profile.
 func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, error) {
 	username := extractUsername(urlStr)
@@ -116,10 +127,23 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	htmlBody, htmlErr := httpcache.FetchURL(ctx, c.cache, c.httpClient, htmlReq, c.logger)
 
-	return parseProfile(&apiResp, string(htmlBody), htmlErr, urlStr), nil
+	// Fetch user's gems
+	var gems []apiGem
+	gemsURL := fmt.Sprintf("https://rubygems.org/api/v1/owners/%s/gems.json", username)
+	gemsReq, err := http.NewRequestWithContext(ctx, http.MethodGet, gemsURL, http.NoBody)
+	if err == nil {
+		gemsReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
+		gemsReq.Header.Set("Accept", "application/json")
+		gemsBody, gemsErr := httpcache.FetchURL(ctx, c.cache, c.httpClient, gemsReq, c.logger)
+		if gemsErr == nil {
+			_ = json.Unmarshal(gemsBody, &gems) //nolint:errcheck // best effort
+		}
+	}
+
+	return parseProfile(&apiResp, string(htmlBody), htmlErr, gems, urlStr), nil
 }
 
-func parseProfile(api *apiProfile, html string, htmlErr error, url string) *profile.Profile {
+func parseProfile(api *apiProfile, html string, htmlErr error, gems []apiGem, url string) *profile.Profile {
 	p := &profile.Profile{
 		Platform: platform,
 		URL:      url,
@@ -164,6 +188,17 @@ func parseProfile(api *apiProfile, html string, htmlErr error, url string) *prof
 				p.SocialLinks = append(p.SocialLinks, githubURL)
 			}
 		}
+	}
+
+	// Add gems as posts
+	for _, gem := range gems {
+		post := profile.Post{
+			Type:    profile.PostTypeRepository,
+			Title:   fmt.Sprintf("%s %s", gem.Name, gem.Version),
+			Content: gem.Info,
+			URL:     gem.ProjectURI,
+		}
+		p.Posts = append(p.Posts, post)
 	}
 
 	return p

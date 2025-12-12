@@ -166,6 +166,100 @@ func IsEmailURL(urlStr string) bool {
 	return ok
 }
 
+// commonTLDs contains common valid top-level domains to filter out bogus emails
+// extracted from obfuscated text.
+var commonTLDs = map[string]bool{
+	"com": true, "org": true, "net": true, "edu": true, "gov": true, "mil": true,
+	"co": true, "io": true, "me": true, "us": true, "uk": true, "ca": true,
+	"de": true, "fr": true, "jp": true, "cn": true, "au": true, "nz": true,
+	"in": true, "br": true, "ru": true, "it": true, "es": true, "nl": true,
+	"se": true, "no": true, "fi": true, "dk": true, "pl": true, "ch": true,
+	"at": true, "be": true, "pt": true, "cz": true, "hu": true, "ro": true,
+	"info": true, "biz": true, "dev": true, "app": true, "xyz": true,
+	"tech": true, "blog": true, "site": true, "online": true, "cloud": true,
+	"ai": true, "cc": true, "tv": true, "fm": true, "sh": true, "ly": true,
+	"email": true, "live": true, "mail": true, "gg": true, "pro": true,
+	"space": true, "social": true, "link": true, "page": true, "web": true,
+}
+
+// isValidEmailDomain checks if the email domain looks valid (not random gibberish).
+func isValidEmailDomain(email string) bool {
+	atIdx := strings.LastIndex(email, "@")
+	if atIdx < 0 {
+		return false
+	}
+	domain := email[atIdx+1:]
+	parts := strings.Split(domain, ".")
+	if len(parts) < 2 {
+		return false
+	}
+	tld := parts[len(parts)-1]
+
+	// Check against common TLDs
+	if commonTLDs[tld] {
+		return true
+	}
+
+	// Reject very short or very long TLDs (most real TLDs are 2-6 chars)
+	if len(tld) < 2 || len(tld) > 6 {
+		return false
+	}
+
+	// Check the domain name (part before TLD) for random-looking strings
+	// Real domains usually have pronounceable patterns
+	domainName := parts[len(parts)-2]
+	if looksLikeRandomString(domainName) || looksLikeRandomString(tld) {
+		return false
+	}
+
+	return true
+}
+
+// looksLikeRandomString checks if a string looks like random gibberish
+// by checking for unusual consonant patterns and character distribution.
+func looksLikeRandomString(s string) bool {
+	if len(s) < 4 {
+		return false // Too short to judge
+	}
+
+	vowels := 0
+	consonants := 0
+	consecutiveConsonants := 0
+	maxConsecutiveConsonants := 0
+
+	for _, c := range strings.ToLower(s) {
+		if c >= 'a' && c <= 'z' {
+			if c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' {
+				vowels++
+				consecutiveConsonants = 0
+			} else {
+				consonants++
+				consecutiveConsonants++
+				if consecutiveConsonants > maxConsecutiveConsonants {
+					maxConsecutiveConsonants = consecutiveConsonants
+				}
+			}
+		}
+	}
+
+	// Random strings often have very high consonant ratios
+	if vowels == 0 && consonants > 3 {
+		return true
+	}
+
+	// More than 4 consecutive consonants is unusual in real words
+	if maxConsecutiveConsonants > 4 {
+		return true
+	}
+
+	// High consonant to vowel ratio (3:1 or more is unusual)
+	if vowels > 0 && float64(consonants)/float64(vowels) >= 3.5 {
+		return true
+	}
+
+	return false
+}
+
 // EmailAddresses extracts email addresses from HTML content.
 // Filters out common false positives like noreply@, example@, etc.
 func EmailAddresses(htmlContent string) []string {
@@ -186,6 +280,11 @@ func EmailAddresses(htmlContent string) []string {
 			strings.HasSuffix(email, ".png") ||
 			strings.HasSuffix(email, ".jpg") ||
 			strings.HasSuffix(email, ".gif") {
+			continue
+		}
+
+		// Skip emails with invalid-looking domains (likely obfuscated text)
+		if !isValidEmailDomain(email) {
 			continue
 		}
 
