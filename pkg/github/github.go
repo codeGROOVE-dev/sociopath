@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strconv"
@@ -133,9 +134,17 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 		token = os.Getenv("GITHUB_TOKEN")
 	}
 
+	// Fall back to gh CLI auth token
+	if token == "" {
+		if ghToken := ghAuthToken(ctx); ghToken != "" {
+			token = ghToken
+			logger.InfoContext(ctx, "using token from gh auth token")
+		}
+	}
+
 	if token == "" {
 		logger.WarnContext(ctx, "GITHUB_TOKEN not set - GitHub API requests will be rate-limited to 60/hour")
-	} else {
+	} else if os.Getenv("GITHUB_TOKEN") != "" {
 		logger.InfoContext(ctx, "using GITHUB_TOKEN for authenticated API requests")
 	}
 
@@ -1092,4 +1101,13 @@ func (c *Client) searchCommitsByEmail(ctx context.Context, email string) string 
 	}
 
 	return ""
+}
+
+// ghAuthToken returns the GitHub token from the gh CLI, or empty string if unavailable.
+func ghAuthToken(ctx context.Context) string {
+	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

@@ -697,7 +697,8 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		// UpdatedAt, Posts, Unstructured change with activity
 		// UTCOffset depends on user's timezone settings
 		// AvatarURL varies by user and can change
-		cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Bio", "Location", "Website", "Fields", "SocialLinks", "UpdatedAt", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
+		// Authenticated depends on gh CLI/GITHUB_TOKEN availability
+		cmpopts.IgnoreFields(profile.Profile{}, "Authenticated", "AvatarURL", "Bio", "Location", "Website", "Fields", "SocialLinks", "UpdatedAt", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
 	}
 
 	for _, tt := range tests {
