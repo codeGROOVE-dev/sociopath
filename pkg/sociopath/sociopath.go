@@ -71,6 +71,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 	"github.com/codeGROOVE-dev/sociopath/pkg/qiita"
 	"github.com/codeGROOVE-dev/sociopath/pkg/reddit"
+	"github.com/codeGROOVE-dev/sociopath/pkg/replit"
 	"github.com/codeGROOVE-dev/sociopath/pkg/rubygems"
 	"github.com/codeGROOVE-dev/sociopath/pkg/sessionize"
 	"github.com/codeGROOVE-dev/sociopath/pkg/slideshare"
@@ -78,7 +79,9 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/steam"
 	"github.com/codeGROOVE-dev/sociopath/pkg/strava"
 	"github.com/codeGROOVE-dev/sociopath/pkg/substack"
+	"github.com/codeGROOVE-dev/sociopath/pkg/telegram"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tiktok"
+	"github.com/codeGROOVE-dev/sociopath/pkg/tryhackme"
 	"github.com/codeGROOVE-dev/sociopath/pkg/twitch"
 	"github.com/codeGROOVE-dev/sociopath/pkg/twitter"
 	"github.com/codeGROOVE-dev/sociopath/pkg/v2ex"
@@ -181,6 +184,8 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		p, err = fetchMicroblog(ctx, url, cfg)
 	case reddit.Match(url):
 		p, err = fetchReddit(ctx, url, cfg)
+	case replit.Match(url):
+		p, err = fetchReplit(ctx, url, cfg)
 	case youtube.Match(url):
 		p, err = fetchYouTube(ctx, url, cfg)
 	case substack.Match(url):
@@ -261,6 +266,10 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		p, err = fetchORCID(ctx, url, cfg)
 	case hexpm.Match(url):
 		p, err = fetchHexpm(ctx, url, cfg)
+	case telegram.Match(url):
+		p, err = fetchTelegram(ctx, url, cfg)
+	case tryhackme.Match(url):
+		p, err = fetchTryHackMe(ctx, url, cfg)
 	case twitch.Match(url):
 		p, err = fetchTwitch(ctx, url, cfg)
 	case steam.Match(url):
@@ -730,6 +739,22 @@ func fetchReddit(ctx context.Context, url string, cfg *config) (*profile.Profile
 	return client.Fetch(ctx, url)
 }
 
+func fetchReplit(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []replit.Option
+	if cfg.cache != nil {
+		opts = append(opts, replit.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, replit.WithLogger(cfg.logger))
+	}
+
+	client, err := replit.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 func fetchYouTube(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []youtube.Option
 	if cfg.cache != nil {
@@ -1095,6 +1120,38 @@ func fetchHexpm(ctx context.Context, url string, cfg *config) (*profile.Profile,
 	return client.Fetch(ctx, url)
 }
 
+func fetchTelegram(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []telegram.Option
+	if cfg.cache != nil {
+		opts = append(opts, telegram.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, telegram.WithLogger(cfg.logger))
+	}
+
+	client, err := telegram.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchTryHackMe(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []tryhackme.Option
+	if cfg.cache != nil {
+		opts = append(opts, tryhackme.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, tryhackme.WithLogger(cfg.logger))
+	}
+
+	client, err := tryhackme.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 func fetchTwitch(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []twitch.Option
 	if cfg.cache != nil {
@@ -1356,6 +1413,7 @@ func isSocialPlatform(url string) bool {
 		medium.Match(url) ||
 		microblog.Match(url) ||
 		reddit.Match(url) ||
+		replit.Match(url) ||
 		youtube.Match(url) ||
 		substack.Match(url) ||
 		weibo.Match(url) ||
@@ -1367,6 +1425,8 @@ func isSocialPlatform(url string) bool {
 		habr.Match(url) ||
 		instagram.Match(url) ||
 		tiktok.Match(url) ||
+		telegram.Match(url) ||
+		tryhackme.Match(url) ||
 		vkontakte.Match(url) ||
 		keybase.Match(url) ||
 		crates.Match(url) ||
@@ -1473,6 +1533,8 @@ func PlatformForURL(url string) string {
 		return "microblog"
 	case reddit.Match(url):
 		return "reddit"
+	case replit.Match(url):
+		return "replit"
 	case youtube.Match(url):
 		return "youtube"
 	case substack.Match(url):
@@ -1497,6 +1559,10 @@ func PlatformForURL(url string) string {
 		return "dockerhub"
 	case tiktok.Match(url):
 		return "tiktok"
+	case telegram.Match(url):
+		return "telegram"
+	case tryhackme.Match(url):
+		return "tryhackme"
 	case vkontakte.Match(url):
 		return "vkontakte"
 	case weibo.Match(url):
@@ -1539,6 +1605,8 @@ func platformMatches(url, platform string) bool {
 		return twitter.Match(url)
 	case "reddit":
 		return reddit.Match(url)
+	case "replit":
+		return replit.Match(url)
 	case "youtube":
 		return youtube.Match(url)
 	case "stackoverflow":
@@ -1555,6 +1623,10 @@ func platformMatches(url, platform string) bool {
 		return instagram.Match(url)
 	case "tiktok":
 		return tiktok.Match(url)
+	case "telegram":
+		return telegram.Match(url)
+	case "tryhackme":
+		return tryhackme.Match(url)
 	case "vkontakte":
 		return vkontakte.Match(url)
 	case "weibo":

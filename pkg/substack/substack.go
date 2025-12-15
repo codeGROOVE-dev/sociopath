@@ -90,6 +90,12 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	return parseProfile(string(body), urlStr, username)
 }
 
+// Patterns for extracting profile data.
+var (
+	metaAuthorPattern = regexp.MustCompile(`(?i)<meta\s+name=["']author["']\s+content=["']([^"']+)["']`)
+	subscriberPattern = regexp.MustCompile(`([\d,]+)\s*(?:subscribers|Subscribers)`)
+)
+
 func parseProfile(html, url, username string) (*profile.Profile, error) {
 	prof := &profile.Profile{
 		Platform: platform,
@@ -98,12 +104,33 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 		Fields:   make(map[string]string),
 	}
 
-	// Extract name from title or meta tags
-	prof.Name = htmlutil.Title(html)
-	if prof.Name != "" {
-		// Clean up "About - Newsletter Name"
-		if idx := strings.Index(prof.Name, "About - "); idx != -1 {
-			prof.Name = strings.TrimSpace(prof.Name[idx+8:])
+	// Extract author name from meta author tag (most reliable)
+	if matches := metaAuthorPattern.FindStringSubmatch(html); len(matches) > 1 {
+		prof.Name = strings.TrimSpace(matches[1])
+	}
+
+	// Fallback: extract from title format "Publication Name | Author Name | Substack"
+	if prof.Name == "" {
+		title := htmlutil.Title(html)
+		if title != "" {
+			parts := strings.Split(title, " | ")
+			if len(parts) >= 2 {
+				// Second part is usually the author name
+				author := strings.TrimSpace(parts[1])
+				if author != "Substack" && author != "" {
+					prof.Name = author
+				}
+			}
+			// Clean up "About - Newsletter Name" format
+			if prof.Name == "" {
+				if idx := strings.Index(title, "About - "); idx != -1 {
+					prof.Name = strings.TrimSpace(title[idx+8:])
+				}
+			}
+			// Use title directly if no special format detected
+			if prof.Name == "" && title != "Substack" {
+				prof.Name = strings.TrimSpace(title)
+			}
 		}
 	}
 
@@ -111,8 +138,7 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	prof.Bio = htmlutil.Description(html)
 
 	// Try to extract subscriber count
-	subPattern := regexp.MustCompile(`([\d,]+)\s*(?:subscribers|Subscribers)`)
-	if matches := subPattern.FindStringSubmatch(html); len(matches) > 1 {
+	if matches := subscriberPattern.FindStringSubmatch(html); len(matches) > 1 {
 		prof.Fields["subscribers"] = strings.ReplaceAll(matches[1], ",", "")
 	}
 

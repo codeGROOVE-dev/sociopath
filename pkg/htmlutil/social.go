@@ -431,6 +431,8 @@ func isSocialPlatformURL(u string) bool {
 		"weibo.com", "weibo.cn", "zhihu.com", "bilibili.com",
 		"matrix.to", "matrix.org", "keybase.io",
 		"observablehq.com", "opencollective.com", "holopin.io",
+		"codepen.io", "freecodecamp.org", "t.me",
+		"join.skype.com",
 	}
 	for _, p := range platforms {
 		if strings.Contains(lower, p) {
@@ -503,4 +505,10 @@ var socialPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`https?://(?:www\.)?opencollective\.com/[\w-]+`),
 	// Holopin
 	regexp.MustCompile(`https?://(?:www\.)?holopin\.io/@[\w-]+`),
+	// CodePen
+	regexp.MustCompile(`https?://(?:www\.)?codepen\.io/[\w-]+`),
+	// FreeCodeCamp
+	regexp.MustCompile(`https?://(?:www\.)?freecodecamp\.org/[\w-]+`),
+	// Telegram
+	regexp.MustCompile(`https?://t\.me/[\w-]+`),
 }

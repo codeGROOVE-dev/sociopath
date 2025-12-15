@@ -564,7 +564,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				Platform: "substack",
 				URL:      "https://paulabartabajo.substack.com/",
 				Username: "paulabartabajo",
-				Name:     "Real-World Machine Learning",
+				Name:     "Pau Labarta Bajo",
 			},
 		},
 		{
