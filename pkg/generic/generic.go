@@ -141,7 +141,7 @@ func parseHTML(data []byte, urlStr string) *profile.Profile {
 
 	p.Name = htmlutil.Title(content)
 	p.Bio = htmlutil.Description(content)
-	p.Unstructured = htmlutil.ToMarkdown(content)
+	p.Content = content
 
 	// Extract social links
 	p.SocialLinks = htmlutil.SocialLinks(content)

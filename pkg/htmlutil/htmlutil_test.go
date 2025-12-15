@@ -2,51 +2,21 @@ package htmlutil
 
 import "testing"
 
-func TestToMarkdown(t *testing.T) {
+func TestStripTags(t *testing.T) {
 	tests := []struct {
 		name string
 		html string
 		want string
 	}{
 		{
-			name: "headers",
-			html: "<h1>Title</h1><h2>Subtitle</h2>",
-			want: "# Title\n## Subtitle",
-		},
-		{
-			name: "paragraph",
+			name: "simple tags",
 			html: "<p>Hello world</p>",
 			want: "Hello world",
 		},
 		{
-			name: "link",
-			html: `<a href="https://example.com">Click here</a>`,
-			want: "[Click here](https://example.com)",
-		},
-		{
-			name: "bold",
-			html: "<b>bold text</b>",
-			want: "**bold text**",
-		},
-		{
-			name: "italic",
-			html: "<em>italic text</em>",
-			want: "*italic text*",
-		},
-		{
-			name: "removes script",
-			html: "<p>before</p><script>alert('x')</script><p>after</p>",
-			want: "before\nafter",
-		},
-		{
-			name: "removes style",
-			html: "<style>.foo{}</style><p>content</p>",
-			want: "content",
-		},
-		{
-			name: "list items",
-			html: "<ul><li>one</li><li>two</li></ul>",
-			want: "- one\n- two",
+			name: "nested tags",
+			html: "<div><p>Hello <b>world</b></p></div>",
+			want: "Hello world",
 		},
 		{
 			name: "html entities",
@@ -58,13 +28,18 @@ func TestToMarkdown(t *testing.T) {
 			html: "",
 			want: "",
 		},
+		{
+			name: "whitespace normalized",
+			html: "<p>Hello</p>   <p>world</p>",
+			want: "Hello world",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ToMarkdown(tt.html)
+			got := StripTags(tt.html)
 			if got != tt.want {
-				t.Errorf("ToMarkdown() = %q, want %q", got, tt.want)
+				t.Errorf("StripTags() = %q, want %q", got, tt.want)
 			}
 		})
 	}

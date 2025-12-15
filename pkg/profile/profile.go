@@ -54,6 +54,16 @@ type Post struct {
 	Category string   `json:"category,omitempty"` // Category (subreddit, channel, topic, etc.)
 }
 
+// Repository represents a code repository (pinned/popular on GitHub, etc.).
+type Repository struct {
+	Name        string `json:"name"`                  // Repository name
+	Description string `json:"description,omitempty"` // Repository description
+	URL         string `json:"url,omitempty"`         // Repository URL
+	Language    string `json:"language,omitempty"`    // Primary programming language
+	Stars       string `json:"stars,omitempty"`       // Star count (as string, e.g. "1.2k")
+	Forks       string `json:"forks,omitempty"`       // Fork count
+}
+
 // Profile represents extracted data from a social media profile.
 //
 //nolint:govet // fieldalignment: intentional layout for readability
@@ -84,8 +94,11 @@ type Profile struct {
 	// User-generated content (posts, comments, videos, etc.)
 	Posts []Post `json:",omitempty"` // Structured content extracted from the profile
 
-	// Fallback for unrecognized platforms
-	Unstructured string `json:",omitempty"` // Raw markdown content (HTML->MD conversion)
+	// Code repositories (pinned/popular repos from GitHub, etc.)
+	Repositories []Repository `json:",omitempty"`
+
+	// Unstructured content (README, page content, etc.)
+	Content string `json:",omitempty"` // Raw HTML content (README, page body)
 
 	// Guess mode fields (omitted from JSON when empty)
 	IsGuess    bool     `json:",omitempty"` // True if this profile was discovered via guessing

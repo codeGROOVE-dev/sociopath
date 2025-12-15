@@ -224,7 +224,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				CreatedAt: "2022-11-03T00:00:00.000Z",
 			},
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Location", "Website", "UpdatedAt", "SocialLinks", "Fields", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
+				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Location", "Website", "UpdatedAt", "SocialLinks", "Fields", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
 			},
 		},
 		{
@@ -635,7 +635,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				// Name, Bio, Location are empty when auth is broken
 			},
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "Name", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
+				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "Name", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
 			},
 		},
 		{
@@ -660,7 +660,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				Username:      "mattmoor",
 			},
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "Name", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
+				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "Name", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
 			},
 		},
 		{
@@ -685,7 +685,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				Username:      "austen-bryan-23485a19",
 			},
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "Name", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
+				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "Name", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
 			},
 		},
 	}
@@ -698,7 +698,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		// UTCOffset depends on user's timezone settings
 		// AvatarURL varies by user and can change
 		// Authenticated depends on gh CLI/GITHUB_TOKEN availability
-		cmpopts.IgnoreFields(profile.Profile{}, "Authenticated", "AvatarURL", "Bio", "Location", "Website", "Fields", "SocialLinks", "UpdatedAt", "Posts", "Unstructured", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
+		cmpopts.IgnoreFields(profile.Profile{}, "Authenticated", "AvatarURL", "Bio", "Location", "Website", "Fields", "SocialLinks", "UpdatedAt", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
 	}
 
 	for _, tt := range tests {

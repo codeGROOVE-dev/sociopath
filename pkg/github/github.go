@@ -74,13 +74,6 @@ var (
 // Example: <profile-timezone data-hours-ahead-of-utc="-8.0">(UTC -08:00)</profile-timezone>.
 var profileTimezoneRegex = regexp.MustCompile(`<profile-timezone[^>]*data-hours-ahead-of-utc="([^"]*)"`)
 
-// isProUser detects if a GitHub profile has the Pro badge.
-// The Pro badge is only visible in HTML, not via API.
-func isProUser(html string) bool {
-	// Pro badge: <span title="Label: Pro" ... class="Label Label--purple ...">
-	return strings.Contains(html, `title="Label: Pro"`)
-}
-
 // achievementPattern extracts achievement names and tiers from profile HTML.
 // Example: alt="Achievement: Pull Shark" ... achievement-tier-label--bronze ... >x2<.
 var achievementPattern = regexp.MustCompile(`alt="Achievement:\s*([^"]+)"[^>]*>(?:<span[^>]*achievement-tier-label--(\w+)[^>]*>x(\d+)</span>)?`)
@@ -307,13 +300,18 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	prof.SocialLinks = append(prof.SocialLinks, htmlLinks...)
 
-	// Extract README, organizations, UTC offset, and Pro status from HTML if available
+	// Extract README, organizations, UTC offset, email, and Pro status from HTML if available
 	if htmlContent != "" {
 		// Extract UTC offset from profile-timezone element
 		prof.UTCOffset = extractUTCOffset(htmlContent)
 
-		// Detect Pro badge (only visible in HTML)
-		if isProUser(htmlContent) {
+		// Extract email from HTML (visible to authenticated users)
+		if email := extractEmail(htmlContent); email != "" && prof.Fields["email"] == "" {
+			prof.Fields["email"] = email
+		}
+
+		// Pro badge: <span title="Label: Pro" ...> (only visible in HTML, not API)
+		if strings.Contains(htmlContent, `title="Label: Pro"`) {
 			prof.Fields["pro"] = "true"
 		}
 
@@ -328,19 +326,22 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 			prof.Fields["organizations"] = strings.Join(orgs, ", ")
 		}
 
-		// Extract README - get raw HTML for link extraction, then convert to markdown
+		// Extract pinned/popular repositories
+		prof.Repositories = extractPinnedRepos(htmlContent)
+
+		// Extract README HTML
 		readmeHTML := extractREADMEHTML(htmlContent)
 		if readmeHTML != "" {
-			// Extract social links from raw HTML (before conversion loses image-only links)
+			// Extract social links from raw HTML
 			readmeLinks := htmlutil.SocialLinks(readmeHTML)
 			prof.SocialLinks = append(prof.SocialLinks, readmeLinks...)
 
-			// Convert to markdown for unstructured content
-			prof.Unstructured = htmlutil.ToMarkdown(readmeHTML)
+			// Store raw HTML - preserves all signal (alt text, URLs, structure)
+			prof.Content = readmeHTML
 		}
 
 		// Extract Discord username from README or Bio
-		discordContent := prof.Bio + " " + prof.Unstructured
+		discordContent := prof.Bio + " " + prof.Content
 		if discord := htmlutil.ExtractDiscordUsername(discordContent); discord != "" {
 			prof.Fields["discord"] = discord
 		}
@@ -1022,6 +1023,62 @@ func extractREADMEHTML(htmlContent string) string {
 	return readmeHTML
 }
 
+// extractPinnedRepos extracts pinned/popular repositories from the profile page.
+func extractPinnedRepos(htmlContent string) []profile.Repository {
+	var repos []profile.Repository
+
+	itemPattern := regexp.MustCompile(`(?s)<li[^>]*class="[^"]*pinned-item-list-item[^"]*"[^>]*>.*?</li>`)
+	items := itemPattern.FindAllString(htmlContent, -1)
+
+	linkPattern := regexp.MustCompile(
+		`href="(/[^"]+)"[^>]*class="[^"]*Link[^"]*text-bold[^"]*"[^>]*>` +
+			`.*?<span class="repo"[^>]*>\s*([^<]+)\s*</span>`)
+	descPattern := regexp.MustCompile(`(?s)<p class="pinned-item-desc[^"]*"[^>]*>\s*(.*?)\s*</p>`)
+	langPattern := regexp.MustCompile(`itemprop="programmingLanguage">([^<]+)</span>`)
+	starsPattern := regexp.MustCompile(`(?s)aria-label="stars"[^>]*>.*?</svg>\s*([^<\s]+)`)
+	forksPattern := regexp.MustCompile(`(?s)aria-label="forks"[^>]*>.*?</svg>\s*([^<\s]+)`)
+
+	for _, item := range items {
+		linkMatch := linkPattern.FindStringSubmatch(item)
+		if len(linkMatch) < 3 {
+			continue
+		}
+
+		repo := profile.Repository{
+			Name: strings.TrimSpace(linkMatch[2]),
+			URL:  "https://github.com" + strings.TrimSpace(linkMatch[1]),
+		}
+
+		if m := descPattern.FindStringSubmatch(item); len(m) > 1 {
+			repo.Description = strings.TrimSpace(m[1])
+		}
+		if m := langPattern.FindStringSubmatch(item); len(m) > 1 {
+			repo.Language = strings.TrimSpace(m[1])
+		}
+		if m := starsPattern.FindStringSubmatch(item); len(m) > 1 {
+			repo.Stars = strings.TrimSpace(m[1])
+		}
+		if m := forksPattern.FindStringSubmatch(item); len(m) > 1 {
+			repo.Forks = strings.TrimSpace(m[1])
+		}
+
+		repos = append(repos, repo)
+	}
+
+	return repos
+}
+
+// extractEmail extracts email address from GitHub profile HTML.
+// Email is shown to logged-in users via mailto links.
+func extractEmail(html string) string {
+	// Pattern: <a ... href="mailto:email@example.com">email@example.com</a>
+	mailtoPattern := regexp.MustCompile(`href="mailto:([^"]+)"`)
+	if matches := mailtoPattern.FindStringSubmatch(html); len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
+}
+
 // extractSocialLinks extracts social media links from HTML, focusing on rel="me" verified links.
 func extractSocialLinks(html string) []string {
 	var links []string
@@ -1304,6 +1361,11 @@ func (c *Client) parseProfileFromHTML(ctx context.Context, html, urlStr, usernam
 	avatarPattern := regexp.MustCompile(`<img[^>]+class="[^"]*avatar avatar-user[^"]*"[^>]+src="([^"]+)"`)
 	if matches := avatarPattern.FindStringSubmatch(html); len(matches) > 1 {
 		prof.AvatarURL = matches[1]
+	}
+
+	// Extract email (visible to authenticated users)
+	if email := extractEmail(html); email != "" {
+		prof.Fields["email"] = email
 	}
 
 	c.logger.DebugContext(ctx, "parsed profile from HTML",

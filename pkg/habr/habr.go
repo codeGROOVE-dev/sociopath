@@ -131,7 +131,7 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	// Try pattern: About followed by tm-user-profile__content with span
 	aboutPattern := regexp.MustCompile(`(?is)About</dt>.*?<div class="tm-user-profile__content">\s*<span>(.*?)</span>`)
 	if matches := aboutPattern.FindStringSubmatch(html); len(matches) > 1 {
-		bio := htmlutil.ToMarkdown(matches[1])
+		bio := htmlutil.StripTags(matches[1])
 		bio = strings.TrimSpace(bio)
 		// Remove excessive whitespace
 		bio = regexp.MustCompile(`\s+`).ReplaceAllString(bio, " ")
@@ -148,7 +148,7 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	// Extract location - look for "Location" label followed by content
 	locationPattern := regexp.MustCompile(`(?is)Location</dt>\s*<dd[^>]*>(.*?)</dd>`)
 	if matches := locationPattern.FindStringSubmatch(html); len(matches) > 1 {
-		loc := htmlutil.ToMarkdown(matches[1])
+		loc := htmlutil.StripTags(matches[1])
 		loc = strings.TrimSpace(loc)
 		loc = regexp.MustCompile(`\s+`).ReplaceAllString(loc, " ")
 		if loc != "" {

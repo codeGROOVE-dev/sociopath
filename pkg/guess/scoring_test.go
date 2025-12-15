@@ -561,11 +561,11 @@ func TestScoreInterestMatch(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "unstructured content with shared interest",
+			name: "content with shared interest",
 			profileA: &profile.Profile{
 				Platform: "reddit",
 				Username: "rustfan",
-				Unstructured: "I've been learning rust for a few months now and really enjoying it. " +
+				Content: "I've been learning rust for a few months now and really enjoying it. " +
 					"The borrow checker is amazing once you understand it.",
 			},
 			profileB: &profile.Profile{

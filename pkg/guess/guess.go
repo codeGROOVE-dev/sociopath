@@ -1378,15 +1378,15 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 			guessedOrgs := extractOrganizationList(guessed.Fields)
 			knownOrgs := extractOrganizationList(kp.Fields)
 
-			// Check if any organization appears in the other profile's bio, employer, unstructured, or posts
+			// Check if any organization appears in the other profile's bio, employer, content, or posts
 			if len(guessedOrgs) > 0 || len(knownOrgs) > 0 {
-				// Check guessed orgs against known bio/employer/unstructured/posts
-				if len(guessedOrgs) > 0 && scoreOrganizationMatch(guessedOrgs, kp.Bio, getEmployer(kp.Fields), kp.Unstructured+" "+postsText(kp)) {
+				// Check guessed orgs against known bio/employer/content/posts
+				if len(guessedOrgs) > 0 && scoreOrganizationMatch(guessedOrgs, kp.Bio, getEmployer(kp.Fields), kp.Content+" "+postsText(kp)) {
 					hasOrgMatch = true
 					matches = append(matches, "organization:"+kp.Platform)
 				}
-				// Check known orgs against guessed bio/employer/unstructured/posts
-				if !hasOrgMatch && len(knownOrgs) > 0 && scoreOrganizationMatch(knownOrgs, guessed.Bio, getEmployer(guessed.Fields), guessed.Unstructured+" "+postsText(guessed)) {
+				// Check known orgs against guessed bio/employer/content/posts
+				if !hasOrgMatch && len(knownOrgs) > 0 && scoreOrganizationMatch(knownOrgs, guessed.Bio, getEmployer(guessed.Fields), guessed.Content+" "+postsText(guessed)) {
 					hasOrgMatch = true
 					matches = append(matches, "organization:"+kp.Platform)
 				}
@@ -1939,10 +1939,10 @@ func extractInterests(p *profile.Profile) map[string]bool {
 	bioInterests := extractInterestKeywords(p.Bio)
 	maps.Copy(interests, bioInterests)
 
-	// Extract from unstructured content (fallback for generic pages)
-	if p.Unstructured != "" {
-		unstructuredInterests := extractInterestKeywords(p.Unstructured)
-		maps.Copy(interests, unstructuredInterests)
+	// Extract from content (README, page content, etc.)
+	if p.Content != "" {
+		contentInterests := extractInterestKeywords(p.Content)
+		maps.Copy(interests, contentInterests)
 	}
 
 	// Extract from structured posts (Reddit comments, YouTube videos, etc.)
