@@ -18,7 +18,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
 	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
@@ -26,6 +29,13 @@ import (
 )
 
 const platform = "github"
+
+// tokenScopeCache caches whether tokens have email scope, keyed by token hash.
+// This avoids repeated failed GraphQL queries for tokens without user:email scope.
+var (
+	tokenScopeMu    sync.RWMutex
+	tokenScopeCache = make(map[string]bool) // token hash -> has email scope
+)
 
 // profileTimezoneRegex extracts the UTC offset from GitHub's profile-timezone element.
 // Example: <profile-timezone data-hours-ahead-of-utc="-8.0">(UTC -08:00)</profile-timezone>.
@@ -209,11 +219,27 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	c.logger.InfoContext(ctx, "fetching github profile", "url", urlStr, "username", username)
 
-	// Fetch API data, with fallback to HTML scraping on failure
-	prof, apiErr := c.fetchAPI(ctx, urlStr, username)
+	// Fetch API and HTML in parallel for better performance
+	var (
+		prof        *profile.Profile
+		apiErr      error
+		htmlContent string
+		htmlLinks   []string
+	)
 
-	// Fetch HTML to extract rel="me" links, README, and organizations
-	htmlContent, htmlLinks := c.fetchHTML(ctx, urlStr)
+	var g errgroup.Group
+
+	g.Go(func() error {
+		prof, apiErr = c.fetchAPI(ctx, urlStr, username)
+		return nil // errors handled via apiErr
+	})
+
+	g.Go(func() error {
+		htmlContent, htmlLinks = c.fetchHTML(ctx, urlStr)
+		return nil
+	})
+
+	_ = g.Wait() //nolint:errcheck // errors returned via apiErr
 
 	// If API failed, try to build profile from HTML
 	if apiErr != nil {
@@ -393,32 +419,20 @@ const graphQLUserFieldsWithEmail = `
 		totalCount
 	}
 
-	gists(first: 50, privacy: PUBLIC, orderBy: {field: CREATED_AT, direction: DESC}) {
+	gists(first: 5, privacy: PUBLIC, orderBy: {field: CREATED_AT, direction: DESC}) {
 		totalCount
 		nodes {
 			name
 			description
 			url
 			createdAt
-			files {
-				name
-			}
 		}
 	}
 
-	starredRepositories {
+	pullRequests {
 		totalCount
 	}
-	watching {
-		totalCount
-	}
-	packages {
-		totalCount
-	}
-	sponsoring {
-		totalCount
-	}
-	sponsors {
+	issues {
 		totalCount
 	}
 	organizations {
@@ -427,64 +441,13 @@ const graphQLUserFieldsWithEmail = `
 	repositoriesContributedTo {
 		totalCount
 	}
-	pullRequests {
-		totalCount
-	}
-	issues {
-		totalCount
-	}
-	issueComments {
-		totalCount
-	}
-	commitComments {
-		totalCount
-	}
-	repositoryDiscussions {
-		totalCount
-	}
-	repositoryDiscussionComments {
-		totalCount
-	}
-
-	gistComments {
-		totalCount
-	}
-	publicKeys {
-		totalCount
-	}
-	pinnedItems(first: 1) {
-		totalCount
-	}
-	pinnableItems(first: 1) {
-		totalCount
-	}
-	projectsV2(first: 1) {
-		totalCount
-	}
-	sponsorshipsAsMaintainer(first: 1) {
-		totalCount
-	}
-	sponsorshipsAsSponsor(first: 1) {
-		totalCount
-	}
-	lists(first: 1) {
-		totalCount
-	}
-	lifetimeReceivedSponsorshipValues(first: 1) {
+	starredRepositories {
 		totalCount
 	}
 
 	contributionsCollection {
 		totalCommitContributions
-		totalIssueContributions
 		totalPullRequestContributions
-		totalPullRequestReviewContributions
-		restrictedContributionsCount
-		totalRepositoriesWithContributedCommits
-		totalRepositoriesWithContributedIssues
-		totalRepositoriesWithContributedPullRequests
-		totalRepositoriesWithContributedPullRequestReviews
-		totalRepositoryContributions
 		contributionYears
 		contributionCalendar {
 			totalContributions
@@ -544,32 +507,20 @@ const graphQLUserFieldsWithoutEmail = `
 		totalCount
 	}
 
-	gists(first: 50, privacy: PUBLIC, orderBy: {field: CREATED_AT, direction: DESC}) {
+	gists(first: 5, privacy: PUBLIC, orderBy: {field: CREATED_AT, direction: DESC}) {
 		totalCount
 		nodes {
 			name
 			description
 			url
 			createdAt
-			files {
-				name
-			}
 		}
 	}
 
-	starredRepositories {
+	pullRequests {
 		totalCount
 	}
-	watching {
-		totalCount
-	}
-	packages {
-		totalCount
-	}
-	sponsoring {
-		totalCount
-	}
-	sponsors {
+	issues {
 		totalCount
 	}
 	organizations {
@@ -578,64 +529,13 @@ const graphQLUserFieldsWithoutEmail = `
 	repositoriesContributedTo {
 		totalCount
 	}
-	pullRequests {
-		totalCount
-	}
-	issues {
-		totalCount
-	}
-	issueComments {
-		totalCount
-	}
-	commitComments {
-		totalCount
-	}
-	repositoryDiscussions {
-		totalCount
-	}
-	repositoryDiscussionComments {
-		totalCount
-	}
-
-	gistComments {
-		totalCount
-	}
-	publicKeys {
-		totalCount
-	}
-	pinnedItems(first: 1) {
-		totalCount
-	}
-	pinnableItems(first: 1) {
-		totalCount
-	}
-	projectsV2(first: 1) {
-		totalCount
-	}
-	sponsorshipsAsMaintainer(first: 1) {
-		totalCount
-	}
-	sponsorshipsAsSponsor(first: 1) {
-		totalCount
-	}
-	lists(first: 1) {
-		totalCount
-	}
-	lifetimeReceivedSponsorshipValues(first: 1) {
+	starredRepositories {
 		totalCount
 	}
 
 	contributionsCollection {
 		totalCommitContributions
-		totalIssueContributions
 		totalPullRequestContributions
-		totalPullRequestReviewContributions
-		restrictedContributionsCount
-		totalRepositoriesWithContributedCommits
-		totalRepositoriesWithContributedIssues
-		totalRepositoriesWithContributedPullRequests
-		totalRepositoriesWithContributedPullRequestReviews
-		totalRepositoryContributions
 		contributionYears
 		contributionCalendar {
 			totalContributions
@@ -643,13 +543,73 @@ const graphQLUserFieldsWithoutEmail = `
 	}
 `
 
+// tokenHash returns a short hash of the token for cache keying (avoids storing raw tokens).
+func tokenHash(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:8])
+}
+
+// hasEmailScope checks if the token has user:email scope via a cheap HEAD request.
+// The result is cached per-token to avoid repeated checks.
+func (c *Client) hasEmailScope(ctx context.Context) bool {
+	if c.token == "" {
+		return false
+	}
+
+	hash := tokenHash(c.token)
+
+	// Check cache first
+	tokenScopeMu.RLock()
+	hasScope, found := tokenScopeCache[hash]
+	tokenScopeMu.RUnlock()
+	if found {
+		return hasScope
+	}
+
+	// Make a cheap HEAD request to check X-OAuth-Scopes header
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://api.github.com/user", http.NoBody)
+	if err != nil {
+		return true // assume yes on error, will fail gracefully
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("User-Agent", "sociopath/1.0")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.logger.DebugContext(ctx, "scope check request failed", "error", err)
+		return true // assume yes on error
+	}
+	defer resp.Body.Close() //nolint:errcheck // best effort close
+
+	scopes := resp.Header.Get("X-Oauth-Scopes")
+	hasScope = strings.Contains(scopes, "user:email") || strings.Contains(scopes, "read:user") || strings.Contains(scopes, "user")
+	c.logger.DebugContext(ctx, "checked token scopes", "scopes", scopes, "has_email_scope", hasScope)
+
+	// Cache the result
+	tokenScopeMu.Lock()
+	tokenScopeCache[hash] = hasScope
+	tokenScopeMu.Unlock()
+
+	return hasScope
+}
+
 func (c *Client) fetchGraphQL(ctx context.Context, urlStr, username string) (*profile.Profile, error) {
-	// Try with email field first
+	// Check if token has email scope before making the query
+	if !c.hasEmailScope(ctx) {
+		return c.executeGraphQL(ctx, urlStr, username, graphQLUserFieldsWithoutEmail)
+	}
+
+	// Try with email field
 	prof, err := c.executeGraphQL(ctx, urlStr, username, graphQLUserFieldsWithEmail)
 	if err != nil {
-		// Check if error is due to missing email scope
+		// Check if error is due to missing email scope (fallback for fine-grained PATs)
 		if strings.Contains(err.Error(), "email") || strings.Contains(err.Error(), "scope") {
 			c.logger.DebugContext(ctx, "GraphQL email field failed, retrying without email", "error", err)
+			// Update cache
+			hash := tokenHash(c.token)
+			tokenScopeMu.Lock()
+			tokenScopeCache[hash] = false
+			tokenScopeMu.Unlock()
 			return c.executeGraphQL(ctx, urlStr, username, graphQLUserFieldsWithoutEmail)
 		}
 		return nil, err
@@ -658,6 +618,7 @@ func (c *Client) fetchGraphQL(ctx context.Context, urlStr, username string) (*pr
 }
 
 func (c *Client) executeGraphQL(ctx context.Context, urlStr, username, fields string) (*profile.Profile, error) {
+	start := time.Now()
 	query := `query($login: String!) { user(login: $login) { ` + fields + ` } }`
 
 	variables := map[string]string{"login": username}
@@ -684,6 +645,7 @@ func (c *Client) executeGraphQL(ctx context.Context, urlStr, username, fields st
 		return nil, err
 	}
 
+	c.logger.DebugContext(ctx, "GraphQL query completed", "username", username, "duration_ms", time.Since(start).Milliseconds())
 	return parseGraphQLResponse(body, urlStr, username)
 }
 
@@ -724,49 +686,24 @@ type graphQLUser struct {
 			DisplayName string `json:"displayName"`
 		} `json:"nodes"`
 	} `json:"socialAccounts"`
-	TopRepositories                 struct{ TotalCount int } `json:"topRepositories"`
-	Followers                       struct{ TotalCount int } `json:"followers"`
-	Following                       struct{ TotalCount int } `json:"following"`
-	Repositories                    struct{ TotalCount int } `json:"repositories"`
-	StarredRepositories             struct{ TotalCount int } `json:"starredRepositories"`
-	Watching                        struct{ TotalCount int } `json:"watching"`
-	Packages                        struct{ TotalCount int } `json:"packages"`
-	Sponsoring                      struct{ TotalCount int } `json:"sponsoring"`
-	Sponsors                        struct{ TotalCount int } `json:"sponsors"`
-	Organizations                   struct{ TotalCount int } `json:"organizations"`
-	RepositoriesContributedTo       struct{ TotalCount int } `json:"repositoriesContributedTo"`
-	PullRequests                    struct{ TotalCount int } `json:"pullRequests"`
-	Issues                          struct{ TotalCount int } `json:"issues"`
-	IssueComments                   struct{ TotalCount int } `json:"issueComments"`
-	CommitComments                  struct{ TotalCount int } `json:"commitComments"`
-	RepositoryDiscussions           struct{ TotalCount int } `json:"repositoryDiscussions"`
-	RepositoryDiscussionComments    struct{ TotalCount int } `json:"repositoryDiscussionComments"`
-	GistComments                    struct{ TotalCount int } `json:"gistComments"`
-	PublicKeys                      struct{ TotalCount int } `json:"publicKeys"`
-	PinnedItems                     struct{ TotalCount int } `json:"pinnedItems"`
-	PinnableItems                   struct{ TotalCount int } `json:"pinnableItems"`
-	ProjectsV2                      struct{ TotalCount int } `json:"projectsV2"`
-	SponsorshipsAsMaintainer        struct{ TotalCount int } `json:"sponsorshipsAsMaintainer"`
-	SponsorshipsAsSponsor           struct{ TotalCount int } `json:"sponsorshipsAsSponsor"`
-	Lists                           struct{ TotalCount int } `json:"lists"`
-	LifetimeReceivedSponsorshipVals struct{ TotalCount int } `json:"lifetimeReceivedSponsorshipValues"`
-	Gists                           struct {
+	TopRepositories           struct{ TotalCount int } `json:"topRepositories"`
+	Followers                 struct{ TotalCount int } `json:"followers"`
+	Following                 struct{ TotalCount int } `json:"following"`
+	Repositories              struct{ TotalCount int } `json:"repositories"`
+	PullRequests              struct{ TotalCount int } `json:"pullRequests"`
+	Issues                    struct{ TotalCount int } `json:"issues"`
+	Organizations             struct{ TotalCount int } `json:"organizations"`
+	RepositoriesContributedTo struct{ TotalCount int } `json:"repositoriesContributedTo"`
+	StarredRepositories       struct{ TotalCount int } `json:"starredRepositories"`
+	Gists                     struct {
 		TotalCount int        `json:"totalCount"`
 		Nodes      []gistNode `json:"nodes"`
 	} `json:"gists"`
 	ContributionsCollection struct {
-		TotalCommitContributions                       int   `json:"totalCommitContributions"`
-		TotalIssueContributions                        int   `json:"totalIssueContributions"`
-		TotalPullRequestContributions                  int   `json:"totalPullRequestContributions"`
-		TotalPullRequestReviewContributions            int   `json:"totalPullRequestReviewContributions"`
-		RestrictedContributionsCount                   int   `json:"restrictedContributionsCount"`
-		TotalRepositoriesWithContributedCommits        int   `json:"totalRepositoriesWithContributedCommits"`
-		TotalRepositoriesWithContributedIssues         int   `json:"totalRepositoriesWithContributedIssues"`
-		TotalRepositoriesWithContributedPullRequests   int   `json:"totalRepositoriesWithContributedPullRequests"`
-		TotalRepositoriesWithContributedPullReqReviews int   `json:"totalRepositoriesWithContributedPullRequestReviews"`
-		TotalRepositoryContributions                   int   `json:"totalRepositoryContributions"`
-		ContributionYears                              []int `json:"contributionYears"`
-		ContributionCalendar                           struct {
+		TotalCommitContributions      int   `json:"totalCommitContributions"`
+		TotalPullRequestContributions int   `json:"totalPullRequestContributions"`
+		ContributionYears             []int `json:"contributionYears"`
+		ContributionCalendar          struct {
 			TotalContributions int `json:"totalContributions"`
 		} `json:"contributionCalendar"`
 	} `json:"contributionsCollection"`
@@ -829,28 +766,11 @@ func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, erro
 	addCountField(prof.Fields, "followers", user.Followers.TotalCount)
 	addCountField(prof.Fields, "following", user.Following.TotalCount)
 	addCountField(prof.Fields, "public_gists", user.Gists.TotalCount)
-	addCountField(prof.Fields, "starred_repos", user.StarredRepositories.TotalCount)
-	addCountField(prof.Fields, "watching", user.Watching.TotalCount)
-	addCountField(prof.Fields, "packages", user.Packages.TotalCount)
-	addCountField(prof.Fields, "sponsoring", user.Sponsoring.TotalCount)
-	addCountField(prof.Fields, "sponsors", user.Sponsors.TotalCount)
-	addCountField(prof.Fields, "organizations_count", user.Organizations.TotalCount)
-	addCountField(prof.Fields, "repos_contributed_to", user.RepositoriesContributedTo.TotalCount)
 	addCountField(prof.Fields, "pull_requests", user.PullRequests.TotalCount)
 	addCountField(prof.Fields, "issues", user.Issues.TotalCount)
-	addCountField(prof.Fields, "issue_comments", user.IssueComments.TotalCount)
-	addCountField(prof.Fields, "commit_comments", user.CommitComments.TotalCount)
-	addCountField(prof.Fields, "discussions", user.RepositoryDiscussions.TotalCount)
-	addCountField(prof.Fields, "discussion_comments", user.RepositoryDiscussionComments.TotalCount)
-	addCountField(prof.Fields, "gist_comments", user.GistComments.TotalCount)
-	addCountField(prof.Fields, "public_keys", user.PublicKeys.TotalCount)
-	addCountField(prof.Fields, "pinned_items", user.PinnedItems.TotalCount)
-	addCountField(prof.Fields, "pinnable_items", user.PinnableItems.TotalCount)
-	addCountField(prof.Fields, "projects", user.ProjectsV2.TotalCount)
-	addCountField(prof.Fields, "sponsorships_as_maintainer", user.SponsorshipsAsMaintainer.TotalCount)
-	addCountField(prof.Fields, "sponsorships_as_sponsor", user.SponsorshipsAsSponsor.TotalCount)
-	addCountField(prof.Fields, "lists", user.Lists.TotalCount)
-	addCountField(prof.Fields, "lifetime_sponsorship_values", user.LifetimeReceivedSponsorshipVals.TotalCount)
+	addCountField(prof.Fields, "organizations_count", user.Organizations.TotalCount)
+	addCountField(prof.Fields, "repos_contributed_to", user.RepositoriesContributedTo.TotalCount)
+	addCountField(prof.Fields, "starred_repos", user.StarredRepositories.TotalCount)
 	addCountField(prof.Fields, "top_repos", user.TopRepositories.TotalCount)
 	addCountField(prof.Fields, "pinned_items_remaining", user.PinnedItemsRemaining)
 
@@ -862,15 +782,7 @@ func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, erro
 	// Contribution stats (last year)
 	cc := user.ContributionsCollection
 	addCountField(prof.Fields, "commits_year", cc.TotalCommitContributions)
-	addCountField(prof.Fields, "issues_year", cc.TotalIssueContributions)
 	addCountField(prof.Fields, "prs_year", cc.TotalPullRequestContributions)
-	addCountField(prof.Fields, "pr_reviews_year", cc.TotalPullRequestReviewContributions)
-	addCountField(prof.Fields, "private_contributions_year", cc.RestrictedContributionsCount)
-	addCountField(prof.Fields, "repos_with_commits_year", cc.TotalRepositoriesWithContributedCommits)
-	addCountField(prof.Fields, "repos_with_issues_year", cc.TotalRepositoriesWithContributedIssues)
-	addCountField(prof.Fields, "repos_with_prs_year", cc.TotalRepositoriesWithContributedPullRequests)
-	addCountField(prof.Fields, "repos_with_reviews_year", cc.TotalRepositoriesWithContributedPullReqReviews)
-	addCountField(prof.Fields, "repos_created_year", cc.TotalRepositoryContributions)
 	addCountField(prof.Fields, "total_contributions_year", cc.ContributionCalendar.TotalContributions)
 
 	// Contribution years (account tenure)
@@ -995,7 +907,7 @@ func (c *Client) executeAPIRequest(ctx context.Context, req *http.Request) ([]by
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // error ignored intentionally
+	defer resp.Body.Close() //nolint:errcheck // best effort close //nolint:errcheck // error ignored intentionally
 
 	// Parse rate limit headers (parse errors default to 0).
 	rateLimitRemain, _ := strconv.Atoi(resp.Header.Get("X-Ratelimit-Remaining"))        //nolint:errcheck // 0 is acceptable default
@@ -1475,9 +1387,6 @@ type gistNode struct {
 	Description string `json:"description"`
 	URL         string `json:"url"`
 	CreatedAt   string `json:"createdAt"`
-	Files       []struct {
-		Name string `json:"name"`
-	} `json:"files"`
 }
 
 // gistsToPosts converts gist nodes to profile posts.
@@ -1485,9 +1394,6 @@ func gistsToPosts(gists []gistNode) []profile.Post {
 	posts := make([]profile.Post, 0, len(gists))
 	for _, g := range gists {
 		title := g.Description
-		if title == "" && len(g.Files) > 0 {
-			title = g.Files[0].Name
-		}
 		if title == "" {
 			title = g.Name
 		}
