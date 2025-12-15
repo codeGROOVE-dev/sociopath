@@ -100,6 +100,15 @@ func main() {
 			logger.Debug("HTTP cache initialized", "ttl", cacheTTL.String())
 		}
 	}
+	// Output cache stats at end
+	defer func() {
+		stats := httpcache.GetStats()
+		total := stats.Hits + stats.Misses
+		if total > 0 {
+			hitRate := float64(stats.Hits) / float64(total) * 100
+			logger.Info("cache stats", "hits", stats.Hits, "misses", stats.Misses, "hit_rate", fmt.Sprintf("%.1f%%", hitRate))
+		}
+	}()
 
 	// Build options
 	opts := []sociopath.Option{

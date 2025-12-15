@@ -18,7 +18,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -63,12 +62,26 @@ func fetchProfile(ctx context.Context, url string, cfg *profile.FetcherConfig) (
 	return client.Fetch(ctx, url)
 }
 
-// tokenScopeCache caches whether tokens have email scope, keyed by token hash.
-// This avoids repeated failed GraphQL queries for tokens without user:email scope.
-var (
-	tokenScopeMu    sync.RWMutex
-	tokenScopeCache = make(map[string]bool) // token hash -> has email scope
-)
+const scopeCacheTTL = 24 * time.Hour
+
+// getCachedGhToken returns the gh auth token, using the cache.
+func getCachedGhToken(ctx context.Context, cache httpcache.Cacher) string {
+	if cache == nil {
+		return ghAuthToken(ctx)
+	}
+
+	data, err := cache.GetSet(ctx, "github:gh_auth_token", func(ctx context.Context) ([]byte, error) {
+		token := ghAuthToken(ctx)
+		if token == "" {
+			return nil, errors.New("no gh token")
+		}
+		return []byte(token), nil
+	}, scopeCacheTTL)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
 
 // profileTimezoneRegex extracts the UTC offset from GitHub's profile-timezone element.
 // Example: <profile-timezone data-hours-ahead-of-utc="-8.0">(UTC -08:00)</profile-timezone>.
@@ -209,9 +222,9 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 		token = os.Getenv("GITHUB_TOKEN")
 	}
 
-	// Fall back to gh CLI auth token
+	// Fall back to gh CLI auth token (cached for 24 hours)
 	if token == "" {
-		if ghToken := ghAuthToken(ctx); ghToken != "" {
+		if ghToken := getCachedGhToken(ctx, cfg.cache); ghToken != "" {
 			token = ghToken
 			logger.InfoContext(ctx, "using token from gh auth token")
 		}
@@ -590,23 +603,31 @@ func tokenHash(token string) string {
 }
 
 // hasEmailScope checks if the token has user:email scope via a cheap HEAD request.
-// The result is cached per-token to avoid repeated checks.
+// The result is cached per-token for 24 hours.
 func (c *Client) hasEmailScope(ctx context.Context) bool {
 	if c.token == "" {
 		return false
 	}
 
-	hash := tokenHash(c.token)
-
-	// Check cache first
-	tokenScopeMu.RLock()
-	hasScope, found := tokenScopeCache[hash]
-	tokenScopeMu.RUnlock()
-	if found {
-		return hasScope
+	if c.cache == nil {
+		return c.checkTokenScopeHTTP(ctx)
 	}
 
-	// Make a cheap HEAD request to check X-OAuth-Scopes header
+	cacheKey := "github:scope:" + tokenHash(c.token)
+	data, err := c.cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
+		if c.checkTokenScopeHTTP(ctx) {
+			return []byte("1"), nil
+		}
+		return []byte("0"), nil
+	}, scopeCacheTTL)
+	if err != nil {
+		return true // assume yes on error
+	}
+	return string(data) == "1"
+}
+
+// checkTokenScopeHTTP makes the actual HTTP request to check token scopes.
+func (c *Client) checkTokenScopeHTTP(ctx context.Context) bool {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://api.github.com/user", http.NoBody)
 	if err != nil {
 		return true // assume yes on error, will fail gracefully
@@ -622,14 +643,8 @@ func (c *Client) hasEmailScope(ctx context.Context) bool {
 	defer resp.Body.Close() //nolint:errcheck // best effort close
 
 	scopes := resp.Header.Get("X-Oauth-Scopes")
-	hasScope = strings.Contains(scopes, "user:email") || strings.Contains(scopes, "read:user") || strings.Contains(scopes, "user")
+	hasScope := strings.Contains(scopes, "user:email") || strings.Contains(scopes, "read:user") || strings.Contains(scopes, "user")
 	c.logger.DebugContext(ctx, "checked token scopes", "scopes", scopes, "has_email_scope", hasScope)
-
-	// Cache the result
-	tokenScopeMu.Lock()
-	tokenScopeCache[hash] = hasScope
-	tokenScopeMu.Unlock()
-
 	return hasScope
 }
 
@@ -645,11 +660,14 @@ func (c *Client) fetchGraphQL(ctx context.Context, urlStr, username string) (*pr
 		// Check if error is due to missing email scope (fallback for fine-grained PATs)
 		if strings.Contains(err.Error(), "email") || strings.Contains(err.Error(), "scope") {
 			c.logger.DebugContext(ctx, "GraphQL email field failed, retrying without email", "error", err)
-			// Update cache
-			hash := tokenHash(c.token)
-			tokenScopeMu.Lock()
-			tokenScopeCache[hash] = false
-			tokenScopeMu.Unlock()
+			// Update cache to remember this token doesn't have email scope
+			if c.cache != nil {
+				cacheKey := "github:scope:" + tokenHash(c.token)
+				//nolint:errcheck,gosec // best effort cache update
+				c.cache.GetSet(ctx, cacheKey, func(context.Context) ([]byte, error) {
+					return []byte("0"), nil
+				}, scopeCacheTTL)
+			}
 			return c.executeGraphQL(ctx, urlStr, username, graphQLUserFieldsWithoutEmail)
 		}
 		return nil, err
@@ -1027,7 +1045,8 @@ func extractREADMEHTML(htmlContent string) string {
 func extractPinnedRepos(htmlContent string) []profile.Repository {
 	var repos []profile.Repository
 
-	itemPattern := regexp.MustCompile(`(?s)<li[^>]*class="[^"]*pinned-item-list-item[^"]*"[^>]*>.*?</li>`)
+	// Match div with pinned-item-list-item class (GitHub moved this from <li> to inner <div>)
+	itemPattern := regexp.MustCompile(`(?s)<div[^>]*class="[^"]*pinned-item-list-item[^"]*"[^>]*>.*?</div>\s*</li>`)
 	items := itemPattern.FindAllString(htmlContent, -1)
 
 	linkPattern := regexp.MustCompile(

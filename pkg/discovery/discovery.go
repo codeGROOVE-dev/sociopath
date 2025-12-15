@@ -22,18 +22,26 @@ type Result struct {
 	Username string // Username if available
 }
 
+// Cacher allows external cache implementations for sharing across packages.
+type Cacher interface {
+	GetSet(ctx context.Context, key string, fetch func(context.Context) ([]byte, error), ttl ...time.Duration) ([]byte, error)
+	TTL() time.Duration
+}
+
 // Discoverer finds linked identities for a domain.
 type Discoverer struct {
+	cache  Cacher
 	client *http.Client
 	logger *slog.Logger
 }
 
 // New creates a new Discoverer.
-func New(logger *slog.Logger) *Discoverer {
+func New(cache Cacher, logger *slog.Logger) *Discoverer {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Discoverer{
+		cache:  cache,
 		client: &http.Client{Timeout: 5 * time.Second},
 		logger: logger,
 	}
@@ -154,10 +162,32 @@ func (d *Discoverer) LookupKeybase(ctx context.Context, domain string) *Result {
 
 // LookupBluesky checks DNS TXT records for AT Protocol (Bluesky) verification.
 func (d *Discoverer) LookupBluesky(ctx context.Context, domain string) *Result {
-	txtRecords, err := net.DefaultResolver.LookupTXT(ctx, "_atproto."+domain)
-	if err != nil {
-		d.logger.DebugContext(ctx, "bluesky DNS lookup failed", "domain", domain, "error", err)
-		return nil
+	dnsKey := "_atproto." + domain
+	cacheKey := "dns:" + dnsKey
+
+	var txtRecords []string
+	if d.cache != nil {
+		data, err := d.cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
+			records, err := net.DefaultResolver.LookupTXT(ctx, dnsKey)
+			if err != nil {
+				return nil, err
+			}
+			return []byte(strings.Join(records, "\n")), nil
+		}, d.cache.TTL())
+		if err != nil {
+			d.logger.DebugContext(ctx, "bluesky DNS lookup failed", "domain", domain, "error", err)
+			return nil
+		}
+		if len(data) > 0 {
+			txtRecords = strings.Split(string(data), "\n")
+		}
+	} else {
+		var err error
+		txtRecords, err = net.DefaultResolver.LookupTXT(ctx, dnsKey)
+		if err != nil {
+			d.logger.DebugContext(ctx, "bluesky DNS lookup failed", "domain", domain, "error", err)
+			return nil
+		}
 	}
 
 	for _, txt := range txtRecords {
@@ -239,24 +269,33 @@ func (d *Discoverer) LookupMatrix(ctx context.Context, domain string) *Result {
 
 // fetch performs an HTTP GET request and returns the response body.
 func (d *Discoverer) fetch(ctx context.Context, urlStr string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "sociopath/1.0")
+	doFetch := func(ctx context.Context) ([]byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", "sociopath/1.0")
 
-	resp, err := d.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close() //nolint:errcheck // response body must be closed
+		resp, err := d.client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close() //nolint:errcheck // response body must be closed
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("status %d", resp.StatusCode)
+		}
+
+		return io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	}
 
-	return io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if d.cache == nil {
+		return doFetch(ctx)
+	}
+
+	cacheKey := "discovery:" + urlStr
+	return d.cache.GetSet(ctx, cacheKey, doFetch, d.cache.TTL())
 }
 
 // isValidHexPubkey validates a 64-character hex string.

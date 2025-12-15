@@ -111,7 +111,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	p := parseHTML(body, urlStr)
 
 	// Run identity discovery for the domain
-	disc := discovery.New(c.logger)
+	disc := discovery.New(c.cache, c.logger)
 	domain := discovery.ExtractDomain(urlStr)
 	for _, result := range disc.DiscoverAll(ctx, domain) {
 		p.SocialLinks = append(p.SocialLinks, result.URL)

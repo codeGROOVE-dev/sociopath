@@ -259,21 +259,7 @@ func (c *Client) fetchXSRFToken(ctx context.Context, username string) error {
 func (c *Client) resolveUsername(ctx context.Context, username string) (string, error) {
 	apiURL := fmt.Sprintf("https://weibo.com/ajax/profile/info?custom=%s", url.QueryEscape(username))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
-	if err != nil {
-		return "", err
-	}
-
-	setCommonHeaders(req)
-	c.setAuthHeaders(req)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close() //nolint:errcheck // Best-effort close
-
-	body, err := io.ReadAll(resp.Body)
+	body, err := c.fetchAPI(ctx, apiURL)
 	if err != nil {
 		return "", err
 	}
@@ -301,21 +287,7 @@ func (c *Client) resolveUsername(ctx context.Context, username string) (string, 
 func (c *Client) fetchProfileDetail(ctx context.Context, uid string) (*weiboProfile, error) {
 	apiURL := fmt.Sprintf("https://weibo.com/ajax/profile/detail?uid=%s", uid)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
-	if err != nil {
-		return nil, err
-	}
-
-	setCommonHeaders(req)
-	c.setAuthHeaders(req)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close() //nolint:errcheck // Best-effort close
-
-	body, err := io.ReadAll(resp.Body)
+	body, err := c.fetchAPI(ctx, apiURL)
 	if err != nil {
 		return nil, err
 	}
@@ -374,21 +346,7 @@ func (c *Client) fetchProfileDetail(ctx context.Context, uid string) (*weiboProf
 func (c *Client) enrichWithSideDetail(ctx context.Context, uid string, wp *weiboProfile) error {
 	apiURL := fmt.Sprintf("https://weibo.com/ajax/profile/sidedetail?uid=%s", uid)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
-	if err != nil {
-		return err
-	}
-
-	setCommonHeaders(req)
-	c.setAuthHeaders(req)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close() //nolint:errcheck // Best-effort close
-
-	body, err := io.ReadAll(resp.Body)
+	body, err := c.fetchAPI(ctx, apiURL)
 	if err != nil {
 		return err
 	}
@@ -440,6 +398,39 @@ func (c *Client) enrichWithSideDetail(ctx context.Context, uid string, wp *weibo
 	}
 
 	return nil
+}
+
+// fetchAPI fetches from Weibo API with caching and auth headers.
+func (c *Client) fetchAPI(ctx context.Context, apiURL string) ([]byte, error) {
+	fetch := func(ctx context.Context) ([]byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+		if err != nil {
+			return nil, err
+		}
+
+		setCommonHeaders(req)
+		c.setAuthHeaders(req)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close() //nolint:errcheck // Best-effort close
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, &httpcache.HTTPError{StatusCode: resp.StatusCode, URL: apiURL}
+		}
+
+		return io.ReadAll(resp.Body)
+	}
+
+	if c.cache == nil {
+		return fetch(ctx)
+	}
+
+	// Include auth marker in cache key since responses are user-specific
+	cacheKey := httpcache.URLToKey(apiURL + "|auth:" + c.sub)
+	return c.cache.GetSet(ctx, cacheKey, fetch, c.cache.TTL())
 }
 
 func setCommonHeaders(req *http.Request) {

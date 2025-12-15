@@ -94,13 +94,103 @@ func extractPersonalLinks(htmlContent string) []string {
 }
 
 // isValidProfileLink filters out URLs that are system pages, not user profiles.
+// Only filters system pages on recognized social platforms - personal websites
+// may have /about pages with useful user information.
 func isValidProfileLink(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
 
-	// Filter out YouTube system pages
+	// Recognized social/platform domains where system pages should be filtered.
+	platformDomains := []string{
+		// Code hosting
+		"github.com", "github.blog", "gitlab.com", "bitbucket.org", "codeberg.org", "gitee.com",
+		// Social media
+		"twitter.com", "x.com", "facebook.com", "instagram.com",
+		"linkedin.com", "youtube.com", "tiktok.com", "twitch.tv",
+		"reddit.com", "medium.com", "dev.to", "hashnode.com",
+		// Package registries
+		"npmjs.com", "pypi.org", "rubygems.org", "crates.io",
+		"hub.docker.com", "huggingface.co", "hex.pm",
+		// Q&A / Forums
+		"stackoverflow.com", "stackexchange.com",
+		"hackerone.com", "bugcrowd.com",
+		// Identity / Social
+		"keybase.io", "gravatar.com",
+		"mastodon.social", "hachyderm.io", "fosstodon.org",
+		"bsky.app", "vk.com", "weibo.com", "bilibili.com",
+		"substack.com", "patreon.com", "ko-fi.com",
+		"discord.com", "discordapp.com", "slack.com",
+		"telegram.org", "t.me",
+		// Coding challenges
+		"leetcode.com", "codewars.com", "hackerrank.com",
+		"exercism.org", "freecodecamp.org",
+		// Design
+		"dribbble.com", "behance.net", "codepen.io",
+		// Music / Media
+		"soundcloud.com", "spotify.com", "bandcamp.com",
+		// Gaming
+		"steam.com", "steamcommunity.com",
+		// Programming languages and frameworks (their /about pages are site info, not user profiles)
+		"scratch.mit.edu", "python.org", "golang.org", "go.dev", "rust-lang.org",
+		"ruby-lang.org", "nodejs.org", "deno.land", "typescriptlang.org",
+		"kotlinlang.org", "swift.org", "scala-lang.org", "elixir-lang.org",
+		"haskell.org", "clojure.org", "erlang.org", "julialang.org",
+		"r-project.org", "perl.org", "php.net", "lua.org",
+		"reactjs.org", "react.dev", "vuejs.org", "angular.io", "svelte.dev",
+		"nextjs.org", "nuxt.com", "astro.build", "remix.run",
+		"djangoproject.com", "rubyonrails.org", "flask.palletsprojects.com",
+		"spring.io", "laravel.com", "symfony.com",
+		"kubernetes.io", "docker.com", "terraform.io", "ansible.com",
+		"nginx.org", "apache.org", "linux.org", "kernel.org",
+		"mozilla.org", "chromium.org", "webkit.org",
+	}
+
+	// Check if URL is on a recognized platform
+	isPlatform := false
+	for _, domain := range platformDomains {
+		if strings.Contains(lower, domain) {
+			isPlatform = true
+			break
+		}
+	}
+
+	// Only filter system pages on recognized platforms
+	if !isPlatform {
+		return true
+	}
+
+	// System page paths that are never user profiles
+	systemPaths := []string{
+		"/about", "/about-us", "/aboutus",
+		"/contact", "/contact-us", "/contactus",
+		"/help", "/support", "/faq",
+		"/terms", "/tos", "/terms-of-service",
+		"/privacy", "/privacy-policy",
+		"/legal", "/dmca", "/copyright",
+		"/press", "/media", "/newsroom",
+		"/careers", "/jobs",
+		"/blog", "/news",
+		"/api", "/developers", "/docs",
+		"/security", "/trust",
+		"/cookies", "/cookie-policy",
+		"/guidelines", "/rules", "/policies",
+		"/accessibility",
+		"/advertise", "/advertising", "/ads",
+		"/partners", "/affiliates",
+	}
+
+	for _, sp := range systemPaths {
+		if strings.HasSuffix(lower, sp) ||
+			strings.Contains(lower, sp+"/") ||
+			strings.Contains(lower, sp+"?") {
+			return false
+		}
+	}
+
+	// Platform-specific system page filtering.
+	// YouTube has additional paths that don't follow the common pattern.
 	if strings.Contains(lower, "youtube.com/") {
-		systemPaths := []string{"/about", "/press", "/copyright", "/creators", "/ads", "/policies", "/howyoutubeworks", "/opensearch"}
-		for _, sp := range systemPaths {
+		ytSystemPaths := []string{"/creators", "/howyoutubeworks", "/opensearch", "/premium", "/music", "/kids", "/tv"}
+		for _, sp := range ytSystemPaths {
 			if strings.Contains(lower, sp) {
 				return false
 			}
@@ -423,7 +513,7 @@ func isSocialPlatformURL(u string) bool {
 	lower := strings.ToLower(u)
 	platforms := []string{
 		"twitter.com", "x.com", "linkedin.com", "instagram.com", "facebook.com",
-		"youtube.com", "twitch.tv", "tiktok.com", "github.com", "vk.com",
+		"youtube.com", "twitch.tv", "tiktok.com", "github.com", "github.blog", "vk.com",
 		"habr.com", "habrahabr.ru", "bsky.app", "fosstodon.org", "hachyderm.io",
 		"infosec.exchange", "mastodon.social", "mastodon.online",
 		"discord.com", "discordapp.com",

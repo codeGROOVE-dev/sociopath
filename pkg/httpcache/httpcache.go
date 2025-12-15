@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/codeGROOVE-dev/retry"
@@ -25,6 +26,48 @@ import (
 	"github.com/codeGROOVE-dev/sfcache/pkg/store/null"
 	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
 )
+
+// Stats tracks cache hit/miss statistics.
+type Stats struct {
+	Hits   int64
+	Misses int64
+}
+
+var globalStats atomic.Pointer[Stats]
+
+func init() {
+	globalStats.Store(&Stats{})
+}
+
+// GetStats returns the current cache statistics.
+func GetStats() Stats {
+	return *globalStats.Load()
+}
+
+// ResetStats resets the cache statistics.
+func ResetStats() {
+	globalStats.Store(&Stats{})
+}
+
+func recordHit() {
+	for {
+		old := globalStats.Load()
+		updated := &Stats{Hits: old.Hits + 1, Misses: old.Misses}
+		if globalStats.CompareAndSwap(old, updated) {
+			return
+		}
+	}
+}
+
+func recordMiss() {
+	for {
+		old := globalStats.Load()
+		updated := &Stats{Hits: old.Hits, Misses: old.Misses + 1}
+		if globalStats.CompareAndSwap(old, updated) {
+			return
+		}
+	}
+}
 
 // Cacher allows external cache implementations for sharing across packages.
 type Cacher interface {
@@ -126,10 +169,17 @@ func FetchURLWithValidator(
 		if logger != nil {
 			logger.Info("cache disabled", "url", req.URL.String())
 		}
+		recordMiss()
 		return doFetch(ctx, client, req, logger)
 	}
 
+	var wasFetched bool
 	data, err := cache.GetSet(ctx, URLToKey(cacheKey), func(ctx context.Context) ([]byte, error) {
+		wasFetched = true
+		recordMiss()
+		if logger != nil {
+			logger.Info("CACHE MISS", "url", req.URL.String())
+		}
 		body, fetchErr := doFetch(ctx, client, req, logger)
 		if fetchErr != nil {
 			// Cache HTTP errors to avoid hammering servers.
@@ -148,6 +198,13 @@ func FetchURLWithValidator(
 		}
 		return body, nil
 	}, cache.TTL())
+
+	if !wasFetched {
+		recordHit()
+		if logger != nil {
+			logger.Debug("cache hit", "url", req.URL.String())
+		}
+	}
 
 	// Handle validation failure - return the data but it wasn't cached.
 	var validErr *validationError
@@ -178,7 +235,7 @@ func doFetch(ctx context.Context, client *http.Client, req *http.Request, logger
 
 	return retry.DoWithData(
 		func() ([]byte, error) {
-			globalRateLimiter.Wait(req.URL.String())
+			globalRateLimiter.Wait(req.URL.String(), logger)
 
 			resp, err := client.Do(req)
 			if err != nil {
@@ -243,7 +300,7 @@ type domainRateLimiter struct {
 	minDelay    time.Duration
 }
 
-func (r *domainRateLimiter) Wait(rawURL string) {
+func (r *domainRateLimiter) Wait(rawURL string, logger *slog.Logger) {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
 		return
@@ -267,7 +324,11 @@ func (r *domainRateLimiter) Wait(rawURL string) {
 	if lastI, ok := r.lastRequest.Load(domain); ok {
 		if last, ok := lastI.(time.Time); ok {
 			if elapsed := time.Since(last); elapsed < delay {
-				time.Sleep(delay - elapsed)
+				waitTime := delay - elapsed
+				if logger != nil {
+					logger.Debug("rate limit pause", "domain", domain, "wait", waitTime)
+				}
+				time.Sleep(waitTime)
 			}
 		}
 	}
@@ -278,7 +339,26 @@ func (r *domainRateLimiter) Wait(rawURL string) {
 // ResolveRedirects follows HTTP, HTML meta refresh, and JavaScript redirects.
 // Returns the final URL after following all redirects (up to maxRedirects).
 // If no redirects are found, returns the original URL unchanged.
-func ResolveRedirects(ctx context.Context, rawURL string, logger *slog.Logger) string {
+func ResolveRedirects(ctx context.Context, cache Cacher, rawURL string, logger *slog.Logger) string {
+	doResolve := func() string {
+		return resolveRedirectsImpl(ctx, rawURL, logger)
+	}
+
+	if cache == nil {
+		return doResolve()
+	}
+
+	cacheKey := "redirect:" + URLToKey(rawURL)
+	data, err := cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
+		return []byte(doResolve()), nil
+	}, cache.TTL())
+	if err != nil {
+		return doResolve()
+	}
+	return string(data)
+}
+
+func resolveRedirectsImpl(ctx context.Context, rawURL string, logger *slog.Logger) string {
 	const maxRedirects = 5
 
 	// Create a client that doesn't follow redirects automatically
@@ -294,7 +374,7 @@ func ResolveRedirects(ctx context.Context, rawURL string, logger *slog.Logger) s
 
 	currentURL := rawURL
 	for range maxRedirects {
-		globalRateLimiter.Wait(currentURL)
+		globalRateLimiter.Wait(currentURL, logger)
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, currentURL, http.NoBody)
 		if err != nil {

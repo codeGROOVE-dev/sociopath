@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
@@ -15,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 
 	"golang.org/x/net/html"
@@ -57,6 +57,7 @@ func AuthRequired() bool { return false }
 
 // Client handles Ars Technica requests.
 type Client struct {
+	cache      httpcache.Cacher
 	httpClient *http.Client
 	logger     *slog.Logger
 }
@@ -65,7 +66,13 @@ type Client struct {
 type Option func(*config)
 
 type config struct {
+	cache  httpcache.Cacher
 	logger *slog.Logger
+}
+
+// WithHTTPCache sets the HTTP cache.
+func WithHTTPCache(httpCache httpcache.Cacher) Option {
+	return func(c *config) { c.cache = httpCache }
 }
 
 // WithLogger sets a custom logger.
@@ -86,6 +93,7 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 	}
 
 	return &Client{
+		cache: cfg.cache,
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
 			Jar:     jar,
@@ -167,19 +175,9 @@ func (c *Client) extractFromSearch(ctx context.Context, searchURL string) (strin
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 
-	resp, err := c.httpClient.Do(req)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return "", nil, err
-	}
-	defer resp.Body.Close() //nolint:errcheck // defer closes body
-
-	if resp.StatusCode != http.StatusOK {
-		return "", nil, fmt.Errorf("unexpected status %d fetching search page", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to read search page: %w", err)
 	}
 
 	doc, err := html.Parse(strings.NewReader(string(body)))
@@ -245,17 +243,12 @@ func (c *Client) fetchCSRFToken(ctx context.Context) (string, error) {
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 
-	resp, err := c.httpClient.Do(req)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close() //nolint:errcheck // defer closes body
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status %d fetching civis page", resp.StatusCode)
-	}
-
-	doc, err := html.Parse(resp.Body)
+	doc, err := html.Parse(strings.NewReader(string(body)))
 	if err != nil {
 		return "", fmt.Errorf("failed to parse HTML: %w", err)
 	}
@@ -301,21 +294,13 @@ func (c *Client) fetchTooltip(ctx context.Context, username, userID, csrfToken s
 	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 
-	resp, err := c.httpClient.Do(req)
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close() //nolint:errcheck // defer closes body
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, profile.ErrProfileNotFound
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d fetching tooltip", resp.StatusCode)
-	}
 
 	var tooltipResp tooltipResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tooltipResp); err != nil {
+	if err := json.Unmarshal(body, &tooltipResp); err != nil {
 		return nil, fmt.Errorf("failed to decode tooltip JSON: %w", err)
 	}
 

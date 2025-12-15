@@ -252,29 +252,9 @@ func (c *Client) fetchRecentPosts(ctx context.Context, userID string, maxItems i
 }
 
 func (c *Client) fetchQuestions(ctx context.Context, apiURL string) []apiQuestion {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
-	if err != nil {
-		c.logger.DebugContext(ctx, "failed to create questions request", "error", err)
-		return nil
-	}
-	req.Header.Set("User-Agent", "sociopath/1.0")
-
-	// Use direct fetch - SE API requires gzip and returns it automatically
-	resp, err := c.httpClient.Do(req)
+	body, err := c.fetchSEAPI(ctx, apiURL)
 	if err != nil {
 		c.logger.DebugContext(ctx, "failed to fetch questions", "error", err)
-		return nil
-	}
-	defer resp.Body.Close() //nolint:errcheck // defer closes body
-
-	if resp.StatusCode != http.StatusOK {
-		c.logger.DebugContext(ctx, "questions API returned error", "status", resp.StatusCode)
-		return nil
-	}
-
-	body, err := readCompressedBody(resp)
-	if err != nil {
-		c.logger.DebugContext(ctx, "failed to read questions body", "error", err)
 		return nil
 	}
 
@@ -288,29 +268,9 @@ func (c *Client) fetchQuestions(ctx context.Context, apiURL string) []apiQuestio
 }
 
 func (c *Client) fetchAnswers(ctx context.Context, apiURL string) []apiAnswer {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
-	if err != nil {
-		c.logger.DebugContext(ctx, "failed to create answers request", "error", err)
-		return nil
-	}
-	req.Header.Set("User-Agent", "sociopath/1.0")
-
-	// Use direct fetch - SE API requires gzip and returns it automatically
-	resp, err := c.httpClient.Do(req)
+	body, err := c.fetchSEAPI(ctx, apiURL)
 	if err != nil {
 		c.logger.DebugContext(ctx, "failed to fetch answers", "error", err)
-		return nil
-	}
-	defer resp.Body.Close() //nolint:errcheck // defer closes body
-
-	if resp.StatusCode != http.StatusOK {
-		c.logger.DebugContext(ctx, "answers API returned error", "status", resp.StatusCode)
-		return nil
-	}
-
-	body, err := readCompressedBody(resp)
-	if err != nil {
-		c.logger.DebugContext(ctx, "failed to read answers body", "error", err)
 		return nil
 	}
 
@@ -321,6 +281,35 @@ func (c *Client) fetchAnswers(ctx context.Context, apiURL string) []apiAnswer {
 	}
 
 	return apiResp.Items
+}
+
+// fetchSEAPI fetches from SE API with caching and gzip handling.
+func (c *Client) fetchSEAPI(ctx context.Context, apiURL string) ([]byte, error) {
+	fetch := func(ctx context.Context) ([]byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", "sociopath/1.0")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close() //nolint:errcheck // defer closes body
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, &httpcache.HTTPError{StatusCode: resp.StatusCode, URL: apiURL}
+		}
+
+		return readCompressedBody(resp)
+	}
+
+	if c.cache == nil {
+		return fetch(ctx)
+	}
+
+	return c.cache.GetSet(ctx, httpcache.URLToKey(apiURL), fetch, c.cache.TTL())
 }
 
 // readCompressedBody reads a response body, handling gzip compression if present.

@@ -33,6 +33,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/bluesky"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bugcrowd"
 	"github.com/codeGROOVE-dev/sociopath/pkg/codeberg"
+	"github.com/codeGROOVE-dev/sociopath/pkg/codewars"
 	"github.com/codeGROOVE-dev/sociopath/pkg/crates"
 	"github.com/codeGROOVE-dev/sociopath/pkg/csdn"
 	"github.com/codeGROOVE-dev/sociopath/pkg/devto"
@@ -195,6 +196,8 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		p, err = fetchBilibili(ctx, url, cfg)
 	case codeberg.Match(url):
 		p, err = fetchCodeberg(ctx, url, cfg)
+	case codewars.Match(url):
+		p, err = fetchCodewars(ctx, url, cfg)
 	case bluesky.Match(url):
 		p, err = fetchBlueSky(ctx, url, cfg)
 	case devto.Match(url):
@@ -822,6 +825,22 @@ func fetchCodeberg(ctx context.Context, url string, cfg *config) (*profile.Profi
 	return client.Fetch(ctx, url)
 }
 
+func fetchCodewars(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []codewars.Option
+	if cfg.cache != nil {
+		opts = append(opts, codewars.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, codewars.WithLogger(cfg.logger))
+	}
+
+	client, err := codewars.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 func fetchHackerNews(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []hackernews.Option
 	if cfg.cache != nil {
@@ -888,6 +907,9 @@ func fetchLobsters(ctx context.Context, url string, cfg *config) (*profile.Profi
 
 func fetchArsTechnica(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []arstechnica.Option
+	if cfg.cache != nil {
+		opts = append(opts, arstechnica.WithHTTPCache(cfg.cache))
+	}
 	if cfg.logger != nil {
 		opts = append(opts, arstechnica.WithLogger(cfg.logger))
 	}
@@ -1285,6 +1307,8 @@ func fetchGeneric(ctx context.Context, url string, cfg *config) (*profile.Profil
 
 // FetchRecursive fetches a profile and recursively fetches all social links found.
 // It deduplicates by URL and skips same-platform links for single-account platforms.
+//
+//nolint:gocognit,varnamelen // recursive crawling with multi-platform auth fallback is inherently complex
 func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile.Profile, error) {
 	cfg := &config{logger: slog.Default()}
 	for _, opt := range opts {
@@ -1307,7 +1331,7 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 		queue = queue[1:]
 
 		// Handle redirects, preserving usernames that might be lost
-		p, resolved := handleRedirectWithUsernamePreservation(ctx, cur.url, cfg.logger)
+		p, resolved := handleRedirectWithUsernamePreservation(ctx, cur.url, cfg.cache, cfg.logger)
 		if p != nil {
 			out = append(out, p)
 			continue
@@ -1343,6 +1367,13 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 			if p, err = fetchGeneric(ctx, cur.url, cfg); err != nil {
 				cfg.logger.WarnContext(ctx, "generic fetch failed", "url", cur.url, "error", err)
 				continue
+			}
+			// Fix platform name after generic fallback - use actual platform, not "website"
+			if actualPlatform := PlatformForURL(cur.url); actualPlatform != "website" {
+				p.Platform = actualPlatform
+				// Don't include raw content for platforms that support post extraction
+				// (we just can't extract posts without auth, but content would be misleading)
+				p.Content = ""
 			}
 		}
 		out = append(out, p)
@@ -1405,7 +1436,55 @@ func isValidProfileURL(url string) bool {
 	if twitter.Match(url) {
 		return twitter.IsValidProfileURL(url)
 	}
+	// Filter out known blog/content domains that don't have user profiles
+	if isKnownBlogDomain(url) {
+		return false
+	}
+	// Filter out content aggregation URLs (tag pages, category pages, etc.)
+	if isContentAggregationURL(url) {
+		return false
+	}
 	return true
+}
+
+// isKnownBlogDomain returns true if the URL is from a known blog/content domain
+// that doesn't have user profiles we should crawl.
+func isKnownBlogDomain(urlStr string) bool {
+	lower := strings.ToLower(urlStr)
+	blogDomains := []string{
+		"github.blog", "blog.github.com",
+		"engineering.fb.com", "engineering.linkedin.com",
+		"netflixtechblog.com", "uber.com/blog", "airbnb.io",
+		"aws.amazon.com/blogs", "cloud.google.com/blog",
+		"devblogs.microsoft.com", "techcommunity.microsoft.com",
+	}
+	for _, domain := range blogDomains {
+		if strings.Contains(lower, domain) {
+			return true
+		}
+	}
+	return false
+}
+
+// isContentAggregationURL returns true if the URL is a content aggregation page
+// (tag, category, archive) rather than a user profile.
+func isContentAggregationURL(urlStr string) bool {
+	lower := strings.ToLower(urlStr)
+	// Content aggregation path patterns
+	patterns := []string{
+		"/tag/", "/tags/",
+		"/category/", "/categories/",
+		"/archive/", "/archives/",
+		"/topic/", "/topics/",
+		"/label/", "/labels/",
+		"/page/", // pagination
+	}
+	for _, p := range patterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // isOfficialPlatformAccount returns true if the URL points to an official platform account
@@ -1535,16 +1614,24 @@ func isBadRedirect(resolved string) bool {
 
 // handleRedirectWithUsernamePreservation resolves redirects while preserving usernames
 // that would otherwise be lost (e.g., SlideShare URLs that redirect to /slideshow/).
-// Returns a profile if username was preserved (caller should skip fetch), otherwise returns nil and resolved URL.
-func handleRedirectWithUsernamePreservation(ctx context.Context, url string, logger *slog.Logger) (preserved *profile.Profile, resolved string) {
+// Returns a profile if username was preserved (caller should skip fetch), otherwise returns resolved URL.
+func handleRedirectWithUsernamePreservation(
+	ctx context.Context, url string, cache httpcache.Cacher, logger *slog.Logger,
+) (preserved *profile.Profile, resolved string) {
 	// Extract SlideShare username before redirect might lose it
 	slideshareUsername := ""
 	if slideshare.Match(url) {
 		slideshareUsername = slideshare.ExtractUsername(url)
 	}
 
+	// Skip redirect resolution for known platforms (except SlideShare which redirects)
+	// This avoids an HTTP request for platforms like github.com that don't redirect
+	if slideshareUsername == "" && PlatformForURL(url) != "generic" {
+		return nil, url
+	}
+
 	// Resolve redirects (but skip bad redirects like VK badbrowser)
-	resolved = httpcache.ResolveRedirects(ctx, url, logger)
+	resolved = httpcache.ResolveRedirects(ctx, cache, url, logger)
 	if resolved == url || isBadRedirect(resolved) {
 		return nil, url
 	}
@@ -1740,7 +1827,7 @@ func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) (
 		queue = queue[1:]
 
 		// Handle redirects, preserving usernames that might be lost
-		p, resolved := handleRedirectWithUsernamePreservation(ctx, cur.url, cfg.logger)
+		p, resolved := handleRedirectWithUsernamePreservation(ctx, cur.url, cfg.cache, cfg.logger)
 		if p != nil {
 			out = append(out, p)
 			continue

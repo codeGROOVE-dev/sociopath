@@ -657,6 +657,11 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 				if knownURLs[normalized] {
 					continue
 				}
+				// Skip system pages (about, contact, terms, etc.)
+				if isSystemPage(link) {
+					cfg.Logger.Debug("skipping system page", "url", link)
+					continue
+				}
 				// For high-confidence profiles (>=0.6), always fetch their social links
 				// even if we already have that platform - the linked profile may be
 				// the correct one while our guess may be wrong
@@ -678,7 +683,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 			// Also check website field (websites are generic, always fetch)
 			if p.Website != "" {
 				normalized := normalizeURL(p.Website)
-				if !knownURLs[normalized] {
+				if !knownURLs[normalized] && !isSystemPage(p.Website) {
 					socialLinksToFetch = append(socialLinksToFetch, p.Website)
 					knownURLs[normalized] = true
 				}
@@ -2141,4 +2146,100 @@ func calculateCrossPlatformBonus(p *profile.Profile, others []*profile.Profile) 
 		bonus += 0.10
 	}
 	return bonus, matchingLocation, matchingTimezone
+}
+
+// isSystemPage returns true if the URL is a system/info page on a recognized platform.
+// We filter these out because they're site info pages, not user profiles.
+// Personal websites are NOT filtered - their /about pages often contain user info.
+func isSystemPage(urlStr string) bool {
+	lower := strings.ToLower(urlStr)
+
+	// Recognized social/platform domains where system pages should be filtered.
+	platformDomains := []string{
+		// Code hosting
+		"github.com", "github.blog", "gitlab.com", "bitbucket.org", "codeberg.org", "gitee.com",
+		// Social media
+		"twitter.com", "x.com", "facebook.com", "instagram.com",
+		"linkedin.com", "youtube.com", "tiktok.com", "twitch.tv",
+		"reddit.com", "medium.com", "dev.to", "hashnode.com",
+		// Package registries
+		"npmjs.com", "pypi.org", "rubygems.org", "crates.io",
+		"hub.docker.com", "huggingface.co", "hex.pm",
+		// Q&A / Forums
+		"stackoverflow.com", "stackexchange.com",
+		"hackerone.com", "bugcrowd.com",
+		// Identity / Social
+		"keybase.io", "gravatar.com",
+		"mastodon.social", "hachyderm.io", "fosstodon.org",
+		"bsky.app", "vk.com", "weibo.com", "bilibili.com",
+		"substack.com", "patreon.com", "ko-fi.com",
+		"discord.com", "discordapp.com", "slack.com",
+		"telegram.org", "t.me",
+		// Coding challenges
+		"leetcode.com", "codewars.com", "hackerrank.com",
+		"exercism.org", "freecodecamp.org",
+		// Design
+		"dribbble.com", "behance.net", "codepen.io",
+		// Music / Media
+		"soundcloud.com", "spotify.com", "bandcamp.com",
+		// Gaming
+		"steam.com", "steamcommunity.com",
+		// Programming languages and frameworks (their /about pages are site info, not user profiles)
+		"scratch.mit.edu", "python.org", "golang.org", "go.dev", "rust-lang.org",
+		"ruby-lang.org", "nodejs.org", "deno.land", "typescriptlang.org",
+		"kotlinlang.org", "swift.org", "scala-lang.org", "elixir-lang.org",
+		"haskell.org", "clojure.org", "erlang.org", "julialang.org",
+		"r-project.org", "perl.org", "php.net", "lua.org",
+		"reactjs.org", "react.dev", "vuejs.org", "angular.io", "svelte.dev",
+		"nextjs.org", "nuxt.com", "astro.build", "remix.run",
+		"djangoproject.com", "rubyonrails.org", "flask.palletsprojects.com",
+		"spring.io", "laravel.com", "symfony.com",
+		"kubernetes.io", "docker.com", "terraform.io", "ansible.com",
+		"nginx.org", "apache.org", "linux.org", "kernel.org",
+		"mozilla.org", "chromium.org", "webkit.org",
+	}
+
+	// Check if URL is on a recognized platform
+	isPlatform := false
+	for _, domain := range platformDomains {
+		if strings.Contains(lower, domain) {
+			isPlatform = true
+			break
+		}
+	}
+
+	// Only filter system pages on recognized platforms
+	if !isPlatform {
+		return false
+	}
+
+	// System page paths that are never user profiles
+	systemPaths := []string{
+		"/about", "/about-us", "/aboutus",
+		"/contact", "/contact-us", "/contactus",
+		"/help", "/support", "/faq",
+		"/terms", "/tos", "/terms-of-service",
+		"/privacy", "/privacy-policy",
+		"/legal", "/dmca", "/copyright",
+		"/press", "/media", "/newsroom",
+		"/careers", "/jobs",
+		"/blog", "/news",
+		"/api", "/developers", "/docs",
+		"/security", "/trust",
+		"/cookies", "/cookie-policy",
+		"/guidelines", "/rules", "/policies",
+		"/accessibility",
+		"/advertise", "/advertising", "/ads",
+		"/partners", "/affiliates",
+	}
+
+	for _, sp := range systemPaths {
+		if strings.HasSuffix(lower, sp) ||
+			strings.Contains(lower, sp+"/") ||
+			strings.Contains(lower, sp+"?") {
+			return true
+		}
+	}
+
+	return false
 }
