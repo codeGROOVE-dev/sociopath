@@ -31,6 +31,45 @@ const platform = "github"
 // Example: <profile-timezone data-hours-ahead-of-utc="-8.0">(UTC -08:00)</profile-timezone>.
 var profileTimezoneRegex = regexp.MustCompile(`<profile-timezone[^>]*data-hours-ahead-of-utc="([^"]*)"`)
 
+// isProUser detects if a GitHub profile has the Pro badge.
+// The Pro badge is only visible in HTML, not via API.
+func isProUser(html string) bool {
+	// Pro badge: <span title="Label: Pro" ... class="Label Label--purple ...">
+	return strings.Contains(html, `title="Label: Pro"`)
+}
+
+// achievementPattern extracts achievement names and tiers from profile HTML.
+// Example: alt="Achievement: Pull Shark" ... achievement-tier-label--bronze ... >x2<.
+var achievementPattern = regexp.MustCompile(`alt="Achievement:\s*([^"]+)"[^>]*>(?:<span[^>]*achievement-tier-label--(\w+)[^>]*>x(\d+)</span>)?`)
+
+// extractAchievements parses GitHub achievements from profile HTML.
+// Returns a comma-separated list like "Pair Extraordinaire (gold x4), Mars 2020 Contributor".
+func extractAchievements(html string) string {
+	matches := achievementPattern.FindAllStringSubmatch(html, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+
+	seen := make(map[string]bool)
+	var achievements []string
+
+	for _, m := range matches {
+		name := strings.TrimSpace(m[1])
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+
+		if m[2] != "" && m[3] != "" {
+			achievements = append(achievements, fmt.Sprintf("%s (%s x%s)", name, m[2], m[3]))
+		} else {
+			achievements = append(achievements, name)
+		}
+	}
+
+	return strings.Join(achievements, ", ")
+}
+
 // extractUTCOffset parses the UTC offset from GitHub profile HTML.
 // Returns nil if no timezone is found or the value is invalid.
 func extractUTCOffset(html string) *float64 {
@@ -149,7 +188,7 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 	}
 
 	return &Client{
-		httpClient: &http.Client{Timeout: 3 * time.Second},
+		httpClient: &http.Client{Timeout: 15 * time.Second},
 		cache:      cfg.cache,
 		logger:     logger,
 		token:      token,
@@ -209,10 +248,20 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	prof.SocialLinks = append(prof.SocialLinks, htmlLinks...)
 
-	// Extract README, organizations, and UTC offset from HTML if available
+	// Extract README, organizations, UTC offset, and Pro status from HTML if available
 	if htmlContent != "" {
 		// Extract UTC offset from profile-timezone element
 		prof.UTCOffset = extractUTCOffset(htmlContent)
+
+		// Detect Pro badge (only visible in HTML)
+		if isProUser(htmlContent) {
+			prof.Fields["pro"] = "true"
+		}
+
+		// Extract achievements (only visible in HTML)
+		if achievements := extractAchievements(htmlContent); achievements != "" {
+			prof.Fields["achievements"] = achievements
+		}
 
 		// Extract organizations
 		orgs := extractOrganizations(htmlContent)
@@ -308,6 +357,7 @@ const graphQLUserFieldsWithEmail = `
 	isDeveloperProgramMember
 	isGitHubStar
 	isSiteAdmin
+	isEmployee
 	hasSponsorsListing
 	createdAt
 	updatedAt
@@ -317,12 +367,19 @@ const graphQLUserFieldsWithEmail = `
 		emoji
 	}
 
+	databaseId
+	pinnedItemsRemaining
+
 	socialAccounts(first: 10) {
 		nodes {
 			provider
 			url
 			displayName
 		}
+	}
+
+	topRepositories(first: 1, orderBy: {field: STARGAZERS, direction: DESC}) {
+		totalCount
 	}
 
 	followers {
@@ -334,6 +391,104 @@ const graphQLUserFieldsWithEmail = `
 
 	repositories(first: 1, ownerAffiliations: OWNER) {
 		totalCount
+	}
+
+	gists(first: 50, privacy: PUBLIC, orderBy: {field: CREATED_AT, direction: DESC}) {
+		totalCount
+		nodes {
+			name
+			description
+			url
+			createdAt
+			files {
+				name
+			}
+		}
+	}
+
+	starredRepositories {
+		totalCount
+	}
+	watching {
+		totalCount
+	}
+	packages {
+		totalCount
+	}
+	sponsoring {
+		totalCount
+	}
+	sponsors {
+		totalCount
+	}
+	organizations {
+		totalCount
+	}
+	repositoriesContributedTo {
+		totalCount
+	}
+	pullRequests {
+		totalCount
+	}
+	issues {
+		totalCount
+	}
+	issueComments {
+		totalCount
+	}
+	commitComments {
+		totalCount
+	}
+	repositoryDiscussions {
+		totalCount
+	}
+	repositoryDiscussionComments {
+		totalCount
+	}
+
+	gistComments {
+		totalCount
+	}
+	publicKeys {
+		totalCount
+	}
+	pinnedItems(first: 1) {
+		totalCount
+	}
+	pinnableItems(first: 1) {
+		totalCount
+	}
+	projectsV2(first: 1) {
+		totalCount
+	}
+	sponsorshipsAsMaintainer(first: 1) {
+		totalCount
+	}
+	sponsorshipsAsSponsor(first: 1) {
+		totalCount
+	}
+	lists(first: 1) {
+		totalCount
+	}
+	lifetimeReceivedSponsorshipValues(first: 1) {
+		totalCount
+	}
+
+	contributionsCollection {
+		totalCommitContributions
+		totalIssueContributions
+		totalPullRequestContributions
+		totalPullRequestReviewContributions
+		restrictedContributionsCount
+		totalRepositoriesWithContributedCommits
+		totalRepositoriesWithContributedIssues
+		totalRepositoriesWithContributedPullRequests
+		totalRepositoriesWithContributedPullRequestReviews
+		totalRepositoryContributions
+		contributionYears
+		contributionCalendar {
+			totalContributions
+		}
 	}
 `
 
@@ -353,6 +508,7 @@ const graphQLUserFieldsWithoutEmail = `
 	isDeveloperProgramMember
 	isGitHubStar
 	isSiteAdmin
+	isEmployee
 	hasSponsorsListing
 	createdAt
 	updatedAt
@@ -362,12 +518,19 @@ const graphQLUserFieldsWithoutEmail = `
 		emoji
 	}
 
+	databaseId
+	pinnedItemsRemaining
+
 	socialAccounts(first: 10) {
 		nodes {
 			provider
 			url
 			displayName
 		}
+	}
+
+	topRepositories(first: 1, orderBy: {field: STARGAZERS, direction: DESC}) {
+		totalCount
 	}
 
 	followers {
@@ -379,6 +542,104 @@ const graphQLUserFieldsWithoutEmail = `
 
 	repositories(first: 1, ownerAffiliations: OWNER) {
 		totalCount
+	}
+
+	gists(first: 50, privacy: PUBLIC, orderBy: {field: CREATED_AT, direction: DESC}) {
+		totalCount
+		nodes {
+			name
+			description
+			url
+			createdAt
+			files {
+				name
+			}
+		}
+	}
+
+	starredRepositories {
+		totalCount
+	}
+	watching {
+		totalCount
+	}
+	packages {
+		totalCount
+	}
+	sponsoring {
+		totalCount
+	}
+	sponsors {
+		totalCount
+	}
+	organizations {
+		totalCount
+	}
+	repositoriesContributedTo {
+		totalCount
+	}
+	pullRequests {
+		totalCount
+	}
+	issues {
+		totalCount
+	}
+	issueComments {
+		totalCount
+	}
+	commitComments {
+		totalCount
+	}
+	repositoryDiscussions {
+		totalCount
+	}
+	repositoryDiscussionComments {
+		totalCount
+	}
+
+	gistComments {
+		totalCount
+	}
+	publicKeys {
+		totalCount
+	}
+	pinnedItems(first: 1) {
+		totalCount
+	}
+	pinnableItems(first: 1) {
+		totalCount
+	}
+	projectsV2(first: 1) {
+		totalCount
+	}
+	sponsorshipsAsMaintainer(first: 1) {
+		totalCount
+	}
+	sponsorshipsAsSponsor(first: 1) {
+		totalCount
+	}
+	lists(first: 1) {
+		totalCount
+	}
+	lifetimeReceivedSponsorshipValues(first: 1) {
+		totalCount
+	}
+
+	contributionsCollection {
+		totalCommitContributions
+		totalIssueContributions
+		totalPullRequestContributions
+		totalPullRequestReviewContributions
+		restrictedContributionsCount
+		totalRepositoriesWithContributedCommits
+		totalRepositoriesWithContributedIssues
+		totalRepositoriesWithContributedPullRequests
+		totalRepositoriesWithContributedPullRequestReviews
+		totalRepositoryContributions
+		contributionYears
+		contributionCalendar {
+			totalContributions
+		}
 	}
 `
 
@@ -426,48 +687,105 @@ func (c *Client) executeGraphQL(ctx context.Context, urlStr, username, fields st
 	return parseGraphQLResponse(body, urlStr, username)
 }
 
+// graphQLUser holds the user data from a GraphQL response.
+//
+//nolint:govet // fieldalignment: intentional layout for readability
+type graphQLUser struct {
+	Name                     string `json:"name"`
+	Login                    string `json:"login"`
+	Location                 string `json:"location"`
+	Bio                      string `json:"bio"`
+	Company                  string `json:"company"`
+	Email                    string `json:"email"`
+	WebsiteURL               string `json:"websiteUrl"`
+	TwitterUser              string `json:"twitterUsername"`
+	AvatarURL                string `json:"avatarUrl"`
+	Pronouns                 string `json:"pronouns"`
+	IsHireable               bool   `json:"isHireable"`
+	IsBountyHunter           bool   `json:"isBountyHunter"`
+	IsCampusExpert           bool   `json:"isCampusExpert"`
+	IsDeveloperProgramMember bool   `json:"isDeveloperProgramMember"`
+	IsGitHubStar             bool   `json:"isGitHubStar"`
+	IsSiteAdmin              bool   `json:"isSiteAdmin"`
+	IsEmployee               bool   `json:"isEmployee"`
+	HasSponsorsListing       bool   `json:"hasSponsorsListing"`
+	DatabaseID               int    `json:"databaseId"`
+	PinnedItemsRemaining     int    `json:"pinnedItemsRemaining"`
+	CreatedAt                string `json:"createdAt"`
+	UpdatedAt                string `json:"updatedAt"`
+	Status                   *struct {
+		Message string `json:"message"`
+		Emoji   string `json:"emoji"`
+	} `json:"status"`
+	SocialAccounts struct {
+		Nodes []struct {
+			URL         string `json:"url"`
+			Provider    string `json:"provider"`
+			DisplayName string `json:"displayName"`
+		} `json:"nodes"`
+	} `json:"socialAccounts"`
+	TopRepositories                 struct{ TotalCount int } `json:"topRepositories"`
+	Followers                       struct{ TotalCount int } `json:"followers"`
+	Following                       struct{ TotalCount int } `json:"following"`
+	Repositories                    struct{ TotalCount int } `json:"repositories"`
+	StarredRepositories             struct{ TotalCount int } `json:"starredRepositories"`
+	Watching                        struct{ TotalCount int } `json:"watching"`
+	Packages                        struct{ TotalCount int } `json:"packages"`
+	Sponsoring                      struct{ TotalCount int } `json:"sponsoring"`
+	Sponsors                        struct{ TotalCount int } `json:"sponsors"`
+	Organizations                   struct{ TotalCount int } `json:"organizations"`
+	RepositoriesContributedTo       struct{ TotalCount int } `json:"repositoriesContributedTo"`
+	PullRequests                    struct{ TotalCount int } `json:"pullRequests"`
+	Issues                          struct{ TotalCount int } `json:"issues"`
+	IssueComments                   struct{ TotalCount int } `json:"issueComments"`
+	CommitComments                  struct{ TotalCount int } `json:"commitComments"`
+	RepositoryDiscussions           struct{ TotalCount int } `json:"repositoryDiscussions"`
+	RepositoryDiscussionComments    struct{ TotalCount int } `json:"repositoryDiscussionComments"`
+	GistComments                    struct{ TotalCount int } `json:"gistComments"`
+	PublicKeys                      struct{ TotalCount int } `json:"publicKeys"`
+	PinnedItems                     struct{ TotalCount int } `json:"pinnedItems"`
+	PinnableItems                   struct{ TotalCount int } `json:"pinnableItems"`
+	ProjectsV2                      struct{ TotalCount int } `json:"projectsV2"`
+	SponsorshipsAsMaintainer        struct{ TotalCount int } `json:"sponsorshipsAsMaintainer"`
+	SponsorshipsAsSponsor           struct{ TotalCount int } `json:"sponsorshipsAsSponsor"`
+	Lists                           struct{ TotalCount int } `json:"lists"`
+	LifetimeReceivedSponsorshipVals struct{ TotalCount int } `json:"lifetimeReceivedSponsorshipValues"`
+	Gists                           struct {
+		TotalCount int        `json:"totalCount"`
+		Nodes      []gistNode `json:"nodes"`
+	} `json:"gists"`
+	ContributionsCollection struct {
+		TotalCommitContributions                       int   `json:"totalCommitContributions"`
+		TotalIssueContributions                        int   `json:"totalIssueContributions"`
+		TotalPullRequestContributions                  int   `json:"totalPullRequestContributions"`
+		TotalPullRequestReviewContributions            int   `json:"totalPullRequestReviewContributions"`
+		RestrictedContributionsCount                   int   `json:"restrictedContributionsCount"`
+		TotalRepositoriesWithContributedCommits        int   `json:"totalRepositoriesWithContributedCommits"`
+		TotalRepositoriesWithContributedIssues         int   `json:"totalRepositoriesWithContributedIssues"`
+		TotalRepositoriesWithContributedPullRequests   int   `json:"totalRepositoriesWithContributedPullRequests"`
+		TotalRepositoriesWithContributedPullReqReviews int   `json:"totalRepositoriesWithContributedPullRequestReviews"`
+		TotalRepositoryContributions                   int   `json:"totalRepositoryContributions"`
+		ContributionYears                              []int `json:"contributionYears"`
+		ContributionCalendar                           struct {
+			TotalContributions int `json:"totalContributions"`
+		} `json:"contributionCalendar"`
+	} `json:"contributionsCollection"`
+}
+
+// addCountField adds a count field if the value is greater than 0.
+func addCountField(fields map[string]string, key string, count int) {
+	if count > 0 {
+		fields[key] = strconv.Itoa(count)
+	}
+}
+
 func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, error) {
-	//nolint:govet // fieldalignment: intentional layout for readability
 	var response struct {
 		Errors []struct {
 			Message string `json:"message"`
 		} `json:"errors"`
 		Data struct {
-			User struct {
-				Name                     string `json:"name"`
-				Login                    string `json:"login"`
-				Location                 string `json:"location"`
-				Bio                      string `json:"bio"`
-				Company                  string `json:"company"`
-				Email                    string `json:"email"`
-				WebsiteURL               string `json:"websiteUrl"`
-				TwitterUser              string `json:"twitterUsername"`
-				AvatarURL                string `json:"avatarUrl"`
-				Pronouns                 string `json:"pronouns"`
-				IsHireable               bool   `json:"isHireable"`
-				IsBountyHunter           bool   `json:"isBountyHunter"`
-				IsCampusExpert           bool   `json:"isCampusExpert"`
-				IsDeveloperProgramMember bool   `json:"isDeveloperProgramMember"`
-				IsGitHubStar             bool   `json:"isGitHubStar"`
-				IsSiteAdmin              bool   `json:"isSiteAdmin"`
-				HasSponsorsListing       bool   `json:"hasSponsorsListing"`
-				CreatedAt                string `json:"createdAt"`
-				UpdatedAt                string `json:"updatedAt"`
-				Status                   *struct {
-					Message string `json:"message"`
-					Emoji   string `json:"emoji"`
-				} `json:"status"`
-				SocialAccounts struct {
-					Nodes []struct {
-						URL         string `json:"url"`
-						Provider    string `json:"provider"`
-						DisplayName string `json:"displayName"`
-					} `json:"nodes"`
-				} `json:"socialAccounts"`
-				Followers    struct{ TotalCount int } `json:"followers"`
-				Following    struct{ TotalCount int } `json:"following"`
-				Repositories struct{ TotalCount int } `json:"repositories"`
-			} `json:"user"`
+			User graphQLUser `json:"user"`
 		} `json:"data"`
 	}
 
@@ -503,19 +821,66 @@ func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, erro
 
 	// Add company
 	if user.Company != "" {
-		company := strings.TrimSpace(strings.TrimPrefix(user.Company, "@"))
-		prof.Fields["company"] = company
+		prof.Fields["company"] = strings.TrimSpace(strings.TrimPrefix(user.Company, "@"))
 	}
 
 	// Add stats
-	if user.Repositories.TotalCount > 0 {
-		prof.Fields["public_repos"] = strconv.Itoa(user.Repositories.TotalCount)
+	addCountField(prof.Fields, "public_repos", user.Repositories.TotalCount)
+	addCountField(prof.Fields, "followers", user.Followers.TotalCount)
+	addCountField(prof.Fields, "following", user.Following.TotalCount)
+	addCountField(prof.Fields, "public_gists", user.Gists.TotalCount)
+	addCountField(prof.Fields, "starred_repos", user.StarredRepositories.TotalCount)
+	addCountField(prof.Fields, "watching", user.Watching.TotalCount)
+	addCountField(prof.Fields, "packages", user.Packages.TotalCount)
+	addCountField(prof.Fields, "sponsoring", user.Sponsoring.TotalCount)
+	addCountField(prof.Fields, "sponsors", user.Sponsors.TotalCount)
+	addCountField(prof.Fields, "organizations_count", user.Organizations.TotalCount)
+	addCountField(prof.Fields, "repos_contributed_to", user.RepositoriesContributedTo.TotalCount)
+	addCountField(prof.Fields, "pull_requests", user.PullRequests.TotalCount)
+	addCountField(prof.Fields, "issues", user.Issues.TotalCount)
+	addCountField(prof.Fields, "issue_comments", user.IssueComments.TotalCount)
+	addCountField(prof.Fields, "commit_comments", user.CommitComments.TotalCount)
+	addCountField(prof.Fields, "discussions", user.RepositoryDiscussions.TotalCount)
+	addCountField(prof.Fields, "discussion_comments", user.RepositoryDiscussionComments.TotalCount)
+	addCountField(prof.Fields, "gist_comments", user.GistComments.TotalCount)
+	addCountField(prof.Fields, "public_keys", user.PublicKeys.TotalCount)
+	addCountField(prof.Fields, "pinned_items", user.PinnedItems.TotalCount)
+	addCountField(prof.Fields, "pinnable_items", user.PinnableItems.TotalCount)
+	addCountField(prof.Fields, "projects", user.ProjectsV2.TotalCount)
+	addCountField(prof.Fields, "sponsorships_as_maintainer", user.SponsorshipsAsMaintainer.TotalCount)
+	addCountField(prof.Fields, "sponsorships_as_sponsor", user.SponsorshipsAsSponsor.TotalCount)
+	addCountField(prof.Fields, "lists", user.Lists.TotalCount)
+	addCountField(prof.Fields, "lifetime_sponsorship_values", user.LifetimeReceivedSponsorshipVals.TotalCount)
+	addCountField(prof.Fields, "top_repos", user.TopRepositories.TotalCount)
+	addCountField(prof.Fields, "pinned_items_remaining", user.PinnedItemsRemaining)
+
+	// Database ID (useful for correlation)
+	if user.DatabaseID > 0 {
+		prof.Fields["database_id"] = strconv.Itoa(user.DatabaseID)
 	}
-	if user.Followers.TotalCount > 0 {
-		prof.Fields["followers"] = strconv.Itoa(user.Followers.TotalCount)
+
+	// Contribution stats (last year)
+	cc := user.ContributionsCollection
+	addCountField(prof.Fields, "commits_year", cc.TotalCommitContributions)
+	addCountField(prof.Fields, "issues_year", cc.TotalIssueContributions)
+	addCountField(prof.Fields, "prs_year", cc.TotalPullRequestContributions)
+	addCountField(prof.Fields, "pr_reviews_year", cc.TotalPullRequestReviewContributions)
+	addCountField(prof.Fields, "private_contributions_year", cc.RestrictedContributionsCount)
+	addCountField(prof.Fields, "repos_with_commits_year", cc.TotalRepositoriesWithContributedCommits)
+	addCountField(prof.Fields, "repos_with_issues_year", cc.TotalRepositoriesWithContributedIssues)
+	addCountField(prof.Fields, "repos_with_prs_year", cc.TotalRepositoriesWithContributedPullRequests)
+	addCountField(prof.Fields, "repos_with_reviews_year", cc.TotalRepositoriesWithContributedPullReqReviews)
+	addCountField(prof.Fields, "repos_created_year", cc.TotalRepositoryContributions)
+	addCountField(prof.Fields, "total_contributions_year", cc.ContributionCalendar.TotalContributions)
+
+	// Contribution years (account tenure)
+	if len(cc.ContributionYears) > 0 {
+		prof.Fields["first_contribution_year"] = strconv.Itoa(cc.ContributionYears[len(cc.ContributionYears)-1])
+		prof.Fields["contribution_years_count"] = strconv.Itoa(len(cc.ContributionYears))
 	}
-	if user.Following.TotalCount > 0 {
-		prof.Fields["following"] = strconv.Itoa(user.Following.TotalCount)
+
+	if user.Gists.TotalCount > 0 {
+		prof.Posts = gistsToPosts(user.Gists.Nodes)
 	}
 
 	// Add Twitter from GraphQL
@@ -525,29 +890,22 @@ func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, erro
 		prof.SocialLinks = append(prof.SocialLinks, twitterURL)
 	}
 
-	// Add social accounts from GraphQL - this is the key improvement!
+	// Add social accounts from GraphQL
 	for _, social := range user.SocialAccounts.Nodes {
 		if social.URL != "" {
 			prof.SocialLinks = append(prof.SocialLinks, social.URL)
 		}
 	}
 
-	// Add avatar URL
 	if user.AvatarURL != "" {
 		prof.AvatarURL = user.AvatarURL
 	}
-
-	// Add pronouns
 	if user.Pronouns != "" {
 		prof.Fields["pronouns"] = user.Pronouns
 	}
-
-	// Add hireable status
 	if user.IsHireable {
 		prof.Fields["hireable"] = "true"
 	}
-
-	// Add GitHub program badges
 	if user.IsBountyHunter {
 		prof.Fields["bounty_hunter"] = "true"
 	}
@@ -563,27 +921,22 @@ func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, erro
 	if user.IsSiteAdmin {
 		prof.Fields["site_admin"] = "true"
 	}
+	if user.IsEmployee {
+		prof.Fields["github_employee"] = "true"
+	}
 	if user.HasSponsorsListing {
 		prof.Fields["sponsors_listing"] = "true"
 	}
-
-	// Add status
-	if user.Status != nil {
-		if user.Status.Message != "" {
-			status := user.Status.Message
-			if user.Status.Emoji != "" {
-				status = user.Status.Emoji + " " + status
-			}
-			prof.Fields["status"] = status
+	if user.Status != nil && user.Status.Message != "" {
+		status := user.Status.Message
+		if user.Status.Emoji != "" {
+			status = user.Status.Emoji + " " + status
 		}
+		prof.Fields["status"] = status
 	}
-
-	// Add email
 	if user.Email != "" {
 		prof.Fields["email"] = user.Email
 	}
-
-	// Add account timestamps
 	if user.CreatedAt != "" {
 		prof.CreatedAt = user.CreatedAt
 	}
@@ -808,6 +1161,7 @@ func parseJSON(data []byte, urlStr, _ string) (*profile.Profile, error) {
 		TwitterUser string `json:"twitter_username"`
 		Company     string `json:"company"`
 		PublicRepos int    `json:"public_repos"`
+		PublicGists int    `json:"public_gists"`
 		Followers   int    `json:"followers"`
 		Following   int    `json:"following"`
 		AvatarURL   string `json:"avatar_url"`
@@ -880,6 +1234,9 @@ func parseJSON(data []byte, urlStr, _ string) (*profile.Profile, error) {
 	// Add stats
 	if ghUser.PublicRepos > 0 {
 		prof.Fields["public_repos"] = strconv.Itoa(ghUser.PublicRepos)
+	}
+	if ghUser.PublicGists > 0 {
+		prof.Fields["public_gists"] = strconv.Itoa(ghUser.PublicGists)
 	}
 	if ghUser.Followers > 0 {
 		prof.Fields["followers"] = strconv.Itoa(ghUser.Followers)
@@ -1110,4 +1467,36 @@ func ghAuthToken(ctx context.Context) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// gistNode represents a gist from the GraphQL response.
+type gistNode struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	URL         string `json:"url"`
+	CreatedAt   string `json:"createdAt"`
+	Files       []struct {
+		Name string `json:"name"`
+	} `json:"files"`
+}
+
+// gistsToPosts converts gist nodes to profile posts.
+func gistsToPosts(gists []gistNode) []profile.Post {
+	posts := make([]profile.Post, 0, len(gists))
+	for _, g := range gists {
+		title := g.Description
+		if title == "" && len(g.Files) > 0 {
+			title = g.Files[0].Name
+		}
+		if title == "" {
+			title = g.Name
+		}
+		posts = append(posts, profile.Post{
+			Type:    profile.PostTypePost,
+			Title:   title,
+			Content: g.Description,
+			URL:     g.URL,
+		})
+	}
+	return posts
 }
