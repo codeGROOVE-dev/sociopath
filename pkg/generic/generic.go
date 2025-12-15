@@ -4,9 +4,11 @@ package generic
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -102,7 +104,21 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, err
 	}
 
-	return parseHTML(body, urlStr), nil
+	p := parseHTML(body, urlStr)
+
+	// Check for DNS-based identity proofs (Keybase, Bluesky) - only for personal/blog domains
+	if domain := extractDomain(urlStr); domain != "" && !isKnownSocialDomain(domain) {
+		if keybaseURL := lookupKeybaseByDomain(ctx, domain, c.logger); keybaseURL != "" {
+			p.SocialLinks = append(p.SocialLinks, keybaseURL)
+			c.logger.InfoContext(ctx, "discovered keybase via DNS", "domain", domain, "url", keybaseURL)
+		}
+		if blueskyURL := lookupBlueskyByDomain(ctx, domain, c.logger); blueskyURL != "" {
+			p.SocialLinks = append(p.SocialLinks, blueskyURL)
+			c.logger.InfoContext(ctx, "discovered bluesky via DNS", "domain", domain, "url", blueskyURL)
+		}
+	}
+
+	return p, nil
 }
 
 func parseHTML(data []byte, urlStr string) *profile.Profile {
@@ -525,4 +541,142 @@ func validateURL(urlStr string) error {
 	}
 
 	return nil
+}
+
+// knownSocialDomains contains domains of established social platforms where DNS identity
+// lookups would be pointless (e.g., no one owns github.com as their personal domain).
+var knownSocialDomains = map[string]bool{
+	"github.com": true, "gitlab.com": true, "bitbucket.org": true, "codeberg.org": true,
+	"twitter.com": true, "x.com": true, "facebook.com": true, "instagram.com": true,
+	"linkedin.com": true, "tiktok.com": true, "youtube.com": true, "twitch.tv": true,
+	"reddit.com": true, "discord.com": true, "slack.com": true, "telegram.org": true,
+	"medium.com": true, "substack.com": true, "dev.to": true, "hashnode.dev": true,
+	"stackoverflow.com": true, "stackexchange.com": true,
+	"keybase.io": true, "bsky.app": true, "mastodon.social": true,
+	"npmjs.com": true, "pypi.org": true, "rubygems.org": true, "crates.io": true,
+	"hub.docker.com": true, "docker.io": true,
+	"vk.com": true, "ok.ru": true, "weibo.com": true,
+	"pinterest.com": true, "tumblr.com": true, "flickr.com": true,
+	"soundcloud.com": true, "spotify.com": true, "bandcamp.com": true,
+	"patreon.com": true, "ko-fi.com": true, "buymeacoffee.com": true,
+	"linktree.com": true, "linktr.ee": true, "bio.link": true,
+}
+
+// isKnownSocialDomain returns true if the domain belongs to a known social platform.
+func isKnownSocialDomain(domain string) bool {
+	// Check exact match
+	if knownSocialDomains[domain] {
+		return true
+	}
+	// Check if it's a subdomain of a known platform (e.g., user.github.io)
+	for known := range knownSocialDomains {
+		if strings.HasSuffix(domain, "."+known) {
+			return true
+		}
+	}
+	// Check common hosting subdomains
+	hostingDomains := []string{".github.io", ".gitlab.io", ".netlify.app", ".vercel.app", ".pages.dev"}
+	for _, suffix := range hostingDomains {
+		if strings.HasSuffix(domain, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractDomain extracts the domain from a URL, stripping www. prefix.
+func extractDomain(urlStr string) string {
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		return ""
+	}
+	host := parsed.Hostname()
+	// Skip if it's an IP address
+	if net.ParseIP(host) != nil {
+		return ""
+	}
+	// Strip www. prefix
+	host = strings.TrimPrefix(host, "www.")
+	return host
+}
+
+// lookupKeybaseByDomain queries the Keybase API to find a user who has verified ownership of a domain.
+// Returns the keybase profile URL if found, empty string otherwise.
+func lookupKeybaseByDomain(ctx context.Context, domain string, logger *slog.Logger) string {
+	apiURL := fmt.Sprintf("https://keybase.io/_/api/1.0/user/lookup.json?domain=%s", url.QueryEscape(domain))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "sociopath/1.0")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.DebugContext(ctx, "keybase domain lookup failed", "domain", domain, "error", err)
+		return ""
+	}
+	defer resp.Body.Close() //nolint:errcheck // response body must be closed
+
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return ""
+	}
+
+	// Parse the Keybase API response
+	var result struct {
+		Them []struct {
+			Basics struct {
+				Username string `json:"username"`
+			} `json:"basics"`
+		} `json:"them"`
+		Status struct {
+			Name string `json:"name"`
+			Code int    `json:"code"`
+		} `json:"status"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		logger.DebugContext(ctx, "keybase response parse failed", "domain", domain, "error", err)
+		return ""
+	}
+
+	if result.Status.Code != 0 || len(result.Them) == 0 {
+		return ""
+	}
+
+	username := result.Them[0].Basics.Username
+	if username == "" {
+		return ""
+	}
+
+	logger.DebugContext(ctx, "keybase user found via domain", "domain", domain, "username", username)
+	return "https://keybase.io/" + username
+}
+
+// lookupBlueskyByDomain checks DNS TXT records for AT Protocol verification.
+// Bluesky allows custom domain handles via _atproto.{domain} TXT records.
+// Returns the Bluesky profile URL if verified, empty string otherwise.
+func lookupBlueskyByDomain(ctx context.Context, domain string, logger *slog.Logger) string {
+	// Look up _atproto.{domain} TXT record
+	txtRecords, err := net.DefaultResolver.LookupTXT(ctx, "_atproto."+domain)
+	if err != nil {
+		logger.DebugContext(ctx, "bluesky DNS lookup failed", "domain", domain, "error", err)
+		return ""
+	}
+
+	// Check if any TXT record contains a DID
+	for _, txt := range txtRecords {
+		if strings.HasPrefix(txt, "did=") {
+			logger.DebugContext(ctx, "bluesky handle found via DNS", "domain", domain, "did", txt)
+			return "https://bsky.app/profile/" + domain
+		}
+	}
+
+	return ""
 }
