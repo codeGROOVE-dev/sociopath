@@ -883,6 +883,10 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 		}
 	}
 
+	// Cross-platform boost: if same username exists on multiple code hosting platforms
+	// (GitHub, GitLab, Codeberg, etc.), boost confidence for guessed profiles
+	boostCrossPlatformMatches(guessed, known, cfg.Logger)
+
 	// Filter to only highest confidence per platform
 	guessed = filterHighestConfidencePerPlatform(guessed)
 
@@ -1427,7 +1431,16 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 		}
 	}
 	if bestLocScore > 0 {
-		score += bestLocScore * 0.15
+		// Complex usernames (with digits, underscores, or dots) are more unique,
+		// so location match is a stronger signal for them
+		if containsDigit(targetUsername) || strings.ContainsAny(targetUsername, "_.") {
+			score += bestLocScore * 0.25
+			if bestLocScore >= 0.8 {
+				matches = append(matches, "combo:complex-username+location")
+			}
+		} else {
+			score += bestLocScore * 0.15
+		}
 	}
 	if bestBioScore > 0 {
 		score += bestBioScore * 0.1
@@ -2003,4 +2016,99 @@ func extractInterestKeywords(text string) map[string]bool {
 	}
 
 	return interests
+}
+
+// boostCrossPlatformMatches increases confidence for guessed profiles when the same
+// username is found on multiple platforms of the same type (e.g., GitHub and GitLab are both "code" platforms).
+// This is a strong signal because users commonly reuse usernames across similar platforms.
+func boostCrossPlatformMatches(guessed []*profile.Profile, known []*profile.Profile, logger *slog.Logger) {
+	byTypeAndUsername := buildPlatformTypeUsernameMap(known, guessed)
+
+	for _, p := range guessed {
+		pType := profile.TypeOf(p.Platform)
+		if pType == profile.PlatformTypeOther || p.Username == "" {
+			continue
+		}
+
+		key := string(pType) + ":" + strings.ToLower(p.Username)
+		others := byTypeAndUsername[key]
+		if len(others) < 2 {
+			continue
+		}
+
+		bonus, matchingLocation, matchingTimezone := calculateCrossPlatformBonus(p, others)
+		if bonus == 0 {
+			continue
+		}
+
+		newConfidence := min(p.Confidence+bonus, 1.0)
+		if newConfidence > p.Confidence {
+			logger.Info("cross-platform boost",
+				"url", p.URL,
+				"username", p.Username,
+				"platform_type", pType,
+				"old_confidence", p.Confidence,
+				"new_confidence", newConfidence,
+				"matching_location", matchingLocation,
+				"matching_timezone", matchingTimezone)
+
+			p.Confidence = newConfidence
+			p.GuessMatch = append(p.GuessMatch, "cross-platform:"+string(pType))
+			if matchingLocation {
+				p.GuessMatch = append(p.GuessMatch, "cross-platform:location")
+			}
+			if matchingTimezone {
+				p.GuessMatch = append(p.GuessMatch, "cross-platform:timezone")
+			}
+		}
+	}
+}
+
+// buildPlatformTypeUsernameMap creates a map of "platformType:username" to profiles.
+// This groups profiles by their platform type (code, blog, microblog, etc.) and username.
+func buildPlatformTypeUsernameMap(known, guessed []*profile.Profile) map[string][]*profile.Profile {
+	byTypeAndUsername := make(map[string][]*profile.Profile)
+	for _, profiles := range [][]*profile.Profile{known, guessed} {
+		for _, p := range profiles {
+			pType := profile.TypeOf(p.Platform)
+			if pType == profile.PlatformTypeOther || p.Username == "" {
+				continue
+			}
+			key := string(pType) + ":" + strings.ToLower(p.Username)
+			byTypeAndUsername[key] = append(byTypeAndUsername[key], p)
+		}
+	}
+	return byTypeAndUsername
+}
+
+// calculateCrossPlatformBonus calculates the confidence boost for a profile based on
+// matching profiles on other platforms of the same type.
+func calculateCrossPlatformBonus(p *profile.Profile, others []*profile.Profile) (bonus float64, matchingLocation, matchingTimezone bool) {
+	var hasOther bool
+	for _, other := range others {
+		if other.URL == p.URL {
+			continue
+		}
+		hasOther = true
+
+		if p.Location != "" && other.Location != "" && scoreLocation(p.Location, other.Location) > 0.5 {
+			matchingLocation = true
+		}
+		if p.UTCOffset != nil && other.UTCOffset != nil && *p.UTCOffset == *other.UTCOffset {
+			matchingTimezone = true
+		}
+	}
+
+	if !hasOther {
+		return 0, false, false
+	}
+
+	bonus = 0.15 // Base bonus for matching username on another platform of the same type
+	if matchingLocation {
+		bonus += 0.10
+	}
+	if matchingTimezone {
+		bonus += 0.10
+	}
+	return bonus, matchingLocation, matchingTimezone
 }

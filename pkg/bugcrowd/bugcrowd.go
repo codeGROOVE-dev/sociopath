@@ -17,6 +17,16 @@ import (
 
 const platform = "bugcrowd"
 
+// platformInfo implements profile.Platform for Bugcrowd.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeSecurity }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)bugcrowd\.com/(?:h/)?([a-zA-Z0-9_-]+)`)
 
 // Country code to country name mapping.

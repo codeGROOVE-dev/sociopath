@@ -17,6 +17,16 @@ import (
 
 const platform = "telegram"
 
+// platformInfo implements profile.Platform for Telegram.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeSocial }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)t\.me/([a-zA-Z][a-zA-Z0-9_]{4,31})`)
 
 // Match returns true if the URL is a Telegram profile URL.

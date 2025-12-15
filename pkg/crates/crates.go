@@ -17,6 +17,16 @@ import (
 
 const platform = "crates"
 
+// platformInfo implements profile.Platform for Crates.io.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypePackage }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)crates\.io/users/([a-zA-Z0-9_-]+)`)
 
 // Match returns true if the URL is a crates.io user profile URL.

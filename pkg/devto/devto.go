@@ -20,6 +20,16 @@ import (
 
 const platform = "devto"
 
+// platformInfo implements profile.Platform for Dev.to.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeBlog }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // Match returns true if the URL is a Dev.to profile URL.
 func Match(urlStr string) bool {
 	return strings.Contains(strings.ToLower(urlStr), "dev.to/")

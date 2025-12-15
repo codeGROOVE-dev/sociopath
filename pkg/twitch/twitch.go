@@ -18,6 +18,16 @@ import (
 
 const platform = "twitch"
 
+// platformInfo implements profile.Platform for Twitch.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeVideo }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // Public Client-ID used by Twitch's own web client.
 const twitchClientID = "kimne78kx3ncx6brgo4mv6wki5h1ko"
 

@@ -18,6 +18,16 @@ import (
 
 const platform = "juejin"
 
+// platformInfo implements profile.Platform for Juejin.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeBlog }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var userIDPattern = regexp.MustCompile(`(?i)juejin\.cn/user/(\d+)`)
 
 // Match returns true if the URL is a Juejin profile URL.

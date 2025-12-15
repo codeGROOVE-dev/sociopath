@@ -16,6 +16,16 @@ import (
 
 const platform = "freecodecamp"
 
+// platformInfo implements profile.Platform for FreeCodeCamp.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeOther }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)freecodecamp\.org/([a-zA-Z0-9_-]+)`)
 
 // Match returns true if the URL is a FreeCodeCamp profile URL.

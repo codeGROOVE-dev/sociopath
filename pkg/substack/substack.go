@@ -17,6 +17,29 @@ import (
 
 const platform = "substack"
 
+// platformInfo implements profile.Platform for Substack.
+type platformInfo struct{}
+
+func (platformInfo) Name() string {
+	return platform
+}
+
+func (platformInfo) Type() profile.PlatformType {
+	return profile.PlatformTypeBlog
+}
+
+func (platformInfo) Match(url string) bool {
+	return Match(url)
+}
+
+func (platformInfo) AuthRequired() bool {
+	return AuthRequired()
+}
+
+func init() {
+	profile.Register(platformInfo{})
+}
+
 // Match returns true if the URL is a Substack profile URL.
 func Match(urlStr string) bool {
 	lower := strings.ToLower(urlStr)

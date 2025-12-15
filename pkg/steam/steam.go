@@ -19,6 +19,16 @@ import (
 
 const platform = "steam"
 
+// platformInfo implements profile.Platform for Steam.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeGaming }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // URL patterns for Steam profiles.
 var (
 	customURLPattern = regexp.MustCompile(`(?i)steamcommunity\.com/id/([a-zA-Z0-9_-]+)`)

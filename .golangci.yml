@@ -38,6 +38,7 @@ linters:
     - forcetypeassert # [replaced by errcheck] finds forced type assertions
     - ginkgolinter # [if you use ginkgo/gomega] enforces standards of using ginkgo and gomega
     - gochecknoglobals # checks that no global variables exist
+    - gochecknoinits # init() functions are used for platform registration
     - cyclop # replaced by revive
     - gocyclo # replaced by revive
     - forbidigo # needs configuration to be useful
@@ -230,6 +231,13 @@ linters:
       - text: "parameter 'ctx' seems to be unused, consider removing or renaming it as _"
         linters:
           - revive
+      # Allow "url" parameter in platformInfo.Match to shadow import
+      - text: 'import-shadowing: The name .url. shadows an import name'
+        linters:
+          - revive
+      - text: 'importShadow: shadow of imported package .url.'
+        linters:
+          - gocritic
       - path: _test\.go
         linters:
           - dupl

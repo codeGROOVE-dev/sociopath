@@ -22,6 +22,16 @@ import (
 
 const platform = "arstechnica"
 
+// platformInfo implements profile.Platform for Ars Technica.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeForum }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // URL patterns:
 // Search URL with ID: arstechnica.com/civis/search/{search_id}/?c[users]={username}&o=date.
 // Search URL without ID: arstechnica.com/civis/search/?c[users]={username}&o=date.

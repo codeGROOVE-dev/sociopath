@@ -12,6 +12,16 @@ import (
 
 const platform = "instagram"
 
+// platformInfo implements profile.Platform for Instagram.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeSocial }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // Match returns true if the URL is an Instagram profile URL.
 func Match(urlStr string) bool {
 	lower := strings.ToLower(urlStr)

@@ -31,6 +31,16 @@ import (
 
 const platform = "google"
 
+// platformInfo implements profile.Platform for Google.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeOther }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var (
 	// gaiaIDRegex matches a 21-digit GAIA ID.
 	gaiaIDRegex = regexp.MustCompile(`^\d{21}$`)

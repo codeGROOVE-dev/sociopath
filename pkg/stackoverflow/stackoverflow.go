@@ -21,6 +21,16 @@ import (
 
 const platform = "stackoverflow"
 
+// platformInfo implements profile.Platform for StackOverflow.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeForum }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // Match returns true if the URL is a StackOverflow profile URL.
 func Match(urlStr string) bool {
 	return strings.Contains(strings.ToLower(urlStr), "stackoverflow.com/users/")

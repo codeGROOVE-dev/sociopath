@@ -16,6 +16,16 @@ import (
 
 const platform = "codepen"
 
+// platformInfo implements profile.Platform for CodePen.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypePackage }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)codepen\.io/([a-zA-Z0-9_-]+)`)
 
 // Match returns true if the URL is a CodePen profile URL.

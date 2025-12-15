@@ -15,6 +15,16 @@ import (
 
 const platform = "linkedin"
 
+// platformInfo implements profile.Platform for LinkedIn.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeSocial }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // Match returns true if the URL is a LinkedIn profile URL.
 func Match(urlStr string) bool {
 	return strings.Contains(strings.ToLower(urlStr), "linkedin.com/in/")

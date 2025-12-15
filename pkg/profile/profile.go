@@ -27,6 +27,24 @@ const (
 	PostTypeRepository PostType = "repository"
 )
 
+// PlatformType categorizes what kind of content a platform primarily hosts.
+// This enables cross-platform matching bonuses (e.g., same username on GitHub and GitLab).
+type PlatformType string
+
+// Platform type constants for categorizing platforms by their primary content type.
+const (
+	PlatformTypeCode      PlatformType = "code"      // Code hosting: GitHub, GitLab, Codeberg, etc.
+	PlatformTypeBlog      PlatformType = "blog"      // Long-form writing: Medium, Substack, Dev.to, etc.
+	PlatformTypeMicroblog PlatformType = "microblog" // Short posts: Twitter, Mastodon, Bluesky, etc.
+	PlatformTypeVideo     PlatformType = "video"     // Video content: YouTube, TikTok, Twitch, etc.
+	PlatformTypeForum     PlatformType = "forum"     // Discussion forums: Reddit, HN, Lobsters, etc.
+	PlatformTypeGaming    PlatformType = "gaming"    // Gaming platforms: Steam, etc.
+	PlatformTypeSocial    PlatformType = "social"    // General social: LinkedIn, Instagram, VK, etc.
+	PlatformTypePackage   PlatformType = "package"   // Package registries: npm, PyPI, crates.io, etc.
+	PlatformTypeSecurity  PlatformType = "security"  // Security platforms: HackerOne, Bugcrowd, etc.
+	PlatformTypeOther     PlatformType = "other"     // Uncategorized platforms
+)
+
 // Post represents a piece of user-generated content (post, comment, video, etc.).
 type Post struct {
 	Type     PostType `json:"type"`               // Type of content

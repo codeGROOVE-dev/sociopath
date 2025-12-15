@@ -21,6 +21,16 @@ import (
 
 const platform = "mastodon"
 
+// platformInfo implements profile.Platform for Mastodon.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeMicroblog }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // Known Mastodon instances.
 var knownInstances = map[string]bool{
 	"mastodon.social": true, "mastodon.online": true, "fosstodon.org": true,

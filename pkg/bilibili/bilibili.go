@@ -17,6 +17,16 @@ import (
 
 const platform = "bilibili"
 
+// platformInfo implements profile.Platform for Bilibili.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeVideo }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // Match returns true if the URL is a Bilibili user profile URL.
 func Match(urlStr string) bool {
 	lower := strings.ToLower(urlStr)

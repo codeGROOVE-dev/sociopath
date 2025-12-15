@@ -149,12 +149,14 @@ func TestFetch_NotFound(t *testing.T) {
 
 func TestParseProfile(t *testing.T) {
 	tests := []struct {
-		name     string
-		html     string
-		url      string
-		wantName string
-		wantBio  string
-		wantErr  bool
+		name          string
+		html          string
+		url           string
+		wantName      string
+		wantBio       string
+		wantErr       bool
+		wantUsername  string
+		wantProfError string // profile.Error field (not Go error)
 	}{
 		{
 			name: "full profile",
@@ -178,11 +180,18 @@ func TestParseProfile(t *testing.T) {
 			url:     "https://vk.com/user",
 			wantErr: true,
 		},
+		{
+			name:          "badbrowser redirect",
+			html:          `<html><head><title>Your browser is out of date</title></head><body>badbrowser</body></html>`,
+			url:           "https://vk.com/r2genius",
+			wantUsername:  "r2genius",
+			wantProfError: "browser not supported",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			profile, err := parseProfile(tt.html, tt.url)
+			profile, err := parseProfile(tt.html, tt.url, extractUsername(tt.url))
 
 			if tt.wantErr {
 				if err == nil {
@@ -193,6 +202,16 @@ func TestParseProfile(t *testing.T) {
 
 			if err != nil {
 				t.Fatalf("parseProfile() error = %v", err)
+			}
+
+			if tt.wantProfError != "" {
+				if profile.Error != tt.wantProfError {
+					t.Errorf("Error = %q, want %q", profile.Error, tt.wantProfError)
+				}
+				if tt.wantUsername != "" && profile.Username != tt.wantUsername {
+					t.Errorf("Username = %q, want %q", profile.Username, tt.wantUsername)
+				}
+				return
 			}
 
 			if profile.Name != tt.wantName {

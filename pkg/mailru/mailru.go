@@ -25,6 +25,16 @@ import (
 
 const platform = "mailru"
 
+// platformInfo implements profile.Platform for Mail.ru.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeOther }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // emailRegex matches Mail.ru email addresses.
 var emailRegex = regexp.MustCompile(`(?i)^(?:mailto:)?([a-zA-Z0-9._%+-]+)@(mail\.ru|inbox\.ru|list\.ru|bk\.ru)$`)
 

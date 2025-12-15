@@ -22,6 +22,16 @@ import (
 
 const platform = "weibo"
 
+// platformInfo implements profile.Platform for Weibo.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeMicroblog }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // Match returns true if the URL is a Weibo profile URL.
 func Match(urlStr string) bool {
 	lower := strings.ToLower(urlStr)

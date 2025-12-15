@@ -19,6 +19,16 @@ import (
 
 const platform = "vkontakte"
 
+// platformInfo implements profile.Platform for VKontakte.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeSocial }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // Match returns true if the URL is a VKontakte profile URL.
 func Match(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
@@ -108,10 +118,15 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 
 // Fetch retrieves a VKontakte profile.
 func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, error) {
-	// Normalize URL
+	// Normalize URL and save original for badbrowser fallback
+	originalURL := urlStr
 	if !strings.HasPrefix(urlStr, "http") {
 		urlStr = "https://vk.com/" + strings.TrimPrefix(urlStr, "vk.com/")
+		originalURL = urlStr
 	}
+
+	// Extract username from original URL before any redirects
+	originalUsername := extractUsername(originalURL)
 
 	c.logger.InfoContext(ctx, "fetching vkontakte profile", "url", urlStr)
 
@@ -127,7 +142,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
-	return parseProfile(string(body), urlStr)
+	return parseProfile(string(body), originalURL, originalUsername)
 }
 
 func setHeaders(req *http.Request) {
@@ -139,16 +154,27 @@ func setHeaders(req *http.Request) {
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
 }
 
-func parseProfile(html, url string) (*profile.Profile, error) {
+func parseProfile(html, originalURL, originalUsername string) (*profile.Profile, error) {
 	// Check for bot detection page
 	if strings.Contains(html, "У вас большие запросы") || strings.Contains(html, "You are making too many requests") {
 		return nil, errors.New("VK bot detection triggered - try using browser cookies")
 	}
 
+	// Check for badbrowser redirect - return limited profile with original URL
+	if strings.Contains(html, "badbrowser") || strings.Contains(html, "Your browser is out of date") ||
+		strings.Contains(html, "browser is not supported") {
+		return &profile.Profile{
+			Platform: platform,
+			URL:      originalURL,
+			Username: originalUsername,
+			Error:    "browser not supported",
+		}, nil
+	}
+
 	prof := &profile.Profile{
 		Platform: platform,
-		URL:      url,
-		Username: extractUsername(url),
+		URL:      originalURL,
+		Username: originalUsername,
 		Fields:   make(map[string]string),
 	}
 

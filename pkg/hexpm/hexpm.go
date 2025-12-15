@@ -17,6 +17,16 @@ import (
 
 const platform = "hexpm"
 
+// platformInfo implements profile.Platform for Hex.pm.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypePackage }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)hex\.pm/users/([a-zA-Z0-9_-]+)`)
 
 // Match returns true if the URL is a Hex.pm user profile URL.

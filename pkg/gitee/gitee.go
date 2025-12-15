@@ -17,6 +17,16 @@ import (
 
 const platform = "gitee"
 
+// platformInfo implements profile.Platform for Gitee.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeCode }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)gitee\.com/([a-zA-Z0-9_-]+)(?:/|$)`)
 
 // Match returns true if the URL is a Gitee user profile URL.

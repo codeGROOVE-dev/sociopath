@@ -17,6 +17,16 @@ import (
 
 const platform = "qiita"
 
+// platformInfo implements profile.Platform for Qiita.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeBlog }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)qiita\.com/([a-zA-Z0-9_-]+)`)
 
 // Match returns true if the URL is a Qiita user profile URL.

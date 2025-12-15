@@ -18,6 +18,16 @@ import (
 
 const platform = "goodreads"
 
+// platformInfo implements profile.Platform for Goodreads.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeSocial }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)goodreads\.com/user/show/(\d+(?:-[a-zA-Z0-9_-]+)?)`)
 
 // Match returns true if the URL is a Goodreads profile URL.

@@ -20,6 +20,16 @@ import (
 
 const platform = "hackernews"
 
+// platformInfo implements profile.Platform for Hacker News.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeForum }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)news\.ycombinator\.com/user\?id=([a-zA-Z0-9_-]+)`)
 
 // Match returns true if the URL is a Hacker News user profile URL.

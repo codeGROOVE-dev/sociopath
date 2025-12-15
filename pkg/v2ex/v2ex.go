@@ -19,6 +19,16 @@ import (
 
 const platform = "v2ex"
 
+// platformInfo implements profile.Platform for V2EX.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeForum }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)v2ex\.com/member/([a-zA-Z0-9_-]+)`)
 
 // Match returns true if the URL is a V2EX profile URL.

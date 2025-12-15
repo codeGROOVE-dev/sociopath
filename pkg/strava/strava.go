@@ -18,6 +18,16 @@ import (
 
 const platform = "strava"
 
+// platformInfo implements profile.Platform for Strava.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeSocial }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var athleteIDPattern = regexp.MustCompile(`(?i)strava\.com/athletes/(\d+)`)
 
 // Match returns true if the URL is a Strava athlete profile URL.

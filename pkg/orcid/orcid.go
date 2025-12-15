@@ -17,6 +17,16 @@ import (
 
 const platform = "orcid"
 
+// platformInfo implements profile.Platform for ORCID.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeOther }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 // ORCID pattern: 0000-0000-0000-0000 (16 digits with hyphens, last char can be X).
 var orcidPattern = regexp.MustCompile(`(?i)orcid\.org/(\d{4}-\d{4}-\d{4}-\d{3}[\dX])`)
 

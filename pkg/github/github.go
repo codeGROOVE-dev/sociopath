@@ -30,6 +30,39 @@ import (
 
 const platform = "github"
 
+// platformInfo implements profile.Platform for GitHub.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeCode }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() {
+	profile.RegisterWithFetcher(platformInfo{}, fetchProfile)
+}
+
+// fetchProfile is the FetchFunc for GitHub profiles.
+func fetchProfile(ctx context.Context, url string, cfg *profile.FetcherConfig) (*profile.Profile, error) {
+	var opts []Option
+	if cfg != nil {
+		if cfg.Logger != nil {
+			opts = append(opts, WithLogger(cfg.Logger))
+		}
+		if cfg.GitHubToken != "" {
+			opts = append(opts, WithToken(cfg.GitHubToken))
+		}
+		if c, ok := cfg.Cache.(httpcache.Cacher); ok {
+			opts = append(opts, WithHTTPCache(c))
+		}
+	}
+	client, err := New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 // tokenScopeCache caches whether tokens have email scope, keyed by token hash.
 // This avoids repeated failed GraphQL queries for tokens without user:email scope.
 var (

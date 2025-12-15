@@ -22,6 +22,16 @@ const (
 	publicAPIKey = "E8Uh5l5fHZ6gD8U3KycjAIAk46f68Zw7C6eW8WSjZvCLXebZ7p0r1yrYDrLilk2F" //nolint:gosec // public API key
 )
 
+// platformInfo implements profile.Platform for Disqus.
+type platformInfo struct{}
+
+func (platformInfo) Name() string               { return platform }
+func (platformInfo) Type() profile.PlatformType { return profile.PlatformTypeForum }
+func (platformInfo) Match(url string) bool      { return Match(url) }
+func (platformInfo) AuthRequired() bool         { return AuthRequired() }
+
+func init() { profile.Register(platformInfo{}) }
+
 var usernamePattern = regexp.MustCompile(`(?i)disqus\.com/by/([a-zA-Z0-9_-]+)`)
 
 // Match returns true if the URL is a Disqus profile URL.

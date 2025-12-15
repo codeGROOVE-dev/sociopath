@@ -1303,8 +1303,8 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 		cur := queue[0]
 		queue = queue[1:]
 
-		// Resolve redirects
-		if resolved := httpcache.ResolveRedirects(ctx, cur.url, cfg.logger); resolved != cur.url {
+		// Resolve redirects (but skip bad redirects like VK badbrowser)
+		if resolved := httpcache.ResolveRedirects(ctx, cur.url, cfg.logger); resolved != cur.url && !isBadRedirect(resolved) {
 			cfg.logger.InfoContext(ctx, "resolved redirect", "from", cur.url, "to", resolved)
 			cur.url = resolved
 		}
@@ -1466,6 +1466,11 @@ func normalizeURL(url string) string {
 	return strings.ToLower(strings.TrimSuffix(url, "/"))
 }
 
+// isBadRedirect returns true if the redirect should be ignored (e.g., VK badbrowser).
+func isBadRedirect(resolved string) bool {
+	return strings.Contains(resolved, "vk.com/badbrowser")
+}
+
 // dedupeLinks removes duplicates from links, considering visited URLs.
 func dedupeLinks(links []string, visited map[string]bool) []string {
 	seen := make(map[string]bool, len(visited))
@@ -1510,150 +1515,20 @@ func isSingleAccountPlatform(platform string) bool {
 }
 
 // PlatformForURL returns the platform name for a URL, or "website" if unknown.
-// This uses the same matching logic as Fetch() to ensure consistency.
+// This uses the platform registry for matching.
 func PlatformForURL(url string) string {
-	switch {
-	case linkedin.Match(url):
-		return "linkedin"
-	case twitter.Match(url):
-		return "twitter"
-	case linktree.Match(url):
-		return "linktree"
-	case github.Match(url):
-		return "github"
-	case gitlab.Match(url):
-		return "gitlab"
-	case codeberg.Match(url):
-		return "codeberg"
-	case google.Match(url):
-		return "google"
-	case medium.Match(url):
-		return "medium"
-	case microblog.Match(url):
-		return "microblog"
-	case reddit.Match(url):
-		return "reddit"
-	case replit.Match(url):
-		return "replit"
-	case youtube.Match(url):
-		return "youtube"
-	case substack.Match(url):
-		return "substack"
-	case bilibili.Match(url):
-		return "bilibili"
-	case bluesky.Match(url):
-		return "bluesky"
-	case devto.Match(url):
-		return "devto"
-	case stackoverflow.Match(url):
-		return "stackoverflow"
-	case habr.Match(url):
-		return "habr"
-	case instagram.Match(url):
-		return "instagram"
-	case keybase.Match(url):
-		return "keybase"
-	case crates.Match(url):
-		return "crates"
-	case dockerhub.Match(url):
-		return "dockerhub"
-	case tiktok.Match(url):
-		return "tiktok"
-	case telegram.Match(url):
-		return "telegram"
-	case tryhackme.Match(url):
-		return "tryhackme"
-	case vkontakte.Match(url):
-		return "vkontakte"
-	case weibo.Match(url):
-		return "weibo"
-	case mastodon.Match(url):
-		return "mastodon"
-	case gravatar.Match(url):
-		return "gravatar"
-	case mailru.Match(url):
-		return "mailru"
-	case huggingface.Match(url):
-		return "huggingface"
-	case hackerone.Match(url):
-		return "hackerone"
-	case bugcrowd.Match(url):
-		return "bugcrowd"
-	case holopin.Match(url):
-		return "holopin"
-	case slideshare.Match(url):
-		return "slideshare"
-	default:
-		return "website"
+	if p := profile.MatchURL(url); p != nil {
+		return p.Name()
 	}
+	return "website"
 }
 
 // platformMatches checks if a URL matches the given platform name.
-func platformMatches(url, platform string) bool {
-	switch platform {
-	case "github":
-		return github.Match(url)
-	case "gitlab":
-		return gitlab.Match(url)
-	case "codeberg":
-		return codeberg.Match(url)
-	case "google":
-		return google.Match(url)
-	case "linkedin":
-		return linkedin.Match(url)
-	case "twitter":
-		return twitter.Match(url)
-	case "reddit":
-		return reddit.Match(url)
-	case "replit":
-		return replit.Match(url)
-	case "youtube":
-		return youtube.Match(url)
-	case "stackoverflow":
-		return stackoverflow.Match(url)
-	case "bluesky":
-		return bluesky.Match(url)
-	case "mastodon":
-		return mastodon.Match(url)
-	case "medium":
-		return medium.Match(url)
-	case "microblog":
-		return microblog.Match(url)
-	case "instagram":
-		return instagram.Match(url)
-	case "tiktok":
-		return tiktok.Match(url)
-	case "telegram":
-		return telegram.Match(url)
-	case "tryhackme":
-		return tryhackme.Match(url)
-	case "vkontakte":
-		return vkontakte.Match(url)
-	case "weibo":
-		return weibo.Match(url)
-	case "gravatar":
-		return gravatar.Match(url)
-	case "mailru":
-		return mailru.Match(url)
-	case "keybase":
-		return keybase.Match(url)
-	case "crates":
-		return crates.Match(url)
-	case "dockerhub":
-		return dockerhub.Match(url)
-	case "huggingface":
-		return huggingface.Match(url)
-	case "hackerone":
-		return hackerone.Match(url)
-	case "bugcrowd":
-		return bugcrowd.Match(url)
-	case "holopin":
-		return holopin.Match(url)
-	case "slideshare":
-		return slideshare.Match(url)
-	default:
-		return false
+func platformMatches(url, platformName string) bool {
+	if p := profile.LookupPlatform(platformName); p != nil {
+		return p.Match(url)
 	}
+	return false
 }
 
 // FetchRecursiveWithGuess is like FetchRecursive but also guesses related profiles
@@ -1770,7 +1645,8 @@ func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) (
 		cur := queue[0]
 		queue = queue[1:]
 
-		if resolved := httpcache.ResolveRedirects(ctx, cur.url, cfg.logger); resolved != cur.url {
+		// Resolve redirects (but skip bad redirects like VK badbrowser)
+		if resolved := httpcache.ResolveRedirects(ctx, cur.url, cfg.logger); resolved != cur.url && !isBadRedirect(resolved) {
 			cfg.logger.InfoContext(ctx, "resolved redirect", "from", cur.url, "to", resolved)
 			cur.url = resolved
 		}
