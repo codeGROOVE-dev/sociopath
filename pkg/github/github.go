@@ -679,7 +679,7 @@ func (c *Client) executeGraphQL(ctx context.Context, urlStr, username, fields st
 	}
 
 	c.logger.DebugContext(ctx, "GraphQL query completed", "username", username, "duration_ms", time.Since(start).Milliseconds())
-	return parseGraphQLResponse(body, urlStr, username)
+	return parseGraphQLResponse(ctx, body, urlStr, username, c.logger)
 }
 
 // graphQLUser holds the user data from a GraphQL response.
@@ -749,7 +749,7 @@ func addCountField(fields map[string]string, key string, count int) {
 	}
 }
 
-func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, error) {
+func parseGraphQLResponse(ctx context.Context, data []byte, urlStr, _ string, logger *slog.Logger) (*profile.Profile, error) {
 	var response struct {
 		Errors []struct {
 			Message string `json:"message"`
@@ -826,6 +826,11 @@ func parseGraphQLResponse(data []byte, urlStr, _ string) (*profile.Profile, erro
 
 	if user.Gists.TotalCount > 0 {
 		prof.Posts = gistsToPosts(user.Gists.Nodes)
+		// Check for keybase proof gists and extract username
+		if keybaseURL := extractKeybaseFromGists(ctx, user.Gists.Nodes, user.Login, logger); keybaseURL != "" {
+			prof.SocialLinks = append(prof.SocialLinks, keybaseURL)
+			logger.InfoContext(ctx, "discovered keybase from gist", "url", keybaseURL)
+		}
 	}
 
 	// Add Twitter from GraphQL
@@ -1438,4 +1443,58 @@ func gistsToPosts(gists []gistNode) []profile.Post {
 		})
 	}
 	return posts
+}
+
+// keybaseProofPattern matches keybase.io URLs in gist content.
+var keybaseProofPattern = regexp.MustCompile(`https://keybase\.io/([a-zA-Z0-9_]+)`)
+
+// extractKeybaseFromGists looks for keybase proof gists and extracts the username.
+func extractKeybaseFromGists(ctx context.Context, gists []gistNode, ghUsername string, logger *slog.Logger) string {
+	for _, g := range gists {
+		// Check if gist name or description mentions keybase
+		nameLower := strings.ToLower(g.Name)
+		descLower := strings.ToLower(g.Description)
+		if !strings.Contains(nameLower, "keybase") && !strings.Contains(descLower, "keybase") {
+			continue
+		}
+
+		// Construct raw URL from gist URL
+		// gist URL: https://gist.github.com/gistid (GraphQL doesn't include username)
+		// raw URL: https://gist.githubusercontent.com/username/gistid/raw
+		gistID := strings.TrimPrefix(g.URL, "https://gist.github.com/")
+		rawURL := fmt.Sprintf("https://gist.githubusercontent.com/%s/%s/raw", ghUsername, gistID)
+
+		// Fetch raw content
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
+		if err != nil {
+			logger.DebugContext(ctx, "failed to create keybase gist request", "url", rawURL, "error", err)
+			continue
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			logger.DebugContext(ctx, "failed to fetch keybase gist", "url", rawURL, "error", err)
+			continue
+		}
+
+		keybaseURL := extractKeybaseFromResponse(resp)
+		if keybaseURL != "" {
+			return keybaseURL
+		}
+	}
+	return ""
+}
+
+// extractKeybaseFromResponse reads the response body and extracts keybase URL.
+func extractKeybaseFromResponse(resp *http.Response) string {
+	defer resp.Body.Close() //nolint:errcheck // best effort cleanup
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return ""
+	}
+	if matches := keybaseProofPattern.FindSubmatch(body); len(matches) > 1 {
+		return "https://keybase.io/" + string(matches[1])
+	}
+	return ""
 }
