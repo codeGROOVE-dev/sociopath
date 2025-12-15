@@ -2021,11 +2021,23 @@ func extractInterestKeywords(text string) map[string]bool {
 // boostCrossPlatformMatches increases confidence for guessed profiles when the same
 // username is found on multiple platforms of the same type (e.g., GitHub and GitLab are both "code" platforms).
 // This is a strong signal because users commonly reuse usernames across similar platforms.
+// IMPORTANT: Only applies bonus when at least one profile of that type is verified (from known profiles).
 func boostCrossPlatformMatches(guessed []*profile.Profile, known []*profile.Profile, logger *slog.Logger) {
+	// Build map of verified profiles by type+username
+	verifiedByTypeUsername := make(map[string]bool)
+	for _, p := range known {
+		pType := effectivePlatformType(p.Platform)
+		if pType == profile.PlatformTypeOther || p.Username == "" {
+			continue
+		}
+		key := string(pType) + ":" + strings.ToLower(p.Username)
+		verifiedByTypeUsername[key] = true
+	}
+
 	byTypeAndUsername := buildPlatformTypeUsernameMap(known, guessed)
 
 	for _, p := range guessed {
-		pType := profile.TypeOf(p.Platform)
+		pType := effectivePlatformType(p.Platform)
 		if pType == profile.PlatformTypeOther || p.Username == "" {
 			continue
 		}
@@ -2033,6 +2045,11 @@ func boostCrossPlatformMatches(guessed []*profile.Profile, known []*profile.Prof
 		key := string(pType) + ":" + strings.ToLower(p.Username)
 		others := byTypeAndUsername[key]
 		if len(others) < 2 {
+			continue
+		}
+
+		// Only boost if at least one profile of this type+username is verified
+		if !verifiedByTypeUsername[key] {
 			continue
 		}
 
@@ -2064,13 +2081,26 @@ func boostCrossPlatformMatches(guessed []*profile.Profile, known []*profile.Prof
 	}
 }
 
+// effectivePlatformType returns the platform type for cross-platform matching.
+// Package registries (PyPI, RubyGems, crates.io, npm, Docker Hub) are treated as
+// code platforms since they're closely related to code hosting.
+func effectivePlatformType(platform string) profile.PlatformType {
+	pType := profile.TypeOf(platform)
+	// Treat package registries as code platforms for cross-platform matching
+	if pType == profile.PlatformTypePackage {
+		return profile.PlatformTypeCode
+	}
+	return pType
+}
+
 // buildPlatformTypeUsernameMap creates a map of "platformType:username" to profiles.
 // This groups profiles by their platform type (code, blog, microblog, etc.) and username.
+// Uses effectivePlatformType to treat package registries as code platforms.
 func buildPlatformTypeUsernameMap(known, guessed []*profile.Profile) map[string][]*profile.Profile {
 	byTypeAndUsername := make(map[string][]*profile.Profile)
 	for _, profiles := range [][]*profile.Profile{known, guessed} {
 		for _, p := range profiles {
-			pType := profile.TypeOf(p.Platform)
+			pType := effectivePlatformType(p.Platform)
 			if pType == profile.PlatformTypeOther || p.Username == "" {
 				continue
 			}

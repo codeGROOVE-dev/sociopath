@@ -137,7 +137,7 @@ type slideshow struct {
 
 // Fetch retrieves a SlideShare profile.
 func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, error) {
-	username := extractUsername(urlStr)
+	username := ExtractUsername(urlStr)
 	if username == "" {
 		return nil, fmt.Errorf("could not extract username from URL: %s", urlStr)
 	}
@@ -261,7 +261,10 @@ func parseHTML(ctx context.Context, body []byte, profileURL string, logger *slog
 	return p, nil
 }
 
-func extractUsername(urlStr string) string {
+// ExtractUsername extracts the username from a SlideShare URL.
+// This is exported for use by other packages that need to extract usernames
+// before redirect resolution loses the information.
+func ExtractUsername(urlStr string) string {
 	matches := usernamePattern.FindStringSubmatch(urlStr)
 	if len(matches) > 1 {
 		return matches[1]

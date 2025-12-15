@@ -1303,11 +1303,13 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 		cur := queue[0]
 		queue = queue[1:]
 
-		// Resolve redirects (but skip bad redirects like VK badbrowser)
-		if resolved := httpcache.ResolveRedirects(ctx, cur.url, cfg.logger); resolved != cur.url && !isBadRedirect(resolved) {
-			cfg.logger.InfoContext(ctx, "resolved redirect", "from", cur.url, "to", resolved)
-			cur.url = resolved
+		// Handle redirects, preserving usernames that might be lost
+		p, resolved := handleRedirectWithUsernamePreservation(ctx, cur.url, cfg.logger)
+		if p != nil {
+			out = append(out, p)
+			continue
 		}
+		cur.url = resolved
 
 		norm := normalizeURL(cur.url)
 		if visited[norm] {
@@ -1393,10 +1395,67 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 
 // isValidProfileURL filters out non-profile URLs (e.g. twitter.com/home).
 func isValidProfileURL(url string) bool {
+	// Filter out official platform accounts that aren't user profiles
+	if isOfficialPlatformAccount(url) {
+		return false
+	}
 	if twitter.Match(url) {
 		return twitter.IsValidProfileURL(url)
 	}
 	return true
+}
+
+// isOfficialPlatformAccount returns true if the URL points to an official platform account
+// rather than a user profile. These accounts typically belong to companies/platforms themselves
+// and appear in social links on platform pages (e.g., slideshare_official on Instagram).
+func isOfficialPlatformAccount(urlStr string) bool {
+	username := extractSocialUsername(urlStr)
+	if username == "" {
+		return false
+	}
+
+	// Check for official account patterns
+	officialSuffixes := []string{"_official", "_app", "_hq", "_inc", "_corp"}
+	for _, suffix := range officialSuffixes {
+		if strings.HasSuffix(username, suffix) {
+			return true
+		}
+	}
+
+	// Known platform official accounts
+	officialAccounts := map[string]bool{
+		"slideshare": true, "slideshare_official": true,
+		"linkedin": true, "linkedin_official": true,
+		"instagram": true, "twitter": true, "tiktok": true,
+		"facebook": true, "youtube": true, "github": true,
+		"medium": true, "reddit": true,
+	}
+
+	return officialAccounts[username]
+}
+
+// extractSocialUsername extracts the username from common social media URLs.
+func extractSocialUsername(urlStr string) string {
+	lower := strings.ToLower(urlStr)
+	patterns := []string{
+		"instagram.com/", "twitter.com/", "x.com/",
+		"tiktok.com/@", "facebook.com/", "youtube.com/@",
+	}
+	for _, prefix := range patterns {
+		idx := strings.Index(lower, prefix)
+		if idx < 0 {
+			continue
+		}
+		rest := lower[idx+len(prefix):]
+		// Extract until delimiter
+		for i, c := range rest {
+			if c == '/' || c == '?' || c == '#' {
+				return rest[:i]
+			}
+		}
+		return rest
+	}
+	return ""
 }
 
 // isSocialPlatform returns true if the URL matches a known social media platform.
@@ -1469,6 +1528,38 @@ func normalizeURL(url string) string {
 // isBadRedirect returns true if the redirect should be ignored (e.g., VK badbrowser).
 func isBadRedirect(resolved string) bool {
 	return strings.Contains(resolved, "vk.com/badbrowser")
+}
+
+// handleRedirectWithUsernamePreservation resolves redirects while preserving usernames
+// that would otherwise be lost (e.g., SlideShare URLs that redirect to /slideshow/).
+// Returns a profile if username was preserved (caller should skip fetch), otherwise returns nil and resolved URL.
+func handleRedirectWithUsernamePreservation(ctx context.Context, url string, logger *slog.Logger) (preserved *profile.Profile, resolved string) {
+	// Extract SlideShare username before redirect might lose it
+	slideshareUsername := ""
+	if slideshare.Match(url) {
+		slideshareUsername = slideshare.ExtractUsername(url)
+	}
+
+	// Resolve redirects (but skip bad redirects like VK badbrowser)
+	resolved = httpcache.ResolveRedirects(ctx, url, logger)
+	if resolved == url || isBadRedirect(resolved) {
+		return nil, url
+	}
+
+	logger.InfoContext(ctx, "resolved redirect", "from", url, "to", resolved)
+
+	// If SlideShare URL redirected to non-profile path (e.g., /slideshow/), create minimal profile
+	if slideshareUsername != "" && !slideshare.Match(resolved) {
+		logger.InfoContext(ctx, "slideshare redirect lost username, preserving",
+			"original", url, "username", slideshareUsername, "resolved", resolved)
+		return &profile.Profile{
+			Platform: "slideshare",
+			URL:      url,
+			Username: slideshareUsername,
+		}, resolved
+	}
+
+	return nil, resolved
 }
 
 // dedupeLinks removes duplicates from links, considering visited URLs.
@@ -1645,11 +1736,13 @@ func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) (
 		cur := queue[0]
 		queue = queue[1:]
 
-		// Resolve redirects (but skip bad redirects like VK badbrowser)
-		if resolved := httpcache.ResolveRedirects(ctx, cur.url, cfg.logger); resolved != cur.url && !isBadRedirect(resolved) {
-			cfg.logger.InfoContext(ctx, "resolved redirect", "from", cur.url, "to", resolved)
-			cur.url = resolved
+		// Handle redirects, preserving usernames that might be lost
+		p, resolved := handleRedirectWithUsernamePreservation(ctx, cur.url, cfg.logger)
+		if p != nil {
+			out = append(out, p)
+			continue
 		}
+		cur.url = resolved
 
 		norm := normalizeURL(cur.url)
 		if visited[norm] {
@@ -1659,7 +1752,7 @@ func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) (
 
 		cfg.logger.InfoContext(ctx, "fetching profile", "url", cur.url, "depth", cur.depth, "visited", len(visited))
 
-		p, err := Fetch(ctx, cur.url, opts...)
+		p, err = Fetch(ctx, cur.url, opts...)
 		if err != nil {
 			cfg.logger.WarnContext(ctx, "failed to fetch profile", "url", cur.url, "error", err)
 			continue

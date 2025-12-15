@@ -185,6 +185,15 @@ func TestIsValidProfileURL(t *testing.T) {
 	}{
 		{"https://github.com/username", true},
 		{"https://twitter.com/username", true},
+		// Official platform accounts should be filtered out
+		{"https://instagram.com/slideshare_official", false},
+		{"https://instagram.com/slideshare", false},
+		{"https://twitter.com/twitter", false},
+		{"https://instagram.com/instagram_app", false},
+		{"https://facebook.com/facebook_hq", false},
+		// User accounts should be valid
+		{"https://instagram.com/daveworth", true},
+		{"https://twitter.com/daveworth", true},
 	}
 
 	for _, tt := range tests {
