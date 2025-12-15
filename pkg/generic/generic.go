@@ -118,6 +118,14 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		}
 	}
 
+	// Check WebFinger for emails with custom domains (Fediverse/Mastodon discovery)
+	if email := p.Fields["email"]; email != "" {
+		if fediverseURL := lookupWebFinger(ctx, email, c.logger); fediverseURL != "" {
+			p.SocialLinks = append(p.SocialLinks, fediverseURL)
+			c.logger.InfoContext(ctx, "discovered fediverse via WebFinger", "email", email, "url", fediverseURL)
+		}
+	}
+
 	return p, nil
 }
 
@@ -675,6 +683,89 @@ func lookupBlueskyByDomain(ctx context.Context, domain string, logger *slog.Logg
 		if strings.HasPrefix(txt, "did=") {
 			logger.DebugContext(ctx, "bluesky handle found via DNS", "domain", domain, "did", txt)
 			return "https://bsky.app/profile/" + domain
+		}
+	}
+
+	return ""
+}
+
+// commonEmailProviders contains domains that won't have WebFinger endpoints.
+var commonEmailProviders = map[string]bool{
+	"gmail.com": true, "googlemail.com": true, "google.com": true,
+	"yahoo.com": true, "yahoo.co.uk": true, "ymail.com": true,
+	"hotmail.com": true, "outlook.com": true, "live.com": true, "msn.com": true,
+	"icloud.com": true, "me.com": true, "mac.com": true,
+	"aol.com": true, "protonmail.com": true, "proton.me": true,
+	"fastmail.com": true, "fastmail.fm": true,
+	"hey.com": true, "pm.me": true,
+}
+
+// lookupWebFinger queries WebFinger to discover Fediverse/Mastodon profiles from email addresses.
+// Returns the profile URL if found, empty string otherwise.
+func lookupWebFinger(ctx context.Context, email string, logger *slog.Logger) string {
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	localPart, domain := parts[0], parts[1]
+
+	// Skip common email providers - they don't have WebFinger
+	if commonEmailProviders[strings.ToLower(domain)] {
+		return ""
+	}
+
+	// Skip known social platforms
+	if isKnownSocialDomain(domain) {
+		return ""
+	}
+
+	// Query WebFinger endpoint
+	webfingerURL := fmt.Sprintf("https://%s/.well-known/webfinger?resource=acct:%s@%s",
+		domain, url.QueryEscape(localPart), domain)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, webfingerURL, http.NoBody)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Accept", "application/jrd+json, application/json")
+	req.Header.Set("User-Agent", "sociopath/1.0")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.DebugContext(ctx, "webfinger lookup failed", "email", email, "error", err)
+		return ""
+	}
+	defer resp.Body.Close() //nolint:errcheck // response body must be closed
+
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return ""
+	}
+
+	// Parse WebFinger response
+	var result struct {
+		Links []struct {
+			Rel  string `json:"rel"`
+			Href string `json:"href"`
+		} `json:"links"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		logger.DebugContext(ctx, "webfinger response parse failed", "email", email, "error", err)
+		return ""
+	}
+
+	// Look for profile-page link (rel is a spec-defined URI, not an actual URL)
+	const profilePageRel = "http://webfinger.net/rel/profile-page" //nolint:revive // WebFinger spec uses http URI
+	for _, link := range result.Links {
+		if link.Rel == profilePageRel && link.Href != "" {
+			logger.DebugContext(ctx, "fediverse profile found via WebFinger", "email", email, "url", link.Href)
+			return link.Href
 		}
 	}
 
