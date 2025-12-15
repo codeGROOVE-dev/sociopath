@@ -512,3 +512,38 @@ var socialPatterns = []*regexp.Regexp{
 	// Telegram
 	regexp.MustCompile(`https?://t\.me/[\w-]+`),
 }
+
+// Discord username patterns.
+var (
+	// Old format: username#1234 (discriminator is 4 digits).
+	discordOldRe = regexp.MustCompile(`(?i)\b([\w.-]{2,32})#(\d{4})\b`)
+	// Contextual patterns for new format usernames.
+	discordCtxRe = regexp.MustCompile(`(?i)(?:discord[:\s]+|@?[\w.-]+\s+on\s+discord\s*[:\s]*)(\.?[\w.-]{2,32})`)
+)
+
+// ExtractDiscordUsername extracts Discord usernames from text content.
+// Returns the username in the format "username#1234" for old format or "username" for new format.
+// Returns empty string if no Discord username is found.
+// Requires "discord" to be mentioned in the content to avoid false positives.
+func ExtractDiscordUsername(s string) string {
+	// Require "discord" to be mentioned somewhere to avoid false positives
+	if !strings.Contains(strings.ToLower(s), "discord") {
+		return ""
+	}
+
+	// First try old format with discriminator (more reliable)
+	if m := discordOldRe.FindStringSubmatch(s); len(m) > 2 {
+		return m[1] + "#" + m[2]
+	}
+
+	// Try contextual patterns for new format
+	if m := discordCtxRe.FindStringSubmatch(s); len(m) > 1 {
+		u := strings.TrimSpace(m[1])
+		// Validate it looks like a Discord username (not a sentence fragment)
+		if len(u) >= 2 && len(u) <= 32 && !strings.Contains(u, " ") {
+			return u
+		}
+	}
+
+	return ""
+}

@@ -5,7 +5,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/codeGROOVE-dev/sociopath.svg)](https://pkg.go.dev/github.com/codeGROOVE-dev/sociopath)
 [![Go Report Card](https://goreportcard.com/badge/github.com/codeGROOVE-dev/sociopath)](https://goreportcard.com/report/github.com/codeGROOVE-dev/sociopath)
 
-Go library and CLI for fetching social media profiles across 50+ platforms.
+Go library and CLI for fetching social media profiles across 65+ platforms.
 
 ## Install
 
@@ -35,13 +35,13 @@ sociopath --email user@example.com            # Look up by email (Gravatar, etc.
 
 ## Platforms
 
-**Developer:** GitHub, GitLab, Codeberg, Gitee, StackOverflow, HackerNews, Lobsters, Dev.to, Hashnode, Qiita, Zenn, CSDN, Juejin, V2EX, Crates.io, DockerHub, HexPM, RubyGems, LeetCode, HackerOne, Bugcrowd, ORCID, HuggingFace, Keybase, Sessionize, SlideShare
+**Developer:** GitHub, GitLab, Codeberg, Sourcehut, Gitee, StackOverflow, HackerNews, Lobsters, Dev.to, Hashnode, Qiita, Zenn, Velog, CSDN, Juejin, V2EX, Crates.io, DockerHub, HexPM, npm, PyPI, RubyGems, LeetCode, Exercism, Kaggle, CodePen, FreeCodeCamp, Replit, HackerOne, Bugcrowd, TryHackMe, ORCID, HuggingFace, Keybase, Sessionize, SlideShare
 
-**Social:** Twitter/X*, LinkedIn*, Instagram*, TikTok*, Mastodon, BlueSky, Reddit, VKontakte, Weibo, Micro.blog
+**Social:** Twitter/X*, LinkedIn*, Instagram*, TikTok*, Mastodon, BlueSky, Reddit, VKontakte, Weibo, Micro.blog, Telegram
 
 **Content:** YouTube, Twitch, Bilibili, Medium, Substack, Habr
 
-**Other:** Linktree, Gravatar, Google, Steam, Strava, Goodreads, Douban, Holopin, IntenseDebate, Disqus, ArsTechnica, Mail.ru
+**Other:** Linktree, Gravatar, Google, Steam, Strava, Goodreads, Douban, Dribbble, Holopin, IntenseDebate, Disqus, ArsTechnica, Mail.ru
 
 *\* Requires `--browser` flag for authentication*
 

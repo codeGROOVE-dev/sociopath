@@ -338,6 +338,12 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 			// Convert to markdown for unstructured content
 			prof.Unstructured = htmlutil.ToMarkdown(readmeHTML)
 		}
+
+		// Extract Discord username from README or Bio
+		discordContent := prof.Bio + " " + prof.Unstructured
+		if discord := htmlutil.ExtractDiscordUsername(discordContent); discord != "" {
+			prof.Fields["discord"] = discord
+		}
 	}
 
 	// Deduplicate and filter out same-platform links (GitHub to GitHub)

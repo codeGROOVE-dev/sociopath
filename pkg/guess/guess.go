@@ -435,7 +435,7 @@ func isValidUsernameForPlatform(username, platform string) bool {
 		}
 		return true
 
-	case "hexpm", "rubygems", "npm", "pypi":
+	case "hexpm", "rubygems", "npm":
 		// Package registries: 2-40 chars, alphanumeric, underscores, hyphens
 		if len(username) < 2 || len(username) > 40 {
 			return false

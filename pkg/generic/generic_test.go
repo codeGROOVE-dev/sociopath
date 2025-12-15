@@ -373,6 +373,58 @@ func TestExtractDateFromURL(t *testing.T) {
 	}
 }
 
+func TestIsBotProtectionPage(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{
+			name:    "PyPI client challenge",
+			content: `<html><head><title>Client Challenge</title></head><body>Client Challenge JavaScript is disabled</body></html>`,
+			want:    true,
+		},
+		{
+			name:    "Cloudflare checking browser",
+			content: `<html><body>Checking your browser before accessing the site...</body></html>`,
+			want:    true,
+		},
+		{
+			name:    "Cloudflare cf_chl_opt",
+			content: `<html><script>var cf_chl_opt = {};</script></html>`,
+			want:    true,
+		},
+		{
+			name:    "short JS enable page",
+			content: `<html><body>Please enable JavaScript to continue</body></html>`,
+			want:    true,
+		},
+		{
+			name:    "verify human",
+			content: `<html><body>Please verify you are a human to continue</body></html>`,
+			want:    true,
+		},
+		{
+			name:    "normal short page",
+			content: `<html><head><title>User</title></head><body>Profile</body></html>`,
+			want:    false,
+		},
+		{
+			name:    "normal profile page",
+			content: `<html><head><title>John Doe</title><meta name="description" content="Software developer"></head><body><h1>John Doe</h1><p>Hello, I'm a developer from San Francisco.</p></body></html>`,
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isBotProtectionPage([]byte(tt.content)); got != tt.want {
+				t.Errorf("isBotProtectionPage() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseHTML_Blog(t *testing.T) {
 	html := `<html>
 		<head>

@@ -4,11 +4,9 @@ package generic
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -17,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codeGROOVE-dev/sociopath/pkg/discovery"
 	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
 	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
@@ -104,25 +103,26 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, err
 	}
 
+	// Detect bot protection pages that look like valid responses
+	if isBotProtectionPage(body) {
+		return nil, errors.New("bot protection page detected")
+	}
+
 	p := parseHTML(body, urlStr)
 
-	// Check for DNS-based identity proofs (Keybase, Bluesky) - only for personal/blog domains
-	if domain := extractDomain(urlStr); domain != "" && !isKnownSocialDomain(domain) {
-		if keybaseURL := lookupKeybaseByDomain(ctx, domain, c.logger); keybaseURL != "" {
-			p.SocialLinks = append(p.SocialLinks, keybaseURL)
-			c.logger.InfoContext(ctx, "discovered keybase via DNS", "domain", domain, "url", keybaseURL)
-		}
-		if blueskyURL := lookupBlueskyByDomain(ctx, domain, c.logger); blueskyURL != "" {
-			p.SocialLinks = append(p.SocialLinks, blueskyURL)
-			c.logger.InfoContext(ctx, "discovered bluesky via DNS", "domain", domain, "url", blueskyURL)
-		}
+	// Run identity discovery for the domain
+	disc := discovery.New(c.logger)
+	domain := discovery.ExtractDomain(urlStr)
+	for _, result := range disc.DiscoverAll(ctx, domain) {
+		p.SocialLinks = append(p.SocialLinks, result.URL)
+		c.logger.InfoContext(ctx, "discovered identity", "platform", result.Platform, "domain", domain, "url", result.URL)
 	}
 
 	// Check WebFinger for emails with custom domains (Fediverse/Mastodon discovery)
 	if email := p.Fields["email"]; email != "" {
-		if fediverseURL := lookupWebFinger(ctx, email, c.logger); fediverseURL != "" {
-			p.SocialLinks = append(p.SocialLinks, fediverseURL)
-			c.logger.InfoContext(ctx, "discovered fediverse via WebFinger", "email", email, "url", fediverseURL)
+		if result := disc.LookupWebFinger(ctx, email); result != nil {
+			p.SocialLinks = append(p.SocialLinks, result.URL)
+			c.logger.InfoContext(ctx, "discovered fediverse via WebFinger", "email", email, "url", result.URL)
 		}
 	}
 
@@ -515,6 +515,46 @@ func dedupeLinks(links []string) []string {
 	return result
 }
 
+// isBotProtectionPage detects pages that are bot protection challenges rather than actual content.
+// These pages return HTTP 200 but don't contain the profile we're looking for.
+func isBotProtectionPage(body []byte) bool {
+	content := strings.ToLower(string(body))
+
+	// Very short pages are often challenges
+	if len(body) < 500 {
+		// Check for common challenge indicators
+		if strings.Contains(content, "javascript") && strings.Contains(content, "enable") {
+			return true
+		}
+	}
+
+	// PyPI "Client Challenge" page
+	if strings.Contains(content, "client challenge") {
+		return true
+	}
+
+	// Cloudflare challenge indicators
+	if strings.Contains(content, "checking your browser") ||
+		strings.Contains(content, "cf-browser-verification") ||
+		strings.Contains(content, "cf_chl_opt") {
+		return true
+	}
+
+	// Generic bot protection indicators
+	if strings.Contains(content, "please verify you are a human") ||
+		strings.Contains(content, "verify you are human") ||
+		strings.Contains(content, "access denied") && strings.Contains(content, "bot") {
+		return true
+	}
+
+	// DataDome and similar
+	if strings.Contains(content, "datadome") && strings.Contains(content, "captcha") {
+		return true
+	}
+
+	return false
+}
+
 // validateURL checks for SSRF vulnerabilities and non-profile paths.
 func validateURL(urlStr string) error {
 	parsed, err := url.Parse(urlStr)
@@ -549,225 +589,4 @@ func validateURL(urlStr string) error {
 	}
 
 	return nil
-}
-
-// knownSocialDomains contains domains of established social platforms where DNS identity
-// lookups would be pointless (e.g., no one owns github.com as their personal domain).
-var knownSocialDomains = map[string]bool{
-	"github.com": true, "gitlab.com": true, "bitbucket.org": true, "codeberg.org": true,
-	"twitter.com": true, "x.com": true, "facebook.com": true, "instagram.com": true,
-	"linkedin.com": true, "tiktok.com": true, "youtube.com": true, "twitch.tv": true,
-	"reddit.com": true, "discord.com": true, "slack.com": true, "telegram.org": true,
-	"medium.com": true, "substack.com": true, "dev.to": true, "hashnode.dev": true,
-	"stackoverflow.com": true, "stackexchange.com": true,
-	"keybase.io": true, "bsky.app": true, "mastodon.social": true,
-	"npmjs.com": true, "pypi.org": true, "rubygems.org": true, "crates.io": true,
-	"hub.docker.com": true, "docker.io": true,
-	"vk.com": true, "ok.ru": true, "weibo.com": true,
-	"pinterest.com": true, "tumblr.com": true, "flickr.com": true,
-	"soundcloud.com": true, "spotify.com": true, "bandcamp.com": true,
-	"patreon.com": true, "ko-fi.com": true, "buymeacoffee.com": true,
-	"linktree.com": true, "linktr.ee": true, "bio.link": true,
-}
-
-// isKnownSocialDomain returns true if the domain belongs to a known social platform.
-func isKnownSocialDomain(domain string) bool {
-	// Check exact match
-	if knownSocialDomains[domain] {
-		return true
-	}
-	// Check if it's a subdomain of a known platform (e.g., user.github.io)
-	for known := range knownSocialDomains {
-		if strings.HasSuffix(domain, "."+known) {
-			return true
-		}
-	}
-	// Check common hosting subdomains
-	hostingDomains := []string{".github.io", ".gitlab.io", ".netlify.app", ".vercel.app", ".pages.dev"}
-	for _, suffix := range hostingDomains {
-		if strings.HasSuffix(domain, suffix) {
-			return true
-		}
-	}
-	return false
-}
-
-// extractDomain extracts the domain from a URL, stripping www. prefix.
-func extractDomain(urlStr string) string {
-	parsed, err := url.Parse(urlStr)
-	if err != nil {
-		return ""
-	}
-	host := parsed.Hostname()
-	// Skip if it's an IP address
-	if net.ParseIP(host) != nil {
-		return ""
-	}
-	// Strip www. prefix
-	host = strings.TrimPrefix(host, "www.")
-	return host
-}
-
-// lookupKeybaseByDomain queries the Keybase API to find a user who has verified ownership of a domain.
-// Returns the keybase profile URL if found, empty string otherwise.
-func lookupKeybaseByDomain(ctx context.Context, domain string, logger *slog.Logger) string {
-	apiURL := fmt.Sprintf("https://keybase.io/_/api/1.0/user/lookup.json?domain=%s", url.QueryEscape(domain))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
-	if err != nil {
-		return ""
-	}
-	req.Header.Set("User-Agent", "sociopath/1.0")
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		logger.DebugContext(ctx, "keybase domain lookup failed", "domain", domain, "error", err)
-		return ""
-	}
-	defer resp.Body.Close() //nolint:errcheck // response body must be closed
-
-	if resp.StatusCode != http.StatusOK {
-		return ""
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	if err != nil {
-		return ""
-	}
-
-	// Parse the Keybase API response
-	var result struct {
-		Them []struct {
-			Basics struct {
-				Username string `json:"username"`
-			} `json:"basics"`
-		} `json:"them"`
-		Status struct {
-			Name string `json:"name"`
-			Code int    `json:"code"`
-		} `json:"status"`
-	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		logger.DebugContext(ctx, "keybase response parse failed", "domain", domain, "error", err)
-		return ""
-	}
-
-	if result.Status.Code != 0 || len(result.Them) == 0 {
-		return ""
-	}
-
-	username := result.Them[0].Basics.Username
-	if username == "" {
-		return ""
-	}
-
-	logger.DebugContext(ctx, "keybase user found via domain", "domain", domain, "username", username)
-	return "https://keybase.io/" + username
-}
-
-// lookupBlueskyByDomain checks DNS TXT records for AT Protocol verification.
-// Bluesky allows custom domain handles via _atproto.{domain} TXT records.
-// Returns the Bluesky profile URL if verified, empty string otherwise.
-func lookupBlueskyByDomain(ctx context.Context, domain string, logger *slog.Logger) string {
-	// Look up _atproto.{domain} TXT record
-	txtRecords, err := net.DefaultResolver.LookupTXT(ctx, "_atproto."+domain)
-	if err != nil {
-		logger.DebugContext(ctx, "bluesky DNS lookup failed", "domain", domain, "error", err)
-		return ""
-	}
-
-	// Check if any TXT record contains a DID
-	for _, txt := range txtRecords {
-		if strings.HasPrefix(txt, "did=") {
-			logger.DebugContext(ctx, "bluesky handle found via DNS", "domain", domain, "did", txt)
-			return "https://bsky.app/profile/" + domain
-		}
-	}
-
-	return ""
-}
-
-// commonEmailProviders contains domains that won't have WebFinger endpoints.
-var commonEmailProviders = map[string]bool{
-	"gmail.com": true, "googlemail.com": true, "google.com": true,
-	"yahoo.com": true, "yahoo.co.uk": true, "ymail.com": true,
-	"hotmail.com": true, "outlook.com": true, "live.com": true, "msn.com": true,
-	"icloud.com": true, "me.com": true, "mac.com": true,
-	"aol.com": true, "protonmail.com": true, "proton.me": true,
-	"fastmail.com": true, "fastmail.fm": true,
-	"hey.com": true, "pm.me": true,
-}
-
-// lookupWebFinger queries WebFinger to discover Fediverse/Mastodon profiles from email addresses.
-// Returns the profile URL if found, empty string otherwise.
-func lookupWebFinger(ctx context.Context, email string, logger *slog.Logger) string {
-	parts := strings.SplitN(email, "@", 2)
-	if len(parts) != 2 {
-		return ""
-	}
-	localPart, domain := parts[0], parts[1]
-
-	// Skip common email providers - they don't have WebFinger
-	if commonEmailProviders[strings.ToLower(domain)] {
-		return ""
-	}
-
-	// Skip known social platforms
-	if isKnownSocialDomain(domain) {
-		return ""
-	}
-
-	// Query WebFinger endpoint
-	webfingerURL := fmt.Sprintf("https://%s/.well-known/webfinger?resource=acct:%s@%s",
-		domain, url.QueryEscape(localPart), domain)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, webfingerURL, http.NoBody)
-	if err != nil {
-		return ""
-	}
-	req.Header.Set("Accept", "application/jrd+json, application/json")
-	req.Header.Set("User-Agent", "sociopath/1.0")
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		logger.DebugContext(ctx, "webfinger lookup failed", "email", email, "error", err)
-		return ""
-	}
-	defer resp.Body.Close() //nolint:errcheck // response body must be closed
-
-	if resp.StatusCode != http.StatusOK {
-		return ""
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	if err != nil {
-		return ""
-	}
-
-	// Parse WebFinger response
-	var result struct {
-		Links []struct {
-			Rel  string `json:"rel"`
-			Href string `json:"href"`
-		} `json:"links"`
-	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		logger.DebugContext(ctx, "webfinger response parse failed", "email", email, "error", err)
-		return ""
-	}
-
-	// Look for profile-page link (rel is a spec-defined URI, not an actual URL)
-	const profilePageRel = "http://webfinger.net/rel/profile-page" //nolint:revive // WebFinger spec uses http URI
-	for _, link := range result.Links {
-		if link.Rel == profilePageRel && link.Href != "" {
-			logger.DebugContext(ctx, "fediverse profile found via WebFinger", "email", email, "url", link.Href)
-			return link.Href
-		}
-	}
-
-	return ""
 }

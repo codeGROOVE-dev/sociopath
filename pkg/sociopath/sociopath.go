@@ -69,6 +69,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/microblog"
 	"github.com/codeGROOVE-dev/sociopath/pkg/orcid"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
+	"github.com/codeGROOVE-dev/sociopath/pkg/pypi"
 	"github.com/codeGROOVE-dev/sociopath/pkg/qiita"
 	"github.com/codeGROOVE-dev/sociopath/pkg/reddit"
 	"github.com/codeGROOVE-dev/sociopath/pkg/replit"
@@ -286,6 +287,8 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		p, err = fetchHolopin(ctx, url, cfg)
 	case mastodon.Match(url):
 		p, err = fetchMastodon(ctx, url, cfg)
+	case pypi.Match(url):
+		p, err = fetchPyPI(ctx, url, cfg)
 	default:
 		p, err = fetchGeneric(ctx, url, cfg)
 	}
@@ -1877,4 +1880,20 @@ func fetchGitHubByEmail(ctx context.Context, email string, cfg *config) *profile
 	p.Fields["lookup_email"] = email
 
 	return p
+}
+
+func fetchPyPI(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []pypi.Option
+	if cfg.cache != nil {
+		opts = append(opts, pypi.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, pypi.WithLogger(cfg.logger))
+	}
+
+	client, err := pypi.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
 }

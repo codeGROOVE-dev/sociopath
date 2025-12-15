@@ -136,3 +136,76 @@ func TestEmailAddresses(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractDiscordUsername(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "old format with discriminator",
+			content: "How to reach me discord StarGhost#8077",
+			want:    "StarGhost#8077",
+		},
+		{
+			name:    "old format in sentence",
+			content: "Contact me on Discord: JohnDoe#1234 for questions",
+			want:    "JohnDoe#1234",
+		},
+		{
+			name:    "old format with dots",
+			content: "My Discord is user.name#5678",
+			want:    "user.name#5678",
+		},
+		{
+			name:    "new format with context",
+			content: "Discord: newusername",
+			want:    "newusername",
+		},
+		{
+			name:    "new format with colon and space",
+			content: "discord: cooldev",
+			want:    "cooldev",
+		},
+		{
+			name:    "new format with leading dot",
+			content: "Discord: .dotuser",
+			want:    ".dotuser",
+		},
+		{
+			name:    "no discord username",
+			content: "Hello, I'm a developer from San Francisco.",
+			want:    "",
+		},
+		{
+			name:    "github readme style",
+			content: "- 📫 How to reach me discord StarGhost#8077",
+			want:    "StarGhost#8077",
+		},
+		{
+			name:    "invalid discriminator (3 digits)",
+			content: "User#123 is not valid",
+			want:    "",
+		},
+		{
+			name:    "invalid discriminator (5 digits)",
+			content: "User#12345 is not valid on discord",
+			want:    "",
+		},
+		{
+			name:    "no discord mention - ignore pattern",
+			content: "Contact me: JohnDoe#1234",
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ExtractDiscordUsername(tt.content)
+			if got != tt.want {
+				t.Errorf("ExtractDiscordUsername(%q) = %q, want %q", tt.content, got, tt.want)
+			}
+		})
+	}
+}
