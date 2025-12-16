@@ -336,6 +336,12 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 			prof.Fields["pro"] = "true"
 		}
 
+		// Developer Program Member (HTML fallback when GraphQL unavailable)
+		if prof.Fields["developer_program_member"] == "" &&
+			strings.Contains(htmlContent, "github-developer-program") {
+			prof.Fields["developer_program_member"] = "true"
+		}
+
 		// Extract achievements (only visible in HTML)
 		if achievements := extractAchievements(htmlContent); achievements != "" {
 			prof.Fields["achievements"] = achievements
