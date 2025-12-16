@@ -91,32 +91,28 @@ var profileTimezoneRegex = regexp.MustCompile(`<profile-timezone[^>]*data-hours-
 // Example: alt="Achievement: Pull Shark" ... achievement-tier-label--bronze ... >x2<.
 var achievementPattern = regexp.MustCompile(`alt="Achievement:\s*([^"]+)"[^>]*>(?:<span[^>]*achievement-tier-label--(\w+)[^>]*>x(\d+)</span>)?`)
 
-// extractAchievements parses GitHub achievements from profile HTML.
-// Returns a comma-separated list like "Pair Extraordinaire (gold x4), Mars 2020 Contributor".
-func extractAchievements(html string) string {
+// extractAchievementsMap parses GitHub achievements from profile HTML.
+// Returns a map of achievement name to count (e.g., "Pair Extraordinaire": "4").
+// Achievements without a count are stored with value "1".
+func extractAchievementsMap(html string) map[string]string {
 	matches := achievementPattern.FindAllStringSubmatch(html, -1)
 	if len(matches) == 0 {
-		return ""
+		return nil
 	}
 
-	seen := make(map[string]bool)
-	var achievements []string
-
+	badges := make(map[string]string)
 	for _, m := range matches {
 		name := strings.TrimSpace(m[1])
-		if seen[name] {
+		if _, exists := badges[name]; exists {
 			continue
 		}
-		seen[name] = true
-
-		if m[2] != "" && m[3] != "" {
-			achievements = append(achievements, fmt.Sprintf("%s (%s x%s)", name, m[2], m[3]))
+		if m[3] != "" {
+			badges[name] = m[3]
 		} else {
-			achievements = append(achievements, name)
+			badges[name] = "1"
 		}
 	}
-
-	return strings.Join(achievements, ", ")
+	return badges
 }
 
 // extractUTCOffset parses the UTC offset from GitHub profile HTML.
@@ -331,20 +327,26 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 			prof.Fields["email"] = email
 		}
 
+		// Extract achievements as badges (only visible in HTML)
+		if badges := extractAchievementsMap(htmlContent); badges != nil {
+			prof.Badges = badges
+		}
+
 		// Pro badge: <span title="Label: Pro" ...> (only visible in HTML, not API)
 		if strings.Contains(htmlContent, `title="Label: Pro"`) {
-			prof.Fields["pro"] = "true"
+			if prof.Badges == nil {
+				prof.Badges = make(map[string]string)
+			}
+			prof.Badges["Pro"] = "1"
 		}
 
 		// Developer Program Member (HTML fallback when GraphQL unavailable)
-		if prof.Fields["developer_program_member"] == "" &&
+		if prof.Badges["Developer Program Member"] == "" &&
 			strings.Contains(htmlContent, "github-developer-program") {
-			prof.Fields["developer_program_member"] = "true"
-		}
-
-		// Extract achievements (only visible in HTML)
-		if achievements := extractAchievements(htmlContent); achievements != "" {
-			prof.Fields["achievements"] = achievements
+			if prof.Badges == nil {
+				prof.Badges = make(map[string]string)
+			}
+			prof.Badges["Developer Program Member"] = "1"
 		}
 
 		// Extract organizations
@@ -896,26 +898,35 @@ func parseGraphQLResponse(ctx context.Context, data []byte, urlStr, _ string, lo
 	if user.IsHireable {
 		prof.Fields["hireable"] = "true"
 	}
+
+	// Add highlight badges from GraphQL
+	addBadge := func(name string) {
+		if prof.Badges == nil {
+			prof.Badges = make(map[string]string)
+		}
+		prof.Badges[name] = "1"
+	}
+
 	if user.IsBountyHunter {
-		prof.Fields["bounty_hunter"] = "true"
+		addBadge("Bounty Hunter")
 	}
 	if user.IsCampusExpert {
-		prof.Fields["campus_expert"] = "true"
+		addBadge("Campus Expert")
 	}
 	if user.IsDeveloperProgramMember {
-		prof.Fields["developer_program_member"] = "true"
+		addBadge("Developer Program Member")
 	}
 	if user.IsGitHubStar {
-		prof.Fields["github_star"] = "true"
+		addBadge("GitHub Star")
 	}
 	if user.IsSiteAdmin {
-		prof.Fields["site_admin"] = "true"
+		addBadge("Site Admin")
 	}
 	if user.IsEmployee {
-		prof.Fields["github_employee"] = "true"
+		addBadge("GitHub Employee")
 	}
 	if user.HasSponsorsListing {
-		prof.Fields["sponsors_listing"] = "true"
+		addBadge("Sponsors Listing")
 	}
 	if user.Status != nil && user.Status.Message != "" {
 		status := user.Status.Message

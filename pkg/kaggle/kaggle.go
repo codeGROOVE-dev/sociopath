@@ -169,7 +169,10 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 	// Extract tier from meta description (often contains tier info)
 	tierPattern := regexp.MustCompile(`(Grandmaster|Master|Expert|Contributor|Novice)`)
 	if m := tierPattern.FindStringSubmatch(content); len(m) > 1 {
-		prof.Fields["tier"] = m[1]
+		if prof.Badges == nil {
+			prof.Badges = make(map[string]string)
+		}
+		prof.Badges[m[1]] = "1"
 	}
 
 	return prof
@@ -193,7 +196,10 @@ func parseKaggleJSON(jsonStr string, prof *profile.Profile) {
 			prof.AvatarURL = avatarURL
 		}
 		if tier, ok := user["tier"].(string); ok && tier != "" {
-			prof.Fields["tier"] = tier
+			if prof.Badges == nil {
+				prof.Badges = make(map[string]string)
+			}
+			prof.Badges[tier] = "1"
 		}
 		if country, ok := user["country"].(string); ok && country != "" {
 			prof.Location = country

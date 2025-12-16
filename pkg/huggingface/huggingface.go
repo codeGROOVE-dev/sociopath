@@ -193,15 +193,18 @@ func parseHTML(body []byte, username, urlStr string) (*profile.Profile, error) {
 		prof.Fields["followers"] = strconv.Itoa(data.NumFollowers)
 	}
 
-	// Check for HF employee/admin status
-	if data.User.IsHf {
-		prof.Fields["hf_employee"] = "true"
-	}
-	if data.User.IsHfAdmin {
-		prof.Fields["hf_admin"] = "true"
-	}
-	if data.User.IsPro {
-		prof.Fields["pro"] = "true"
+	// Check for HF employee/admin/pro status and add as badges
+	if data.User.IsHf || data.User.IsHfAdmin || data.User.IsPro {
+		prof.Badges = make(map[string]string)
+		if data.User.IsHf {
+			prof.Badges["HF Employee"] = "1"
+		}
+		if data.User.IsHfAdmin {
+			prof.Badges["HF Admin"] = "1"
+		}
+		if data.User.IsPro {
+			prof.Badges["Pro"] = "1"
+		}
 	}
 
 	return prof, nil

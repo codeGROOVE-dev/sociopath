@@ -694,3 +694,53 @@ func TestAPIError(t *testing.T) {
 		}
 	})
 }
+
+func TestExtractAchievementsMap(t *testing.T) {
+	tests := []struct {
+		name string
+		html string
+		want map[string]string
+	}{
+		{
+			name: "tiered achievement",
+			html: `<img alt="Achievement: Pair Extraordinaire" class="achievement-badge-sidebar"><span class="achievement-tier-label achievement-tier-label--gold">x4</span>`,
+			want: map[string]string{"Pair Extraordinaire": "4"},
+		},
+		{
+			name: "simple achievement",
+			html: `<img alt="Achievement: Mars 2020 Contributor" class="achievement-badge-sidebar">`,
+			want: map[string]string{"Mars 2020 Contributor": "1"},
+		},
+		{
+			name: "multiple achievements",
+			html: `<img alt="Achievement: Pull Shark" class="achievement-badge-sidebar"><span class="achievement-tier-label achievement-tier-label--bronze">x2</span>` +
+				`<img alt="Achievement: Arctic Code Vault Contributor" class="achievement-badge-sidebar">`,
+			want: map[string]string{"Pull Shark": "2", "Arctic Code Vault Contributor": "1"},
+		},
+		{
+			name: "no achievements",
+			html: `<div>No achievements here</div>`,
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractAchievementsMap(tt.html)
+			if tt.want == nil {
+				if got != nil {
+					t.Errorf("extractAchievementsMap() = %v, want nil", got)
+				}
+				return
+			}
+			if len(got) != len(tt.want) {
+				t.Errorf("extractAchievementsMap() returned %d badges, want %d", len(got), len(tt.want))
+			}
+			for k, v := range tt.want {
+				if got[k] != v {
+					t.Errorf("extractAchievementsMap()[%q] = %q, want %q", k, got[k], v)
+				}
+			}
+		})
+	}
+}

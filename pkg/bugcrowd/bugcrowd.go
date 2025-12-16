@@ -210,7 +210,7 @@ func parseProfile(ctx context.Context, data *profileResponse, profileURL string,
 
 	// Verified status
 	if data.IdentityVerified {
-		prof.Fields["verified"] = "true"
+		prof.Badges = map[string]string{"Verified": "1"}
 	}
 
 	// Default name to username if not provided

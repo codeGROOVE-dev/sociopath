@@ -103,6 +103,7 @@ type Profile struct {
 
 	// Platform-specific fields
 	Fields map[string]string `json:",omitempty"` // Additional platform-specific data (headline, employer, etc.)
+	Badges map[string]string `json:",omitempty"` // Achievements/badges with counts (e.g., "Pair Extraordinaire": "4")
 
 	// For further crawling
 	SocialLinks []string `json:",omitempty"` // Other social media URLs detected on the profile

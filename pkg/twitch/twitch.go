@@ -232,9 +232,9 @@ func parseProfile(data *apiUser, url string) *profile.Profile {
 
 	// Partner/Affiliate status
 	if data.Roles.IsPartner {
-		p.Fields["partner"] = "true"
+		p.Badges = map[string]string{"Partner": "1"}
 	} else if data.Roles.IsAffiliate {
-		p.Fields["affiliate"] = "true"
+		p.Badges = map[string]string{"Affiliate": "1"}
 	}
 
 	// Social links

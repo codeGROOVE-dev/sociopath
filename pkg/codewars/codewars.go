@@ -210,7 +210,11 @@ func parseProfile(data *apiResponse, url string) *profile.Profile {
 	}
 
 	if data.Ranks.Overall.Name != "" {
-		p.Fields["rank"] = data.Ranks.Overall.Name
+		// Parse rank like "6 kyu" or "2 dan" into badge format: kyu=6, dan=2
+		parts := strings.SplitN(data.Ranks.Overall.Name, " ", 2)
+		if len(parts) == 2 {
+			p.Badges = map[string]string{parts[1]: parts[0]}
+		}
 	}
 
 	if data.CodeChallenges.TotalCompleted > 0 {
