@@ -650,8 +650,16 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 		}
 
 		// Collect social links from guessed profiles to fetch directly
+		// Only follow social links from profiles with reasonable confidence (>=0.5)
+		// to avoid following links from false positives
 		var socialLinksToFetch []string
 		for _, p := range guessed {
+			// Skip social links from low-confidence guesses to avoid false positives
+			if p.Confidence < 0.5 {
+				cfg.Logger.Debug("skipping social links from low-confidence profile",
+					"url", p.URL, "confidence", p.Confidence)
+				continue
+			}
 			for _, link := range p.SocialLinks {
 				normalized := normalizeURL(link)
 				if knownURLs[normalized] {
@@ -670,7 +678,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 					knownURLs[normalized] = true
 					continue
 				}
-				// For lower confidence profiles, skip if we already have this platform
+				// For moderate confidence profiles (0.5-0.6), skip if we already have this platform
 				if cfg.PlatformDetector != nil {
 					linkPlatform := cfg.PlatformDetector(link)
 					if linkPlatform != "" && linkPlatform != "website" && knownPlatforms[linkPlatform] {
@@ -692,7 +700,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 			knownURLs[normalizeURL(p.URL)] = true
 		}
 
-		// Fetch social links directly (these are verified links, high confidence)
+		// Fetch social links from profiles with sufficient confidence (>=0.5)
 		if len(socialLinksToFetch) > 0 {
 			cfg.Logger.Info("second round: fetching discovered social links", "count", len(socialLinksToFetch))
 
@@ -973,6 +981,17 @@ func extractUsernamesWithLogger(profiles []*profile.Profile, logger *slog.Logger
 						"username", u, "source_url", p.URL)
 				}
 				continue
+			}
+
+			// Strip .bsky.social suffix from Bluesky handles for guessing on other platforms
+			// e.g., "developerguy.bsky.social" -> "developerguy"
+			// Custom domains (e.g., "developerguy.com") are left intact
+			if p.Platform == "bluesky" && strings.HasSuffix(u, ".bsky.social") {
+				u = strings.TrimSuffix(u, ".bsky.social")
+				if logger != nil {
+					logger.Debug("stripped .bsky.social suffix from bluesky handle",
+						"original", p.Username, "extracted", u, "source_url", p.URL)
+				}
 			}
 
 			if isValidUsername(u) && !seen[u] {

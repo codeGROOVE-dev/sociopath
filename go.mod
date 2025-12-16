@@ -12,6 +12,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	golang.org/x/net v0.48.0
 	golang.org/x/sync v0.19.0
+	golang.org/x/term v0.38.0
 )
 
 require (

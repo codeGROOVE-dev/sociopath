@@ -76,6 +76,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/reddit"
 	"github.com/codeGROOVE-dev/sociopath/pkg/replit"
 	"github.com/codeGROOVE-dev/sociopath/pkg/rubygems"
+	"github.com/codeGROOVE-dev/sociopath/pkg/scratch"
 	"github.com/codeGROOVE-dev/sociopath/pkg/sessionize"
 	"github.com/codeGROOVE-dev/sociopath/pkg/slideshare"
 	"github.com/codeGROOVE-dev/sociopath/pkg/stackoverflow"
@@ -293,6 +294,8 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		p, err = fetchMastodon(ctx, url, cfg)
 	case pypi.Match(url):
 		p, err = fetchPyPI(ctx, url, cfg)
+	case scratch.Match(url):
+		p, err = fetchScratch(ctx, url, cfg)
 	default:
 		p, err = fetchGeneric(ctx, url, cfg)
 	}
@@ -2039,6 +2042,22 @@ func fetchPyPI(ctx context.Context, url string, cfg *config) (*profile.Profile, 
 	}
 
 	client, err := pypi.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchScratch(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []scratch.Option
+	if cfg.cache != nil {
+		opts = append(opts, scratch.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, scratch.WithLogger(cfg.logger))
+	}
+
+	client, err := scratch.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

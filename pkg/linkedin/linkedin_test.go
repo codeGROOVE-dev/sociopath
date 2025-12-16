@@ -397,4 +397,38 @@ func TestFetchWithSearcher(t *testing.T) {
 			t.Errorf("DisplayName should be empty for minimal profile, got %q", prof.DisplayName)
 		}
 	})
+
+	t.Run("marks_unverified_when_search_returns_different_profile", func(t *testing.T) {
+		// Simulate search returning a different person's profile
+		searcher := &mockSearcher{
+			results: []SearchResult{
+				{
+					Title:   "Different Person - Some Company | LinkedIn",
+					URL:     "https://www.linkedin.com/in/differentperson",
+					Snippet: "Not the person we're looking for.",
+				},
+			},
+		}
+
+		client, err := New(ctx, WithLogger(logger), WithSearcher(searcher))
+		if err != nil {
+			t.Fatalf("New() failed: %v", err)
+		}
+
+		prof, err := client.Fetch(ctx, "https://www.linkedin.com/in/expecteduser")
+		if err != nil {
+			t.Fatalf("Fetch() error = %v", err)
+		}
+
+		// Should return unverified profile (search found results but wrong username)
+		if prof.Username != "expecteduser" {
+			t.Errorf("Username = %q, want %q", prof.Username, "expecteduser")
+		}
+		if prof.DisplayName != "" {
+			t.Errorf("DisplayName should be empty for unverified profile, got %q", prof.DisplayName)
+		}
+		if prof.AccountState != "unverified" {
+			t.Errorf("AccountState = %q, want %q", prof.AccountState, "unverified")
+		}
+	})
 }

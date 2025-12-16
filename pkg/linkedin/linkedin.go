@@ -157,22 +157,34 @@ func (c *Client) fetchViaSearch(ctx context.Context, urlStr, username string) (*
 
 	if len(results) == 0 {
 		c.logger.DebugContext(ctx, "linkedin: no search results", "url", urlStr)
-		return minimalProfile(urlStr, username), nil
+		return &profile.Profile{
+			Platform: platform,
+			URL:      urlStr,
+			Username: username,
+			Fields:   make(map[string]string),
+		}, nil
 	}
 
-	// Find the primary profile result (direct /in/ URL, not posts or directory)
+	// Find the primary profile result that matches our target URL.
+	// We must verify the username matches to avoid returning a different person's profile.
 	var primaryResult *SearchResult
 	for i := range results {
 		r := &results[i]
-		if isDirectProfileURL(r.URL) {
+		if isDirectProfileURL(r.URL) && strings.EqualFold(extractPublicID(r.URL), username) {
 			primaryResult = r
 			break
 		}
 	}
 
 	if primaryResult == nil {
-		c.logger.DebugContext(ctx, "linkedin: no direct profile URL in results", "url", urlStr)
-		return minimalProfile(urlStr, username), nil
+		c.logger.DebugContext(ctx, "linkedin: no matching profile URL in results", "url", urlStr)
+		return &profile.Profile{
+			Platform:     platform,
+			URL:          urlStr,
+			Username:     username,
+			AccountState: profile.AccountStateUnverified,
+			Fields:       make(map[string]string),
+		}, nil
 	}
 
 	// Parse name and headline from title
@@ -217,16 +229,6 @@ func (c *Client) fetchViaSearch(ctx context.Context, urlStr, username string) (*
 		"location", p.Location)
 
 	return p, nil
-}
-
-// minimalProfile returns a profile with just URL and username.
-func minimalProfile(urlStr, username string) *profile.Profile {
-	return &profile.Profile{
-		Platform: platform,
-		URL:      urlStr,
-		Username: username,
-		Fields:   make(map[string]string),
-	}
 }
 
 // EnableDebug enables debug logging (currently a no-op).
