@@ -23,24 +23,30 @@ func TestFetchLinkedInReturnsMinimalProfile(t *testing.T) {
 	}
 }
 
-func TestFetchRequiresAuthForTwitter(t *testing.T) {
-	// Twitter requires auth, should fail without cookies
-	_, err := Fetch(context.Background(), "https://twitter.com/johndoe")
-	if err == nil {
-		t.Error("Fetch should fail for Twitter without auth")
+func TestFetchTwitterWorksWithoutAuth(t *testing.T) {
+	// Twitter works without auth via FXTwitter fallback
+	prof, err := Fetch(context.Background(), "https://twitter.com/johndoe")
+	if err != nil {
+		t.Errorf("Fetch should work for Twitter via FXTwitter fallback: %v", err)
+		return
 	}
-	if !errors.Is(err, ErrNoCookies) {
-		t.Logf("error: %v", err)
+	if prof == nil {
+		t.Fatal("expected profile, got nil")
+	}
+	if prof.Authenticated {
+		t.Error("Authenticated should be false (FXTwitter fallback)")
 	}
 }
 
-func TestFetchRequiresAuthForInstagram(t *testing.T) {
-	_, err := Fetch(context.Background(), "https://instagram.com/johndoe")
-	if err == nil {
-		t.Error("Fetch should fail for Instagram without auth")
+func TestFetchInstagramWorksWithoutAuth(t *testing.T) {
+	// Instagram works without auth via public API
+	prof, err := Fetch(context.Background(), "https://instagram.com/johndoe")
+	if err != nil {
+		t.Errorf("Fetch should work for Instagram via public API: %v", err)
+		return
 	}
-	if !errors.Is(err, ErrAuthRequired) {
-		t.Logf("error: %v", err)
+	if prof == nil {
+		t.Fatal("expected profile, got nil")
 	}
 }
 
@@ -194,6 +200,16 @@ func TestIsValidProfileURL(t *testing.T) {
 		// User accounts should be valid
 		{"https://instagram.com/daveworth", true},
 		{"https://twitter.com/daveworth", true},
+		// Content aggregation URLs should be filtered
+		{"https://github.blog/tag/npm/", false},
+		{"https://en.scratch-wiki.info/wiki/List_of_Bug_Workarounds", false},
+		{"https://github.com/features", false},
+		{"https://github.com/pricing", false},
+		{"https://github.com/customer-stories", false},
+		{"https://wikipedia.org/wiki/Test", false},
+		// Personal site paths should be allowed
+		{"https://choosehappy.dev/about", true},
+		{"https://example.com/docs/api", true},
 	}
 
 	for _, tt := range tests {

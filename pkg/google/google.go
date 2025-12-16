@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -111,9 +110,14 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 		opt(cfg)
 	}
 
+	cache := cfg.cache
+	if cache == nil {
+		cache = httpcache.NewNull()
+	}
+
 	client := &Client{
 		httpClient: &http.Client{Timeout: 10 * time.Second},
-		cache:      cfg.cache,
+		cache:      cache,
 		logger:     cfg.logger,
 	}
 
@@ -384,28 +388,7 @@ func (c *Client) fetchPhotos(ctx context.Context, gaiaID string) ([]profile.Post
 }
 
 func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, error) {
-	if c.cache != nil {
-		return httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close() //nolint:errcheck // best effort close
-
-	if resp.StatusCode == http.StatusFound {
-		location := resp.Header.Get("Location")
-		if strings.Contains(location, "google.com/sorry") {
-			return nil, errors.New("rate limited by Google")
-		}
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-
-	return io.ReadAll(resp.Body)
+	return httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 }
 
 // Protobuf parameter builders - these are opaque strings based on GHunt's analysis.

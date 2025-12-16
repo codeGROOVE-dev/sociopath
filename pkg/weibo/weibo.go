@@ -121,6 +121,11 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 
 	cfg.logger.InfoContext(ctx, "weibo client created", "cookie_count", len(cookies))
 
+	cache := cfg.cache
+	if cache == nil {
+		cache = httpcache.NewNull()
+	}
+
 	return &Client{
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
@@ -128,7 +133,7 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 				return http.ErrUseLastResponse // Don't follow redirects
 			},
 		},
-		cache:  cfg.cache,
+		cache:  cache,
 		logger: cfg.logger,
 		sub:    sub,
 		subp:   subp,
@@ -422,10 +427,6 @@ func (c *Client) fetchAPI(ctx context.Context, apiURL string) ([]byte, error) {
 		}
 
 		return io.ReadAll(resp.Body)
-	}
-
-	if c.cache == nil {
-		return fetch(ctx)
 	}
 
 	// Include auth marker in cache key since responses are user-specific

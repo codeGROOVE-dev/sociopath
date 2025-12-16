@@ -71,6 +71,11 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 		opt(cfg)
 	}
 
+	cache := cfg.cache
+	if cache == nil {
+		cache = httpcache.NewNull()
+	}
+
 	return &Client{
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
@@ -78,7 +83,7 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // needed for corporate proxies
 			},
 		},
-		cache:  cfg.cache,
+		cache:  cache,
 		logger: cfg.logger,
 	}, nil
 }
@@ -303,10 +308,6 @@ func (c *Client) fetchSEAPI(ctx context.Context, apiURL string) ([]byte, error) 
 		}
 
 		return readCompressedBody(resp)
-	}
-
-	if c.cache == nil {
-		return fetch(ctx)
 	}
 
 	return c.cache.GetSet(ctx, httpcache.URLToKey(apiURL), fetch, c.cache.TTL())

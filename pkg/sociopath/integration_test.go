@@ -702,7 +702,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 		// UTCOffset depends on user's timezone settings
 		// AvatarURL varies by user and can change
 		// Authenticated depends on gh CLI/GITHUB_TOKEN availability
-		cmpopts.IgnoreFields(profile.Profile{}, "Authenticated", "AvatarURL", "Bio", "Location", "Website", "Fields", "SocialLinks", "UpdatedAt", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
+		// Badges, Groups change as users earn badges and join organizations
+		// PageTitle varies by platform and can change
+		// CreatedAt, DatabaseID are user-specific and extracted from FXTwitter fallback
+		cmpopts.IgnoreFields(profile.Profile{}, "Authenticated", "AvatarURL", "Bio", "Location", "Website", "Fields", "SocialLinks", "UpdatedAt", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset", "Badges", "Groups", "PageTitle", "CreatedAt", "DatabaseID"),
 	}
 
 	for _, tt := range tests {

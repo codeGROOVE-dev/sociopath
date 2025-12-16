@@ -420,7 +420,7 @@ func TestScoreMatchIntegration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotScore, gotMatches := scoreMatch(tt.guessed, tt.known, tt.candidate)
+			gotScore, gotMatches := scoreMatch(tt.guessed, tt.known, tt.candidate, nil)
 
 			if gotScore < tt.wantMin || gotScore > tt.wantMax {
 				t.Errorf("scoreMatch() score = %v, want between %v and %v",
@@ -537,7 +537,7 @@ func TestScoreInterestMatch(t *testing.T) {
 			profileA: &profile.Profile{
 				Platform: "github",
 				Username: "k8sdev",
-				Fields:   map[string]string{"organizations": "kubernetes, cncf"},
+				Groups:   []string{"kubernetes", "cncf"},
 			},
 			profileB: &profile.Profile{
 				Platform: "reddit",

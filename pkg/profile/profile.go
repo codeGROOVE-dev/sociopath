@@ -89,6 +89,7 @@ type Profile struct {
 	DisplayName string   `json:",omitempty"` // Person's chosen display name on the platform (not page title or error messages)
 	PageTitle   string   `json:",omitempty"` // HTML page title (may contain errors or site name)
 	AvatarURL   string   `json:",omitempty"` // Profile photo/avatar URL
+	AvatarHash  uint64   `json:",omitempty"` // Perceptual hash of avatar for cross-platform matching
 	Bio         string   `json:",omitempty"` // Profile bio/description
 	Location    string   `json:",omitempty"` // Geographic location
 	Website     string   `json:",omitempty"` // Personal website URL

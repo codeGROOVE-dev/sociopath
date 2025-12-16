@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/codeGROOVE-dev/sociopath/pkg/avatar"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
 
@@ -621,7 +622,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 			}
 
 			// Score the match against known profiles
-			confidence, matches := scoreMatch(p, known, candidate)
+			confidence, matches := scoreMatch(p, known, candidate, cfg.Logger)
 			if confidence < 0.3 {
 				cfg.Logger.Info("guess candidate low confidence, skipping", "url", candidate.url, "confidence", confidence)
 				return
@@ -725,7 +726,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 						username:  p.Username,
 						platform:  p.Platform,
 						matchType: "linked", // This is a verified link
-					})
+					}, cfg.Logger)
 
 					// Lower threshold for linked profiles since they were directly referenced
 					if confidence < 0.25 {
@@ -805,7 +806,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 					allKnown := make([]*profile.Profile, 0, len(known)+len(guessed))
 					allKnown = append(allKnown, known...)
 					allKnown = append(allKnown, guessed...)
-					confidence, matches := scoreMatch(p, allKnown, candidate)
+					confidence, matches := scoreMatch(p, allKnown, candidate, cfg.Logger)
 					if confidence < 0.3 {
 						cfg.Logger.Info("second round candidate low confidence, skipping",
 							"url", candidate.url, "confidence", confidence)
@@ -860,7 +861,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 					username:  p.Username,
 					platform:  p.Platform,
 					matchType: "username",
-				})
+				}, cfg.Logger)
 
 				// Update if confidence improved
 				if newConfidence > p.Confidence {
@@ -1262,7 +1263,7 @@ func normalizeURL(url string) string {
 // Returns confidence (0.0-1.0) and list of matching criteria.
 //
 //nolint:gocognit,maintidx,revive // multi-signal confidence scoring with extensive heuristics is inherently complex
-func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate candidateURL) (confidence float64, matchReasons []string) {
+func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate candidateURL, logger *slog.Logger) (confidence float64, matchReasons []string) {
 	var score float64
 	var matches []string
 
@@ -1302,7 +1303,7 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 
 	// Track best signals (don't accumulate across profiles)
 	var hasLink bool
-	var bestNameScore, bestLocScore, bestBioScore float64
+	var bestNameScore, bestLocScore, bestBioScore, bestAvatarScore float64
 	var hasWebsiteMatch, hasEmployerMatch, hasOrgMatch, hasInterestMatch bool
 
 	// Check against each known profile for additional signals
@@ -1433,6 +1434,14 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 				matches = append(matches, "interest:"+kp.Platform)
 			}
 		}
+
+		// Check avatar similarity (high signal - same photo across platforms)
+		if avatarScore := avatar.Score(guessed.AvatarHash, kp.AvatarHash); avatarScore > bestAvatarScore {
+			if bestAvatarScore == 0 && avatarScore > 0 {
+				matches = append(matches, "avatar:"+kp.Platform)
+			}
+			bestAvatarScore = avatarScore
+		}
 	}
 
 	// Add best signals to score (only once, not per profile)
@@ -1477,6 +1486,18 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 	if hasInterestMatch {
 		// Interest match (e.g., Reddit subreddit "vim" matches GitHub bio "Vim plugin artist")
 		score += 0.25
+	}
+	if bestAvatarScore > 0 {
+		// Avatar match is a strong signal - same photo across platforms is unlikely to be coincidence
+		// Scale: 0.4 for identical (score=1.0), down to 0 for threshold match (score~0.1)
+		bonus := bestAvatarScore * 0.4
+		score += bonus
+		if logger != nil {
+			logger.Info("avatar perceptual match bonus",
+				"guessed", guessed.Platform,
+				"score", bestAvatarScore,
+				"bonus", bonus)
+		}
 	}
 
 	// Tech title bonus: if the profile has a tech-related title, it's more likely to be the same person
@@ -1918,27 +1939,25 @@ func extractInterests(p *profile.Profile) map[string]bool {
 	interests := make(map[string]bool)
 
 	// Extract from subreddits (Reddit profiles store these in Fields)
-	if p.Fields != nil {
-		if subs := p.Fields["subreddits"]; subs != "" {
-			for sub := range strings.SplitSeq(subs, ",") {
-				sub = strings.TrimSpace(strings.ToLower(sub))
-				if sub != "" && len(sub) >= 2 {
-					interests[sub] = true
-				}
+	if subs := p.Fields["subreddits"]; subs != "" {
+		for sub := range strings.SplitSeq(subs, ",") {
+			sub = strings.TrimSpace(strings.ToLower(sub))
+			if sub != "" && len(sub) >= 2 {
+				interests[sub] = true
 			}
 		}
+	}
 
-		// Extract from groups (GitHub organizations, etc.)
-		for _, org := range p.Groups {
-			org = strings.TrimSpace(strings.ToLower(org))
-			// Normalize org names (remove common suffixes)
-			org = strings.TrimSuffix(org, "-dev")
-			org = strings.TrimSuffix(org, "-org")
-			org = strings.TrimSuffix(org, "-io")
-			org = strings.TrimSuffix(org, "-labs")
-			if org != "" && len(org) >= 2 {
-				interests[org] = true
-			}
+	// Extract from groups (GitHub organizations, etc.)
+	for _, org := range p.Groups {
+		org = strings.TrimSpace(strings.ToLower(org))
+		// Normalize org names (remove common suffixes)
+		org = strings.TrimSuffix(org, "-dev")
+		org = strings.TrimSuffix(org, "-org")
+		org = strings.TrimSuffix(org, "-io")
+		org = strings.TrimSuffix(org, "-labs")
+		if org != "" && len(org) >= 2 {
+			interests[org] = true
 		}
 	}
 

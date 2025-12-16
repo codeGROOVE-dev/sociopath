@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	"github.com/codeGROOVE-dev/sociopath/pkg/arstechnica"
+	"github.com/codeGROOVE-dev/sociopath/pkg/avatar"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bilibili"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bluesky"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bugcrowd"
@@ -301,6 +302,11 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 		applyEmailHints(p, cfg.emailHints)
 	}
 
+	// Compute avatar hash for cross-platform matching
+	if err == nil && p != nil && p.AvatarURL != "" {
+		p.AvatarHash = avatar.Hash(ctx, cfg.cache, p.AvatarURL, cfg.logger)
+	}
+
 	return p, err
 }
 
@@ -334,6 +340,18 @@ func fetchLinkedIn(ctx context.Context, url string, cfg *config) (*profile.Profi
 	}
 	if cfg.logger != nil {
 		opts = append(opts, linkedin.WithLogger(cfg.logger))
+	}
+
+	// Configure Brave Search if API key is available.
+	if apiKey := linkedin.LoadBraveAPIKey(); apiKey != "" {
+		var braveOpts []linkedin.BraveOption
+		if cfg.cache != nil {
+			braveOpts = append(braveOpts, linkedin.WithBraveCache(cfg.cache))
+		}
+		if cfg.logger != nil {
+			braveOpts = append(braveOpts, linkedin.WithBraveLogger(cfg.logger))
+		}
+		opts = append(opts, linkedin.WithSearcher(linkedin.NewBraveSearcher(apiKey, braveOpts...)))
 	}
 
 	client, err := linkedin.New(ctx, opts...)
@@ -447,8 +465,11 @@ func fetchHabr(ctx context.Context, url string, cfg *config) (*profile.Profile, 
 
 func fetchInstagram(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []instagram.Option
-	if len(cfg.cookies) > 0 {
-		opts = append(opts, instagram.WithCookies(cfg.cookies))
+	if cfg.cache != nil {
+		opts = append(opts, instagram.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, instagram.WithLogger(cfg.logger))
 	}
 
 	client, err := instagram.New(ctx, opts...)
@@ -1400,7 +1421,7 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 				links = append(links, link)
 			}
 		}
-		if p.Website != "" && !visited[normalizeURL(p.Website)] {
+		if p.Website != "" && !visited[normalizeURL(p.Website)] && isValidProfileURL(p.Website) {
 			links = append(links, p.Website)
 		}
 
@@ -1411,7 +1432,7 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if v := p.Fields[k]; isLikelySocialURL(k, v) && !visited[normalizeURL(v)] {
+			if v := p.Fields[k]; isLikelySocialURL(k, v) && !visited[normalizeURL(v)] && isValidProfileURL(v) {
 				links = append(links, v)
 			}
 		}
@@ -1467,20 +1488,59 @@ func isKnownBlogDomain(urlStr string) bool {
 }
 
 // isContentAggregationURL returns true if the URL is a content aggregation page
-// (tag, category, archive) rather than a user profile.
+// (tag, category, archive, wiki) rather than a user profile.
 func isContentAggregationURL(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
-	// Content aggregation path patterns
+
+	// Wiki domains - always filter
+	if strings.Contains(lower, "-wiki.") || strings.Contains(lower, "wiki.") ||
+		strings.Contains(lower, "wikipedia.org") {
+		return true
+	}
+
+	// Content aggregation path patterns - always filter
 	patterns := []string{
 		"/tag/", "/tags/",
 		"/category/", "/categories/",
 		"/archive/", "/archives/",
 		"/topic/", "/topics/",
 		"/label/", "/labels/",
-		"/page/", // pagination
+		"/wiki/", // wiki pages
 	}
 	for _, p := range patterns {
 		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+
+	// Corporate/platform path patterns - only for known large domains
+	if isKnownCorporateDomain(lower) {
+		corpPatterns := []string{
+			"/features", "/pricing", "/enterprise",
+			"/customer-stories", "/customers",
+			"/blog/", "/press/", "/news/",
+		}
+		for _, p := range corpPatterns {
+			if strings.Contains(lower, p) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// isKnownCorporateDomain returns true if the URL is from a known corporate/platform domain.
+func isKnownCorporateDomain(lower string) bool {
+	domains := []string{
+		"github.com", "gitlab.com", "bitbucket.org",
+		"twitter.com", "x.com", "facebook.com", "instagram.com",
+		"linkedin.com", "youtube.com", "tiktok.com",
+		"microsoft.com", "google.com", "amazon.com", "apple.com",
+		"netflix.com", "uber.com", "airbnb.com",
+	}
+	for _, d := range domains {
+		if strings.Contains(lower, d) {
 			return true
 		}
 	}
@@ -1817,7 +1877,7 @@ func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) (
 				queue = append(queue, item{link, 1})
 			}
 		}
-		if p.Website != "" && !visited[normalizeURL(p.Website)] {
+		if p.Website != "" && !visited[normalizeURL(p.Website)] && isValidProfileURL(p.Website) {
 			queue = append(queue, item{p.Website, 1})
 		}
 	}
@@ -1862,7 +1922,7 @@ func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) (
 				}
 			}
 		}
-		if p.Website != "" && !visited[normalizeURL(p.Website)] {
+		if p.Website != "" && !visited[normalizeURL(p.Website)] && isValidProfileURL(p.Website) {
 			links = append(links, p.Website)
 		}
 
@@ -1872,7 +1932,7 @@ func FetchEmailRecursive(ctx context.Context, emails []string, opts ...Option) (
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if v := p.Fields[k]; isLikelySocialURL(k, v) && !visited[normalizeURL(v)] {
+			if v := p.Fields[k]; isLikelySocialURL(k, v) && !visited[normalizeURL(v)] && isValidProfileURL(v) {
 				links = append(links, v)
 			}
 		}

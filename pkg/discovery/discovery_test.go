@@ -68,10 +68,8 @@ func TestLookupKeybase(t *testing.T) {
 			}))
 			defer server.Close()
 
-			d := &Discoverer{
-				client: server.Client(),
-				logger: testLogger(),
-			}
+			d := New(nil, testLogger())
+			d.client = server.Client()
 
 			result := d.lookupKeybaseURL(context.Background(), server.URL)
 
@@ -198,10 +196,8 @@ func TestLookupNostr(t *testing.T) {
 			}))
 			defer server.Close()
 
-			d := &Discoverer{
-				client: server.Client(),
-				logger: testLogger(),
-			}
+			d := New(nil, testLogger())
+			d.client = server.Client()
 
 			result := d.lookupNostrURL(context.Background(), server.URL)
 
@@ -307,10 +303,8 @@ func TestLookupWebFinger(t *testing.T) {
 			}))
 			defer server.Close()
 
-			d := &Discoverer{
-				client: server.Client(),
-				logger: testLogger(),
-			}
+			d := New(nil, testLogger())
+			d.client = server.Client()
 
 			// For gmail, the function returns early without making a request
 			if tt.email == "user@gmail.com" || tt.email == "notanemail" {
@@ -417,10 +411,8 @@ func TestLookupMatrix(t *testing.T) {
 			}))
 			defer server.Close()
 
-			d := &Discoverer{
-				client: server.Client(),
-				logger: testLogger(),
-			}
+			d := New(nil, testLogger())
+			d.client = server.Client()
 
 			result := d.lookupMatrixURL(context.Background(), server.URL)
 

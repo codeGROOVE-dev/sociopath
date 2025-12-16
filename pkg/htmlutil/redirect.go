@@ -21,13 +21,13 @@ func extractMetaRefresh(content string) string {
 	// content="0;url=..." or content="0; url=..." or content="0;URL=..."
 	pattern := regexp.MustCompile(`(?i)<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]+content\s*=\s*["']?\d+\s*;\s*url\s*=\s*["']?([^"'>\s]+)`)
 	if m := pattern.FindStringSubmatch(content); len(m) > 1 {
-		return cleanRedirectURL(m[1])
+		return strings.TrimRight(strings.TrimSpace(m[1]), `"'>`)
 	}
 
 	// Also try reversed attribute order
 	pattern2 := regexp.MustCompile(`(?i)<meta[^>]+content\s*=\s*["']?\d+\s*;\s*url\s*=\s*["']?([^"'>\s]+)[^>]+http-equiv\s*=\s*["']?refresh["']?`)
 	if m := pattern2.FindStringSubmatch(content); len(m) > 1 {
-		return cleanRedirectURL(m[1])
+		return strings.TrimRight(strings.TrimSpace(m[1]), `"'>`)
 	}
 
 	return ""
@@ -47,7 +47,7 @@ func extractJSRedirect(content string) string {
 
 	for _, pattern := range patterns {
 		if m := pattern.FindStringSubmatch(content); len(m) > 1 {
-			url := cleanRedirectURL(m[1])
+			url := strings.TrimRight(strings.TrimSpace(m[1]), `"'>`)
 			// Skip self-referential or fragment-only redirects
 			if url != "" && !strings.HasPrefix(url, "#") && url != "." && url != "./" {
 				return url
@@ -56,14 +56,4 @@ func extractJSRedirect(content string) string {
 	}
 
 	return ""
-}
-
-// cleanRedirectURL cleans up a redirect URL extracted from HTML/JS.
-func cleanRedirectURL(url string) string {
-	url = strings.TrimSpace(url)
-	// Remove trailing quotes or other artifacts
-	url = strings.TrimSuffix(url, `"`)
-	url = strings.TrimSuffix(url, `'`)
-	url = strings.TrimSuffix(url, `>`)
-	return url
 }

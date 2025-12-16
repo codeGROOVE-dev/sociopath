@@ -130,6 +130,72 @@ func extractUTCOffset(html string) *float64 {
 	return &offset
 }
 
+// extractHTMLProfileData extracts profile fields from HTML content.
+// This includes UTC offset, email, badges, organizations, repositories, and README content.
+func extractHTMLProfileData(prof *profile.Profile, htmlContent string) {
+	prof.UTCOffset = extractUTCOffset(htmlContent)
+	extractHTMLEmail(prof, htmlContent)
+	extractHTMLBadges(prof, htmlContent)
+	extractHTMLOrgsAndRepos(prof, htmlContent)
+	extractHTMLReadme(prof, htmlContent)
+}
+
+func extractHTMLEmail(prof *profile.Profile, htmlContent string) {
+	if email := extractEmail(htmlContent); email != "" && prof.Fields["email"] == "" {
+		prof.Fields["email"] = email
+	}
+}
+
+func extractHTMLBadges(prof *profile.Profile, htmlContent string) {
+	// Extract achievements as badges (only visible in HTML)
+	if badges := extractAchievementsMap(htmlContent); badges != nil {
+		if prof.Badges == nil {
+			prof.Badges = badges
+		} else {
+			maps.Copy(prof.Badges, badges)
+		}
+	}
+
+	// Pro badge and Developer Program Member require Badges map
+	hasPro := strings.Contains(htmlContent, `title="Label: Pro"`)
+	hasDevProgram := prof.Badges["Developer Program Member"] == "" && strings.Contains(htmlContent, "github-developer-program")
+
+	if hasPro || hasDevProgram {
+		if prof.Badges == nil {
+			prof.Badges = make(map[string]string)
+		}
+		if hasPro {
+			prof.Badges["Pro"] = "1"
+		}
+		if hasDevProgram {
+			prof.Badges["Developer Program Member"] = "1"
+		}
+	}
+}
+
+func extractHTMLOrgsAndRepos(prof *profile.Profile, htmlContent string) {
+	if orgs := extractOrganizations(htmlContent); len(orgs) > 0 {
+		slices.Sort(orgs)
+		prof.Groups = orgs
+	}
+	if htmlRepos := extractPinnedRepos(htmlContent); len(htmlRepos) > 0 {
+		prof.Repositories = htmlRepos
+	}
+}
+
+func extractHTMLReadme(prof *profile.Profile, htmlContent string) {
+	readmeHTML := extractREADMEHTML(htmlContent)
+	if readmeHTML != "" {
+		prof.SocialLinks = append(prof.SocialLinks, htmlutil.SocialLinks(readmeHTML)...)
+		prof.Content = readmeHTML
+	}
+
+	discordContent := prof.Bio + " " + prof.Content
+	if discord := htmlutil.ExtractDiscordUsername(discordContent); discord != "" {
+		prof.Fields["discord"] = discord
+	}
+}
+
 // Match returns true if the URL is a GitHub profile URL.
 func Match(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
@@ -213,6 +279,12 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 		logger = slog.Default()
 	}
 
+	// Ensure cache is not nil
+	cache := cfg.cache
+	if cache == nil {
+		cache = httpcache.NewNull()
+	}
+
 	// Try to get token from environment if not provided
 	token := cfg.token
 	if token == "" {
@@ -221,7 +293,7 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 
 	// Fall back to gh CLI auth token (cached for 24 hours)
 	if token == "" {
-		if ghToken := getCachedGhToken(ctx, cfg.cache); ghToken != "" {
+		if ghToken := getCachedGhToken(ctx, cache); ghToken != "" {
 			token = ghToken
 			logger.InfoContext(ctx, "using token from gh auth token")
 		}
@@ -235,7 +307,7 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 
 	return &Client{
 		httpClient: &http.Client{Timeout: 15 * time.Second},
-		cache:      cfg.cache,
+		cache:      cache,
 		logger:     logger,
 		token:      token,
 	}, nil
@@ -320,67 +392,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	// Extract README, organizations, UTC offset, email, and Pro status from HTML if available
 	if htmlContent != "" {
-		// Extract UTC offset from profile-timezone element
-		prof.UTCOffset = extractUTCOffset(htmlContent)
-
-		// Extract email from HTML (visible to authenticated users)
-		if email := extractEmail(htmlContent); email != "" && prof.Fields["email"] == "" {
-			prof.Fields["email"] = email
-		}
-
-		// Extract achievements as badges (only visible in HTML) - merge with existing
-		if badges := extractAchievementsMap(htmlContent); badges != nil {
-			if prof.Badges == nil {
-				prof.Badges = badges
-			} else {
-				maps.Copy(prof.Badges, badges)
-			}
-		}
-
-		// Pro badge: <span title="Label: Pro" ...> (only visible in HTML, not API)
-		if strings.Contains(htmlContent, `title="Label: Pro"`) {
-			if prof.Badges == nil {
-				prof.Badges = make(map[string]string)
-			}
-			prof.Badges["Pro"] = "1"
-		}
-
-		// Developer Program Member (HTML fallback when GraphQL unavailable)
-		if prof.Badges["Developer Program Member"] == "" &&
-			strings.Contains(htmlContent, "github-developer-program") {
-			if prof.Badges == nil {
-				prof.Badges = make(map[string]string)
-			}
-			prof.Badges["Developer Program Member"] = "1"
-		}
-
-		// Extract organizations as groups
-		if orgs := extractOrganizations(htmlContent); len(orgs) > 0 {
-			slices.Sort(orgs)
-			prof.Groups = orgs
-		}
-
-		// Extract pinned/popular repositories from HTML (prefer over GraphQL as HTML is authoritative)
-		if htmlRepos := extractPinnedRepos(htmlContent); len(htmlRepos) > 0 {
-			prof.Repositories = htmlRepos
-		}
-
-		// Extract README HTML
-		readmeHTML := extractREADMEHTML(htmlContent)
-		if readmeHTML != "" {
-			// Extract social links from raw HTML
-			readmeLinks := htmlutil.SocialLinks(readmeHTML)
-			prof.SocialLinks = append(prof.SocialLinks, readmeLinks...)
-
-			// Store raw HTML - preserves all signal (alt text, URLs, structure)
-			prof.Content = readmeHTML
-		}
-
-		// Extract Discord username from README or Bio
-		discordContent := prof.Bio + " " + prof.Content
-		if discord := htmlutil.ExtractDiscordUsername(discordContent); discord != "" {
-			prof.Fields["discord"] = discord
-		}
+		extractHTMLProfileData(prof, htmlContent)
 	}
 
 	// Deduplicate and filter out same-platform links (GitHub to GitHub)
@@ -662,10 +674,6 @@ func (c *Client) hasEmailScope(ctx context.Context) bool {
 		return false
 	}
 
-	if c.cache == nil {
-		return c.checkTokenScopeHTTP(ctx)
-	}
-
 	cacheKey := "github:scope:" + tokenHash(c.token)
 	data, err := c.cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
 		if c.checkTokenScopeHTTP(ctx) {
@@ -714,13 +722,11 @@ func (c *Client) fetchGraphQL(ctx context.Context, urlStr, username string) (*pr
 		if strings.Contains(err.Error(), "email") || strings.Contains(err.Error(), "scope") {
 			c.logger.DebugContext(ctx, "GraphQL email field failed, retrying without email", "error", err)
 			// Update cache to remember this token doesn't have email scope
-			if c.cache != nil {
-				cacheKey := "github:scope:" + tokenHash(c.token)
-				//nolint:errcheck,gosec // best effort cache update
-				c.cache.GetSet(ctx, cacheKey, func(context.Context) ([]byte, error) {
-					return []byte("0"), nil
-				}, scopeCacheTTL)
-			}
+			cacheKey := "github:scope:" + tokenHash(c.token)
+			//nolint:errcheck,gosec // best effort cache update
+			c.cache.GetSet(ctx, cacheKey, func(context.Context) ([]byte, error) {
+				return []byte("0"), nil
+			}, scopeCacheTTL)
 			return c.executeGraphQL(ctx, urlStr, username, graphQLUserFieldsWithoutEmail)
 		}
 		return nil, err
@@ -757,7 +763,7 @@ func (c *Client) executeGraphQL(ctx context.Context, urlStr, username, fields st
 	}
 
 	c.logger.DebugContext(ctx, "GraphQL query completed", "username", username, "duration_ms", time.Since(start).Milliseconds())
-	return parseGraphQLResponse(ctx, body, urlStr, username, c.logger)
+	return c.parseGraphQLResponse(ctx, body, urlStr, username)
 }
 
 // graphQLUser holds the user data from a GraphQL response.
@@ -839,7 +845,7 @@ func addCountField(fields map[string]string, key string, count int) {
 	}
 }
 
-func parseGraphQLResponse(ctx context.Context, data []byte, urlStr, _ string, logger *slog.Logger) (*profile.Profile, error) {
+func (c *Client) parseGraphQLResponse(ctx context.Context, data []byte, urlStr, _ string) (*profile.Profile, error) {
 	var response struct {
 		Errors []struct {
 			Message string `json:"message"`
@@ -918,9 +924,9 @@ func parseGraphQLResponse(ctx context.Context, data []byte, urlStr, _ string, lo
 	if user.Gists.TotalCount > 0 {
 		prof.Posts = gistsToPosts(user.Gists.Nodes)
 		// Check for keybase proof gists and extract username
-		if keybaseURL := extractKeybaseFromGists(ctx, user.Gists.Nodes, user.Login, logger); keybaseURL != "" {
+		if keybaseURL := c.extractKeybaseFromGists(ctx, user.Gists.Nodes, user.Login); keybaseURL != "" {
 			prof.SocialLinks = append(prof.SocialLinks, keybaseURL)
-			logger.InfoContext(ctx, "discovered keybase from gist", "url", keybaseURL)
+			c.logger.InfoContext(ctx, "discovered keybase from gist", "url", keybaseURL)
 		}
 	}
 
@@ -1013,11 +1019,6 @@ func (c *Client) doAPIRequest(ctx context.Context, req *http.Request) ([]byte, e
 		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		hash := sha256.Sum256(bodyBytes)
 		cacheKey = req.URL.String() + ":" + hex.EncodeToString(hash[:])
-	}
-
-	if c.cache == nil {
-		c.logger.InfoContext(ctx, "cache disabled", "url", req.URL.String())
-		return c.executeAPIRequest(ctx, req)
 	}
 
 	data, err := c.cache.GetSet(ctx, httpcache.URLToKey(cacheKey), func(_ context.Context) ([]byte, error) {
@@ -1661,7 +1662,7 @@ func formatCount(n int) string {
 var keybaseProofPattern = regexp.MustCompile(`https://keybase\.io/([a-zA-Z0-9_]+)`)
 
 // extractKeybaseFromGists looks for keybase proof gists and extracts the username.
-func extractKeybaseFromGists(ctx context.Context, gists []gistNode, ghUsername string, logger *slog.Logger) string {
+func (c *Client) extractKeybaseFromGists(ctx context.Context, gists []gistNode, ghUsername string) string {
 	for _, g := range gists {
 		// Check if gist name or description mentions keybase
 		nameLower := strings.ToLower(g.Name)
@@ -1676,37 +1677,23 @@ func extractKeybaseFromGists(ctx context.Context, gists []gistNode, ghUsername s
 		gistID := strings.TrimPrefix(g.URL, "https://gist.github.com/")
 		rawURL := fmt.Sprintf("https://gist.githubusercontent.com/%s/%s/raw", ghUsername, gistID)
 
-		// Fetch raw content
+		// Fetch raw content using cache
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
 		if err != nil {
-			logger.DebugContext(ctx, "failed to create keybase gist request", "url", rawURL, "error", err)
+			c.logger.DebugContext(ctx, "failed to create keybase gist request", "url", rawURL, "error", err)
 			continue
 		}
 		req.Header.Set("User-Agent", "Mozilla/5.0")
 
-		resp, err := http.DefaultClient.Do(req)
+		body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 		if err != nil {
-			logger.DebugContext(ctx, "failed to fetch keybase gist", "url", rawURL, "error", err)
+			c.logger.DebugContext(ctx, "failed to fetch keybase gist", "url", rawURL, "error", err)
 			continue
 		}
 
-		keybaseURL := extractKeybaseFromResponse(resp)
-		if keybaseURL != "" {
-			return keybaseURL
+		if matches := keybaseProofPattern.FindSubmatch(body); len(matches) > 1 {
+			return "https://keybase.io/" + string(matches[1])
 		}
-	}
-	return ""
-}
-
-// extractKeybaseFromResponse reads the response body and extracts keybase URL.
-func extractKeybaseFromResponse(resp *http.Response) string {
-	defer resp.Body.Close() //nolint:errcheck // best effort cleanup
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	if err != nil {
-		return ""
-	}
-	if matches := keybaseProofPattern.FindSubmatch(body); len(matches) > 1 {
-		return "https://keybase.io/" + string(matches[1])
 	}
 	return ""
 }
@@ -1732,19 +1719,9 @@ func (c *Client) checkInternetArchive(ctx context.Context, username string) *arc
 	}
 	req.Header.Set("User-Agent", "sociopath/1.0")
 
-	resp, err := archiveClient.Do(req)
+	body, err := httpcache.FetchURL(ctx, c.cache, archiveClient, req, c.logger)
 	if err != nil {
 		c.logger.DebugContext(ctx, "archive lookup failed", "error", err)
-		return nil
-	}
-	defer resp.Body.Close() //nolint:errcheck // best effort
-
-	if resp.StatusCode != http.StatusOK {
-		return nil
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	if err != nil {
 		return nil
 	}
 
@@ -1810,19 +1787,9 @@ func (c *Client) fetchArchivedProfile(ctx context.Context, username string, snap
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
 
-	resp, err := archiveClient.Do(req)
+	body, err := httpcache.FetchURL(ctx, c.cache, archiveClient, req, c.logger)
 	if err != nil {
 		c.logger.DebugContext(ctx, "failed to fetch archived profile", "error", err)
-		return nil
-	}
-	defer resp.Body.Close() //nolint:errcheck // best effort
-
-	if resp.StatusCode != http.StatusOK {
-		return nil
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
-	if err != nil {
 		return nil
 	}
 

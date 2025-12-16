@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,6 +145,7 @@ func WithLogger(logger *slog.Logger) Option {
 
 // New creates a Twitter client.
 // Cookie sources: WithCookies > environment variables > browser.
+// If no cookies are available, the client will still work using the FXTwitter public API fallback.
 func New(ctx context.Context, opts ...Option) (*Client, error) {
 	cfg := &config{logger: slog.Default()}
 	for _, opt := range opts {
@@ -161,26 +163,29 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 
 	cookies, err := auth.ChainSources(ctx, platform, sources...)
 	if err != nil {
-		return nil, fmt.Errorf("cookie retrieval failed: %w", err)
-	}
-	if len(cookies) == 0 {
-		envVars := auth.EnvVarsForPlatform(platform)
-		return nil, fmt.Errorf("%w: set %v or use WithCookies/WithBrowserCookies",
-			profile.ErrNoCookies, envVars)
+		cfg.logger.WarnContext(ctx, "cookie retrieval failed, will use FXTwitter fallback", "error", err)
+		cookies = nil
 	}
 
-	jar, err := auth.NewCookieJar("x.com", cookies)
-	if err != nil {
-		return nil, fmt.Errorf("cookie jar creation failed: %w", err)
-	}
-
-	cfg.logger.InfoContext(ctx, "twitter client created", "cookie_count", len(cookies))
-
-	return &Client{
-		httpClient: &http.Client{Jar: jar, Timeout: 3 * time.Second},
+	client := &Client{
+		httpClient: &http.Client{Timeout: 3 * time.Second},
 		cache:      cfg.cache,
 		logger:     cfg.logger,
-	}, nil
+	}
+
+	if len(cookies) > 0 {
+		jar, err := auth.NewCookieJar("x.com", cookies)
+		if err != nil {
+			cfg.logger.WarnContext(ctx, "cookie jar creation failed, will use FXTwitter fallback", "error", err)
+		} else {
+			client.httpClient.Jar = jar
+			cfg.logger.InfoContext(ctx, "twitter client created with auth", "cookie_count", len(cookies))
+		}
+	} else {
+		cfg.logger.InfoContext(ctx, "twitter client created without auth (using FXTwitter fallback)")
+	}
+
+	return client, nil
 }
 
 // Fetch retrieves a Twitter profile using GraphQL API.
@@ -202,7 +207,15 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	c.logger.Debug("graphql fetch failed, trying html fallback", "error", err)
 
 	// Fallback to HTML parsing
-	return c.fetchViaHTML(ctx, username, profileURL)
+	p, err = c.fetchViaHTML(ctx, username, profileURL)
+	if err == nil {
+		return p, nil
+	}
+
+	c.logger.Debug("html fetch failed, trying fxtwitter fallback", "error", err)
+
+	// Final fallback: FXTwitter public API (no auth required)
+	return c.fetchViaFXTwitter(ctx, username, profileURL)
 }
 
 // fetchViaGraphQL uses Twitter's GraphQL API to fetch profile data.
@@ -513,12 +526,14 @@ func setGraphQLHeaders(req *http.Request, client *http.Client, referer string) {
 	req.Header.Set("Referer", referer)
 
 	// Extract ct0 cookie and set as X-Csrf-Token
-	if parsedURL, err := url.Parse("https://x.com"); err == nil {
-		cookies := client.Jar.Cookies(parsedURL)
-		for _, cookie := range cookies {
-			if cookie.Name == "ct0" {
-				req.Header.Set("X-Csrf-Token", cookie.Value)
-				break
+	if client.Jar != nil {
+		if parsedURL, err := url.Parse("https://x.com"); err == nil {
+			cookies := client.Jar.Cookies(parsedURL)
+			for _, cookie := range cookies {
+				if cookie.Name == "ct0" {
+					req.Header.Set("X-Csrf-Token", cookie.Value)
+					break
+				}
 			}
 		}
 	}
@@ -634,4 +649,132 @@ func filterSamePlatformLinks(links []string) []string {
 		}
 	}
 	return filtered
+}
+
+// fetchViaFXTwitter uses the FXTwitter public API as a fallback when auth fails.
+// This provides basic profile data without requiring Twitter authentication.
+func (c *Client) fetchViaFXTwitter(ctx context.Context, username, profileURL string) (*profile.Profile, error) {
+	apiURL := "https://api.fxtwitter.com/" + username
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("request creation failed: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
+	req.Header.Set("Accept", "application/json")
+
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		return nil, fmt.Errorf("fxtwitter request failed: %w", err)
+	}
+
+	return parseFXTwitterResponse(body, profileURL)
+}
+
+// fxTwitterUser represents the user data from FXTwitter API.
+//
+//nolint:govet // fieldalignment: struct layout optimized for readability
+type fxTwitterUser struct {
+	Website struct {
+		URL        string `json:"url"`
+		DisplayURL string `json:"display_url"`
+	} `json:"website"`
+	Verification struct {
+		VerifiedAt string `json:"verified_at"`
+		Type       string `json:"type"`
+		Verified   bool   `json:"verified"`
+	} `json:"verification"`
+	Name        string `json:"name"`
+	ScreenName  string `json:"screen_name"`
+	ID          string `json:"id"`
+	Description string `json:"description"`
+	Location    string `json:"location"`
+	AvatarURL   string `json:"avatar_url"`
+	BannerURL   string `json:"banner_url"`
+	Joined      string `json:"joined"`
+	Followers   int    `json:"followers"`
+	Following   int    `json:"following"`
+	Likes       int    `json:"likes"`
+	MediaCount  int    `json:"media_count"`
+	Tweets      int    `json:"tweets"`
+	Protected   bool   `json:"protected"`
+}
+
+// parseFXTwitterResponse parses the FXTwitter API response.
+func parseFXTwitterResponse(body []byte, profileURL string) (*profile.Profile, error) {
+	var resp struct {
+		Message string        `json:"message"`
+		User    fxTwitterUser `json:"user"`
+		Code    int           `json:"code"`
+	}
+
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse fxtwitter response: %w", err)
+	}
+
+	if resp.Code != 200 || resp.User.ScreenName == "" {
+		return nil, fmt.Errorf("user not found in fxtwitter response: %s", resp.Message)
+	}
+
+	p := &profile.Profile{
+		Platform:      platform,
+		URL:           profileURL,
+		Authenticated: false, // FXTwitter is a public fallback
+		Username:      resp.User.ScreenName,
+		DisplayName:   resp.User.Name,
+		DatabaseID:    resp.User.ID,
+		AvatarURL:     resp.User.AvatarURL,
+		Bio:           resp.User.Description,
+		Location:      resp.User.Location,
+		Fields:        make(map[string]string),
+	}
+
+	// Parse join date to ISO format
+	if resp.User.Joined != "" {
+		if t, err := time.Parse("Mon Jan 02 15:04:05 -0700 2006", resp.User.Joined); err == nil {
+			p.CreatedAt = t.Format(time.RFC3339)
+		}
+	}
+
+	// Website
+	if resp.User.Website.URL != "" {
+		p.Website = resp.User.Website.URL
+	} else if resp.User.Website.DisplayURL != "" {
+		p.Website = "https://" + resp.User.Website.DisplayURL
+	}
+
+	// Store additional fields
+	if resp.User.Followers > 0 {
+		p.Fields["followers"] = strconv.Itoa(resp.User.Followers)
+	}
+	if resp.User.Following > 0 {
+		p.Fields["following"] = strconv.Itoa(resp.User.Following)
+	}
+	if resp.User.Tweets > 0 {
+		p.Fields["tweets"] = strconv.Itoa(resp.User.Tweets)
+	}
+	if resp.User.Likes > 0 {
+		p.Fields["likes"] = strconv.Itoa(resp.User.Likes)
+	}
+	if resp.User.MediaCount > 0 {
+		p.Fields["media_count"] = strconv.Itoa(resp.User.MediaCount)
+	}
+	if resp.User.Protected {
+		p.Fields["protected"] = "true"
+	}
+	if resp.User.BannerURL != "" {
+		p.Fields["banner_url"] = resp.User.BannerURL
+	}
+	if resp.User.Verification.Verified {
+		p.Fields["verified"] = "true"
+		if resp.User.Verification.Type != "" {
+			p.Fields["verification_type"] = resp.User.Verification.Type
+		}
+		if resp.User.Verification.VerifiedAt != "" {
+			p.Fields["verified_at"] = resp.User.Verification.VerifiedAt
+		}
+	}
+
+	return p, nil
 }

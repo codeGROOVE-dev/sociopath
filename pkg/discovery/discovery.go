@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 )
 
 // Result represents a discovered identity.
@@ -39,6 +41,9 @@ type Discoverer struct {
 func New(cache Cacher, logger *slog.Logger) *Discoverer {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if cache == nil {
+		cache = httpcache.NewNull()
 	}
 	return &Discoverer{
 		cache:  cache,
@@ -79,7 +84,7 @@ func (d *Discoverer) LookupWebFinger(ctx context.Context, email string) *Result 
 	}
 	localPart, domain := parts[0], parts[1]
 
-	if isCommonEmailProvider(domain) || IsKnownSocialDomain(domain) {
+	if commonEmailProviders[strings.ToLower(domain)] || IsKnownSocialDomain(domain) {
 		return nil
 	}
 
@@ -165,32 +170,19 @@ func (d *Discoverer) LookupBluesky(ctx context.Context, domain string) *Result {
 	dnsKey := "_atproto." + domain
 	cacheKey := "dns:" + dnsKey
 
-	var txtRecords []string
-	if d.cache != nil {
-		data, err := d.cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
-			records, err := net.DefaultResolver.LookupTXT(ctx, dnsKey)
-			if err != nil {
-				return nil, err
-			}
-			return []byte(strings.Join(records, "\n")), nil
-		}, d.cache.TTL())
+	data, err := d.cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
+		records, err := net.DefaultResolver.LookupTXT(ctx, dnsKey)
 		if err != nil {
-			d.logger.DebugContext(ctx, "bluesky DNS lookup failed", "domain", domain, "error", err)
-			return nil
+			return nil, err
 		}
-		if len(data) > 0 {
-			txtRecords = strings.Split(string(data), "\n")
-		}
-	} else {
-		var err error
-		txtRecords, err = net.DefaultResolver.LookupTXT(ctx, dnsKey)
-		if err != nil {
-			d.logger.DebugContext(ctx, "bluesky DNS lookup failed", "domain", domain, "error", err)
-			return nil
-		}
+		return []byte(strings.Join(records, "\n")), nil
+	}, d.cache.TTL())
+	if err != nil {
+		d.logger.DebugContext(ctx, "bluesky DNS lookup failed", "domain", domain, "error", err)
+		return nil
 	}
 
-	for _, txt := range txtRecords {
+	for _, txt := range strings.Split(string(data), "\n") {
 		if strings.HasPrefix(txt, "did=") {
 			d.logger.DebugContext(ctx, "bluesky handle found", "domain", domain, "did", txt)
 			return &Result{
@@ -290,11 +282,7 @@ func (d *Discoverer) fetch(ctx context.Context, urlStr string) ([]byte, error) {
 		return io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	}
 
-	if d.cache == nil {
-		return doFetch(ctx)
-	}
-
-	cacheKey := "discovery:" + urlStr
+	cacheKey := "discovery:" + httpcache.URLToKey(urlStr)
 	return d.cache.GetSet(ctx, cacheKey, doFetch, d.cache.TTL())
 }
 
@@ -314,16 +302,13 @@ func isValidHexPubkey(s string) bool {
 	return true
 }
 
-// isCommonEmailProvider returns true if the domain is a common email provider.
-func isCommonEmailProvider(domain string) bool {
-	providers := map[string]bool{
-		"gmail.com": true, "googlemail.com": true, "google.com": true,
-		"yahoo.com": true, "yahoo.co.uk": true, "ymail.com": true,
-		"hotmail.com": true, "outlook.com": true, "live.com": true, "msn.com": true,
-		"icloud.com": true, "me.com": true, "mac.com": true,
-		"aol.com": true, "protonmail.com": true, "proton.me": true,
-		"fastmail.com": true, "fastmail.fm": true,
-		"hey.com": true, "pm.me": true,
-	}
-	return providers[strings.ToLower(domain)]
+// commonEmailProviders is a lookup set of common email providers to skip in WebFinger lookups.
+var commonEmailProviders = map[string]bool{
+	"gmail.com": true, "googlemail.com": true, "google.com": true,
+	"yahoo.com": true, "yahoo.co.uk": true, "ymail.com": true,
+	"hotmail.com": true, "outlook.com": true, "live.com": true, "msn.com": true,
+	"icloud.com": true, "me.com": true, "mac.com": true,
+	"aol.com": true, "protonmail.com": true, "proton.me": true,
+	"fastmail.com": true, "fastmail.fm": true,
+	"hey.com": true, "pm.me": true,
 }

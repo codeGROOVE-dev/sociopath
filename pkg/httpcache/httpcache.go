@@ -289,10 +289,8 @@ var globalRateLimiter = newGlobalRateLimiter()
 
 func newGlobalRateLimiter() *domainRateLimiter {
 	return &domainRateLimiter{
-		minDelay: 335 * time.Millisecond,
-		overrides: map[string]time.Duration{
-			"www.linkedin.com": 1200 * time.Millisecond,
-		},
+		minDelay:  1100 * time.Millisecond,
+		overrides: map[string]time.Duration{},
 	}
 }
 

@@ -9,9 +9,7 @@ package mailru
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -85,9 +83,14 @@ func New(_ context.Context, opts ...Option) (*Client, error) {
 		opt(cfg)
 	}
 
+	cache := cfg.cache
+	if cache == nil {
+		cache = httpcache.NewNull()
+	}
+
 	return &Client{
 		httpClient: &http.Client{Timeout: 10 * time.Second},
-		cache:      cfg.cache,
+		cache:      cache,
 		logger:     cfg.logger,
 	}, nil
 }
@@ -163,25 +166,7 @@ func (c *Client) Fetch(ctx context.Context, input string) (*profile.Profile, err
 }
 
 func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, error) {
-	if c.cache != nil {
-		return httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close() //nolint:errcheck // defer closes body
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, errors.New("profile not found")
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-
-	return io.ReadAll(resp.Body)
+	return httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 }
 
 func (*Client) parseHTML(content string, prof *profile.Profile) {

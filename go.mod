@@ -8,7 +8,10 @@ require (
 	github.com/codeGROOVE-dev/sfcache v1.4.2
 	github.com/codeGROOVE-dev/sfcache/pkg/store/localfs v1.4.2
 	github.com/codeGROOVE-dev/sfcache/pkg/store/null v1.4.2
+	github.com/corona10/goimagehash v1.1.0
 	github.com/google/go-cmp v0.7.0
+	golang.org/x/net v0.48.0
+	golang.org/x/sync v0.19.0
 )
 
 require (
@@ -21,10 +24,9 @@ require (
 	github.com/godbus/dbus/v5 v5.2.0 // indirect
 	github.com/gonuts/binary v0.2.0 // indirect
 	github.com/keybase/go-keychain v0.0.1 // indirect
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/zalando/go-keyring v0.2.6 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	www.velocidex.com/golang/go-ese v0.2.0 // indirect
