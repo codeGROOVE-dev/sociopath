@@ -119,7 +119,7 @@ func isValidProfileLink(urlStr string) bool {
 		"bsky.app", "vk.com", "weibo.com", "bilibili.com",
 		"substack.com", "patreon.com", "ko-fi.com",
 		"discord.com", "discordapp.com", "slack.com",
-		"telegram.org", "t.me",
+		"telegram.org", "telegram.me", "t.me",
 		// Coding challenges
 		"leetcode.com", "codewars.com", "hackerrank.com",
 		"exercism.org", "freecodecamp.org",
@@ -205,10 +205,10 @@ func cleanURL(s string) string {
 	// Trim whitespace first
 	s = strings.TrimSpace(s)
 
-	// Remove trailing quotes, brackets, and other HTML/markdown artifacts
+	// Remove trailing quotes, brackets, backslashes, and other HTML/markdown artifacts
 	for s != "" {
 		last := s[len(s)-1]
-		if last != '"' && last != '\'' && last != '>' && last != ')' && last != ']' {
+		if last != '"' && last != '\'' && last != '>' && last != ')' && last != ']' && last != '\\' {
 			break
 		}
 		s = s[:len(s)-1]
@@ -418,7 +418,7 @@ func ContactLinks(htmlContent, baseURL string) []string {
 		text = strings.TrimSpace(text)
 
 		// Look for contact-related link text or title
-		contactKeywords := []string{"contact", "about", "about me", "connect", "links", "socials", "find me", "get in touch"}
+		contactKeywords := []string{"contact", "about", "about me", "connect", "links", "socials", "find me", "get in touch", "portfolio"}
 		isContactLink := false
 		for _, kw := range contactKeywords {
 			if strings.Contains(text, kw) {
@@ -430,7 +430,8 @@ func ContactLinks(htmlContent, baseURL string) []string {
 		// Also check href for contact patterns
 		hrefLower := strings.ToLower(href)
 		if strings.Contains(hrefLower, "/contact") || strings.Contains(hrefLower, "/about") ||
-			strings.Contains(hrefLower, "/links") || strings.Contains(hrefLower, "/connect") {
+			strings.Contains(hrefLower, "/links") || strings.Contains(hrefLower, "/connect") ||
+			strings.Contains(hrefLower, "/portfolio") {
 			isContactLink = true
 		}
 
@@ -601,6 +602,7 @@ var socialPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`https?://(?:www\.)?freecodecamp\.org/[\w-]+`),
 	// Telegram
 	regexp.MustCompile(`https?://t\.me/[\w-]+`),
+	regexp.MustCompile(`https?://(?:www\.)?telegram\.me/[\w-]+`),
 }
 
 // Discord username patterns.

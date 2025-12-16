@@ -27,6 +27,16 @@ const (
 	PostTypeRepository PostType = "repository"
 )
 
+// AccountState indicates the current state of a user account.
+type AccountState string
+
+// Account state constants.
+const (
+	AccountStateActive  AccountState = ""        // Account is active (default, omitted from JSON)
+	AccountStateRenamed AccountState = "renamed" // Account was renamed to a new username
+	AccountStateDeleted AccountState = "deleted" // Account was deleted but historical data recovered
+)
+
 // PlatformType categorizes what kind of content a platform primarily hosts.
 // This enables cross-platform matching bonuses (e.g., same username on GitHub and GitLab).
 type PlatformType string
@@ -84,6 +94,12 @@ type Profile struct {
 	CreatedAt string   `json:",omitempty"` // Account creation date (ISO timestamp)
 	UpdatedAt string   `json:",omitempty"` // Most recent activity or profile update (ISO timestamp)
 	UTCOffset *float64 `json:",omitempty"` // UTC offset in hours (e.g., -8 for PST, 5.5 for IST)
+
+	// Account state (for renamed/deleted accounts)
+	AccountState AccountState `json:",omitempty"` // Current account state (renamed, deleted)
+	Aliases      []string     `json:",omitempty"` // Alternative usernames (old names, aliases) for cross-platform matching
+	DatabaseID   string       `json:",omitempty"` // Platform-specific unique ID (survives renames)
+	ArchivedAt   string       `json:",omitempty"` // Timestamp of archived snapshot used (if deleted)
 
 	// Platform-specific fields
 	Fields map[string]string `json:",omitempty"` // Additional platform-specific data (headline, employer, etc.)

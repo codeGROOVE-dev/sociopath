@@ -984,6 +984,19 @@ func extractUsernamesWithLogger(profiles []*profile.Profile, logger *slog.Logger
 				}
 			}
 		}
+
+		// Also include aliases (previous usernames from renamed accounts)
+		for _, alias := range p.Aliases {
+			a := strings.ToLower(alias)
+			if isValidUsername(a) && !seen[a] {
+				seen[a] = true
+				usernames = append(usernames, a)
+				if logger != nil {
+					logger.Debug("discovered alias for guessing",
+						"alias", a, "current_username", p.Username, "source_platform", p.Platform)
+				}
+			}
+		}
 	}
 
 	return usernames

@@ -84,11 +84,12 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "github",
-				URL:       "https://github.com/tstromberg",
-				Username:  "tstromberg",
-				Name:      "Thomas |Ström`ber`g",
-				CreatedAt: "2009-07-03T14:32:35Z",
+				Platform:   "github",
+				URL:        "https://github.com/tstromberg",
+				Username:   "tstromberg",
+				Name:       "Thomas |Ström`ber`g",
+				CreatedAt:  "2009-07-03T14:32:35Z",
+				DatabaseID: "101424",
 			},
 		},
 		{
@@ -106,11 +107,12 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "github",
-				URL:       "https://github.com/kentcdodds",
-				Username:  "kentcdodds",
-				Name:      "Kent C. Dodds",
-				CreatedAt: "2012-03-04T22:32:01Z",
+				Platform:   "github",
+				URL:        "https://github.com/kentcdodds",
+				Username:   "kentcdodds",
+				Name:       "Kent C. Dodds",
+				CreatedAt:  "2012-03-04T22:32:01Z",
+				DatabaseID: "1500684",
 			},
 		},
 		{
@@ -128,11 +130,12 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "github",
-				URL:       "https://github.com/torvalds",
-				Username:  "torvalds",
-				Name:      "Linus Torvalds",
-				CreatedAt: "2011-09-03T15:26:22Z",
+				Platform:   "github",
+				URL:        "https://github.com/torvalds",
+				Username:   "torvalds",
+				Name:       "Linus Torvalds",
+				CreatedAt:  "2011-09-03T15:26:22Z",
+				DatabaseID: "1024025",
 			},
 		},
 		{
@@ -150,11 +153,12 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "github",
-				URL:       "https://github.com/gvanrossum",
-				Username:  "gvanrossum",
-				Name:      "Guido van Rossum",
-				CreatedAt: "2012-11-26T18:46:40Z",
+				Platform:   "github",
+				URL:        "https://github.com/gvanrossum",
+				Username:   "gvanrossum",
+				Name:       "Guido van Rossum",
+				CreatedAt:  "2012-11-26T18:46:40Z",
+				DatabaseID: "2894642",
 			},
 		},
 		{

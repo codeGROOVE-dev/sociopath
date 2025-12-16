@@ -304,6 +304,14 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 		// Try to build profile from HTML
 		if htmlContent == "" {
+			// For 404 errors, try to recover from Internet Archive
+			var gitHubErr *APIError
+			if errors.As(apiErr, &gitHubErr) && gitHubErr.StatusCode == http.StatusNotFound {
+				c.logger.InfoContext(ctx, "user not found, checking Internet Archive", "username", username)
+				if recoveredProf, err := c.handleMissingUser(ctx, username, urlStr); err == nil {
+					return recoveredProf, nil
+				}
+			}
 			return nil, fmt.Errorf("API failed and no HTML content available: %w", apiErr)
 		}
 
@@ -832,9 +840,10 @@ func parseGraphQLResponse(ctx context.Context, data []byte, urlStr, _ string, lo
 	addCountField(prof.Fields, "top_repos", user.TopRepositories.TotalCount)
 	addCountField(prof.Fields, "pinned_items_remaining", user.PinnedItemsRemaining)
 
-	// Database ID (useful for correlation)
+	// Database ID (useful for correlation and detecting renames)
 	if user.DatabaseID > 0 {
-		prof.Fields["database_id"] = strconv.Itoa(user.DatabaseID)
+		prof.DatabaseID = strconv.Itoa(user.DatabaseID)
+		prof.Fields["database_id"] = prof.DatabaseID
 	}
 
 	// Contribution stats (last year)
@@ -1584,4 +1593,237 @@ func extractKeybaseFromResponse(resp *http.Response) string {
 		return "https://keybase.io/" + string(matches[1])
 	}
 	return ""
+}
+
+// archiveSnapshot represents a snapshot from the Internet Archive CDX API.
+type archiveSnapshot struct {
+	Timestamp  string // Format: 20251009202051
+	StatusCode string // HTTP status code when archived
+}
+
+// archiveClient is a dedicated HTTP client for Internet Archive requests with a longer timeout.
+var archiveClient = &http.Client{Timeout: 30 * time.Second}
+
+// checkInternetArchive queries the Internet Archive CDX API for snapshots of a GitHub profile.
+// Returns the most recent successful snapshot, or nil if none found.
+func (c *Client) checkInternetArchive(ctx context.Context, username string) *archiveSnapshot {
+	cdxURL := fmt.Sprintf("https://web.archive.org/cdx/search/cdx?url=github.com/%s&output=json&limit=10&filter=statuscode:200", username)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cdxURL, http.NoBody)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to create archive request", "error", err)
+		return nil
+	}
+	req.Header.Set("User-Agent", "sociopath/1.0")
+
+	resp, err := archiveClient.Do(req)
+	if err != nil {
+		c.logger.DebugContext(ctx, "archive lookup failed", "error", err)
+		return nil
+	}
+	defer resp.Body.Close() //nolint:errcheck // best effort
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return nil
+	}
+
+	// Parse JSON array: [["urlkey","timestamp","original",...], ["row1",...], ...]
+	var rows [][]string
+	if err := json.Unmarshal(body, &rows); err != nil {
+		c.logger.DebugContext(ctx, "failed to parse archive response", "error", err)
+		return nil
+	}
+
+	// Need at least header row + one data row
+	if len(rows) < 2 {
+		return nil
+	}
+
+	// Find column indices from header
+	header := rows[0]
+	timestampIdx, statusIdx := -1, -1
+	for i, col := range header {
+		switch col {
+		case "timestamp":
+			timestampIdx = i
+		case "statuscode":
+			statusIdx = i
+		default:
+			// ignore other columns
+		}
+	}
+
+	if timestampIdx < 0 {
+		return nil
+	}
+
+	// Return the most recent snapshot (last row with status 200)
+	for i := len(rows) - 1; i >= 1; i-- {
+		row := rows[i]
+		if statusIdx >= 0 && statusIdx < len(row) && row[statusIdx] != "200" {
+			continue
+		}
+		if timestampIdx < len(row) {
+			c.logger.InfoContext(ctx, "found archived profile", "username", username, "timestamp", row[timestampIdx])
+			return &archiveSnapshot{
+				Timestamp:  row[timestampIdx],
+				StatusCode: "200",
+			}
+		}
+	}
+
+	return nil
+}
+
+// avatarIDPattern extracts the user database ID from avatar URLs.
+var avatarIDPattern = regexp.MustCompile(`avatars\.githubusercontent\.com/u/(\d+)`)
+
+// fetchArchivedProfile fetches and parses a GitHub profile from the Internet Archive.
+func (c *Client) fetchArchivedProfile(ctx context.Context, username string, snapshot *archiveSnapshot) *profile.Profile {
+	archiveURL := fmt.Sprintf("https://web.archive.org/web/%s/https://github.com/%s", snapshot.Timestamp, username)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, archiveURL, http.NoBody)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to create archive fetch request", "error", err)
+		return nil
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
+
+	resp, err := archiveClient.Do(req)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to fetch archived profile", "error", err)
+		return nil
+	}
+	defer resp.Body.Close() //nolint:errcheck // best effort
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
+	if err != nil {
+		return nil
+	}
+
+	html := string(body)
+	prof := c.parseProfileFromHTML(ctx, html, "https://github.com/"+username, username)
+
+	// Extract database ID from avatar URL
+	if matches := avatarIDPattern.FindStringSubmatch(html); len(matches) > 1 {
+		prof.DatabaseID = matches[1]
+	}
+
+	// Format archived timestamp for display (20251009202051 -> 2025-10-09T20:20:51Z)
+	if len(snapshot.Timestamp) >= 14 {
+		ts := snapshot.Timestamp
+		prof.ArchivedAt = fmt.Sprintf("%s-%s-%sT%s:%s:%sZ",
+			ts[0:4], ts[4:6], ts[6:8], ts[8:10], ts[10:12], ts[12:14])
+	}
+
+	// Extract additional fields from archived HTML
+	if loc := extractArchivedLocation(html); loc != "" && prof.Location == "" {
+		prof.Location = loc
+	}
+
+	// Extract organizations from archived HTML
+	if orgs := extractOrganizations(html); len(orgs) > 0 {
+		prof.Fields["organizations"] = strings.Join(orgs, ", ")
+	}
+
+	return prof
+}
+
+// extractArchivedLocation extracts location from archived profile HTML.
+func extractArchivedLocation(html string) string {
+	// Matches aria-label="Home location: <location>"
+	locPattern := regexp.MustCompile(`aria-label="Home location:\s*([^"]+)"`)
+	if matches := locPattern.FindStringSubmatch(html); len(matches) > 1 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
+}
+
+// checkUserByID queries GitHub API by database ID to check if user was renamed.
+// Returns the current profile if found, nil otherwise.
+func (c *Client) checkUserByID(ctx context.Context, databaseID string) (*profile.Profile, error) {
+	apiURL := "https://api.github.com/user/" + databaseID
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("User-Agent", "sociopath/1.0")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	body, err := c.doAPIRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseJSON(body, "", "")
+}
+
+// handleMissingUser attempts to recover information about a 404'd GitHub user.
+// It checks Internet Archive for historical data and detects renames.
+func (c *Client) handleMissingUser(ctx context.Context, username, urlStr string) (*profile.Profile, error) {
+	// Check Internet Archive for historical snapshots
+	snapshot := c.checkInternetArchive(ctx, username)
+	if snapshot == nil {
+		c.logger.InfoContext(ctx, "no archived profile found", "username", username)
+		return nil, fmt.Errorf("user not found and no archive available: %s", username)
+	}
+
+	// Fetch archived profile to get database ID
+	archivedProf := c.fetchArchivedProfile(ctx, username, snapshot)
+	if archivedProf == nil {
+		return nil, fmt.Errorf("failed to fetch archived profile for: %s", username)
+	}
+
+	// If we have a database ID, check if user was renamed
+	if archivedProf.DatabaseID != "" {
+		currentProf, err := c.checkUserByID(ctx, archivedProf.DatabaseID)
+		if err == nil && currentProf != nil && currentProf.Username != "" {
+			// User was renamed - fetch current profile with full data
+			c.logger.InfoContext(ctx, "detected username rename",
+				"old_username", username,
+				"new_username", currentProf.Username,
+				"database_id", archivedProf.DatabaseID,
+			)
+
+			// Fetch the full current profile
+			fullProf, fetchErr := c.Fetch(ctx, "https://github.com/"+currentProf.Username)
+			if fetchErr != nil {
+				// Fall back to basic data from ID lookup
+				c.logger.DebugContext(ctx, "failed to fetch renamed profile, using basic data", "error", fetchErr)
+				currentProf.URL = urlStr
+				currentProf.AccountState = profile.AccountStateRenamed
+				currentProf.Aliases = []string{username}
+				currentProf.DatabaseID = archivedProf.DatabaseID
+				return currentProf, nil
+			}
+
+			fullProf.AccountState = profile.AccountStateRenamed
+			fullProf.Aliases = []string{username}
+			fullProf.DatabaseID = archivedProf.DatabaseID
+			return fullProf, nil
+		}
+	}
+
+	// User was truly deleted - return archived profile
+	c.logger.InfoContext(ctx, "user appears deleted, using archived data",
+		"username", username,
+		"archived_at", archivedProf.ArchivedAt,
+	)
+
+	archivedProf.URL = urlStr
+	archivedProf.AccountState = profile.AccountStateDeleted
+	return archivedProf, nil
 }
