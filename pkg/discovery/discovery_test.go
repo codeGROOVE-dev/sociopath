@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -479,7 +480,7 @@ func TestIsValidHexPubkey(t *testing.T) {
 	}
 }
 
-func TestIsCommonEmailProvider(t *testing.T) {
+func TestCommonEmailProviders(t *testing.T) {
 	tests := []struct {
 		domain string
 		want   bool
@@ -496,9 +497,9 @@ func TestIsCommonEmailProvider(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.domain, func(t *testing.T) {
-			got := isCommonEmailProvider(tt.domain)
+			got := commonEmailProviders[strings.ToLower(tt.domain)]
 			if got != tt.want {
-				t.Errorf("isCommonEmailProvider(%q) = %v, want %v", tt.domain, got, tt.want)
+				t.Errorf("commonEmailProviders[%q] = %v, want %v", tt.domain, got, tt.want)
 			}
 		})
 	}

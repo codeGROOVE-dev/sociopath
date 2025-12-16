@@ -42,8 +42,8 @@ func init() {
 	globalStats.Store(&Stats{})
 }
 
-// GetStats returns the current cache statistics.
-func GetStats() Stats {
+// CacheStats returns the current cache statistics.
+func CacheStats() Stats {
 	return *globalStats.Load()
 }
 

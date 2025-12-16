@@ -102,7 +102,7 @@ func main() {
 	}
 	// Output cache stats at end
 	defer func() {
-		stats := httpcache.GetStats()
+		stats := httpcache.CacheStats()
 		total := stats.Hits + stats.Misses
 		if total > 0 {
 			hitRate := float64(stats.Hits) / float64(total) * 100

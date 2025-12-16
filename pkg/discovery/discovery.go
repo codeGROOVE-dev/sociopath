@@ -182,7 +182,7 @@ func (d *Discoverer) LookupBluesky(ctx context.Context, domain string) *Result {
 		return nil
 	}
 
-	for _, txt := range strings.Split(string(data), "\n") {
+	for txt := range strings.SplitSeq(string(data), "\n") {
 		if strings.HasPrefix(txt, "did=") {
 			d.logger.DebugContext(ctx, "bluesky handle found", "domain", domain, "did", txt)
 			return &Result{
