@@ -136,7 +136,7 @@ func parseAPIResponse(data []byte, urlStr, handle string) (*profile.Profile, err
 		URL:           urlStr,
 		Authenticated: false,
 		Username:      handle,
-		Name:          resp.DisplayName,
+		DisplayName:   resp.DisplayName,
 		AvatarURL:     resp.Avatar,
 		Bio:           resp.Description,
 		Fields:        make(map[string]string),

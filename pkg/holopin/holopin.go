@@ -163,12 +163,12 @@ func parseHTML(ctx context.Context, body []byte, url string, logger *slog.Logger
 
 func parseProfile(ctx context.Context, data *userData, profileURL string, logger *slog.Logger) *profile.Profile {
 	prof := &profile.Profile{
-		Platform: platform,
-		URL:      profileURL,
-		Username: data.Username,
-		Name:     data.Name,
-		Bio:      data.Bio,
-		Fields:   make(map[string]string),
+		Platform:    platform,
+		URL:         profileURL,
+		Username:    data.Username,
+		DisplayName: data.Name,
+		Bio:         data.Bio,
+		Fields:      make(map[string]string),
 	}
 
 	if data.Image != "" {
@@ -206,8 +206,8 @@ func parseProfile(ctx context.Context, data *userData, profileURL string, logger
 	}
 
 	// Default name to username if not provided
-	if prof.Name == "" {
-		prof.Name = prof.Username
+	if prof.DisplayName == "" {
+		prof.DisplayName = prof.Username
 	}
 
 	return prof

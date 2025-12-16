@@ -138,11 +138,11 @@ func TestFetch_BlockedURL(t *testing.T) {
 
 func TestParseHTML(t *testing.T) {
 	tests := []struct {
-		name     string
-		html     string
-		url      string
-		wantName string
-		wantBio  string
+		name      string
+		html      string
+		url       string
+		wantTitle string
+		wantBio   string
 	}{
 		{
 			name: "full page",
@@ -153,16 +153,16 @@ func TestParseHTML(t *testing.T) {
 				<a href="https://github.com/user">GitHub</a>
 				<a href="mailto:user@example.com">Email</a>
 			</body></html>`,
-			url:      "https://example.com",
-			wantName: "Test Page",
-			wantBio:  "A test description",
+			url:       "https://example.com",
+			wantTitle: "Test Page",
+			wantBio:   "A test description",
 		},
 		{
-			name:     "empty page",
-			html:     `<html><head></head><body></body></html>`,
-			url:      "https://example.com",
-			wantName: "",
-			wantBio:  "",
+			name:      "empty page",
+			html:      `<html><head></head><body></body></html>`,
+			url:       "https://example.com",
+			wantTitle: "",
+			wantBio:   "",
 		},
 	}
 
@@ -170,8 +170,8 @@ func TestParseHTML(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			profile := parseHTML([]byte(tt.html), tt.url)
 
-			if profile.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", profile.Name, tt.wantName)
+			if profile.PageTitle != tt.wantTitle {
+				t.Errorf("PageTitle = %q, want %q", profile.PageTitle, tt.wantTitle)
 			}
 			if profile.Bio != tt.wantBio {
 				t.Errorf("Bio = %q, want %q", profile.Bio, tt.wantBio)

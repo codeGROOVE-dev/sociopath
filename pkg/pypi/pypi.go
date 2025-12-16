@@ -140,7 +140,7 @@ func (c *Client) Fetch(ctx context.Context, url string) (*profile.Profile, error
 	}
 
 	p := parseHTML(body, url, user)
-	if p.Name == "" && p.Username == user {
+	if p.DisplayName == "" && p.Username == user {
 		// Check if this is a 404 page or profile not found
 		if strings.Contains(s, "Page Not Found") || strings.Contains(s, "404") {
 			return nil, profile.ErrProfileNotFound
@@ -163,7 +163,7 @@ func parseHTML(data []byte, url, user string) *profile.Profile {
 
 	// Extract name from h1.author-profile__name
 	if m := nameRe.FindStringSubmatch(s); len(m) > 1 {
-		p.Name = strings.TrimSpace(html.UnescapeString(m[1]))
+		p.DisplayName = strings.TrimSpace(html.UnescapeString(m[1]))
 	}
 
 	// Extract avatar URL

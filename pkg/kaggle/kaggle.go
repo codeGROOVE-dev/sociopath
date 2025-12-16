@@ -147,7 +147,7 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 		title := html.UnescapeString(m[1])
 		title, _ = strings.CutSuffix(title, " | Kaggle")
 		if title != "" && title != username {
-			prof.Name = title
+			prof.DisplayName = title
 		}
 	}
 
@@ -187,7 +187,7 @@ func parseKaggleJSON(jsonStr string, prof *profile.Profile) {
 	// Try to extract user info from the embedded data
 	if user, ok := data["user"].(map[string]any); ok {
 		if displayName, ok := user["displayName"].(string); ok && displayName != "" {
-			prof.Name = displayName
+			prof.DisplayName = displayName
 		}
 		if bio, ok := user["bio"].(string); ok && bio != "" {
 			prof.Bio = bio

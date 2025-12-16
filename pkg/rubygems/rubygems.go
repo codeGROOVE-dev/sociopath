@@ -155,11 +155,11 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 func parseProfile(api *apiProfile, html string, htmlErr error, gems []apiGem, url string) *profile.Profile {
 	p := &profile.Profile{
-		Platform: platform,
-		URL:      url,
-		Username: api.Handle,
-		Name:     api.Handle,
-		Fields:   make(map[string]string),
+		Platform:    platform,
+		URL:         url,
+		Username:    api.Handle,
+		DisplayName: api.Handle,
+		Fields:      make(map[string]string),
 	}
 
 	if api.Email != "" {

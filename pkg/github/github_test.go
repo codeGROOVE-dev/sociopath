@@ -81,8 +81,8 @@ func TestParseJSON(t *testing.T) {
 		t.Errorf("Username = %q, want %q", p.Username, "octocat")
 	}
 
-	if p.Name != "The Octocat" {
-		t.Errorf("Name = %q, want %q", p.Name, "The Octocat")
+	if p.DisplayName != "The Octocat" {
+		t.Errorf("Name = %q, want %q", p.DisplayName, "The Octocat")
 	}
 
 	if p.Bio != "GitHub's mascot" {
@@ -208,8 +208,8 @@ func TestFetch(t *testing.T) {
 	if profile.Username != "testuser" {
 		t.Errorf("Username = %q, want %q", profile.Username, "testuser")
 	}
-	if profile.Name != "Test User" {
-		t.Errorf("Name = %q, want %q", profile.Name, "Test User")
+	if profile.DisplayName != "Test User" {
+		t.Errorf("Name = %q, want %q", profile.DisplayName, "Test User")
 	}
 	if profile.Website != "https://testuser.dev" {
 		t.Errorf("Website = %q, want %q", profile.Website, "https://testuser.dev")
@@ -653,8 +653,8 @@ CEO @ codeGROOVE
 			if prof.Username != tt.username {
 				t.Errorf("Username = %q, want %q", prof.Username, tt.username)
 			}
-			if prof.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", prof.Name, tt.wantName)
+			if prof.DisplayName != tt.wantName {
+				t.Errorf("Name = %q, want %q", prof.DisplayName, tt.wantName)
 			}
 			if prof.Bio != tt.wantBio {
 				t.Errorf("Bio = %q, want %q", prof.Bio, tt.wantBio)

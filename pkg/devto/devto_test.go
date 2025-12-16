@@ -112,8 +112,8 @@ func TestFetch(t *testing.T) {
 	if profile.Username != "ben" {
 		t.Errorf("Username = %q, want %q", profile.Username, "ben")
 	}
-	if profile.Name != "Ben Halpern" {
-		t.Errorf("Name = %q, want %q", profile.Name, "Ben Halpern")
+	if profile.DisplayName != "Ben Halpern" {
+		t.Errorf("Name = %q, want %q", profile.DisplayName, "Ben Halpern")
 	}
 }
 
@@ -203,8 +203,8 @@ func TestParseHTML(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			profile := parseHTML([]byte(tt.html), "https://dev.to/"+tt.username, tt.username)
 
-			if profile.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", profile.Name, tt.wantName)
+			if profile.DisplayName != tt.wantName {
+				t.Errorf("Name = %q, want %q", profile.DisplayName, tt.wantName)
 			}
 			if tt.wantBio != "" && profile.Bio != tt.wantBio {
 				t.Errorf("Bio = %q, want %q", profile.Bio, tt.wantBio)

@@ -188,15 +188,15 @@ func (c *Client) Fetch(ctx context.Context, url string) (*profile.Profile, error
 
 func buildProfile(u *apiUser, url string) *profile.Profile {
 	p := &profile.Profile{
-		Platform:  platform,
-		URL:       url,
-		Username:  u.Username,
-		Name:      u.Name,
-		AvatarURL: u.AvatarURL,
-		Fields:    make(map[string]string),
+		Platform:    platform,
+		URL:         url,
+		Username:    u.Username,
+		DisplayName: u.Name,
+		AvatarURL:   u.AvatarURL,
+		Fields:      make(map[string]string),
 	}
-	if p.Name == "" {
-		p.Name = p.Username
+	if p.DisplayName == "" {
+		p.DisplayName = p.Username
 	}
 	return p
 }

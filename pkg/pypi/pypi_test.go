@@ -117,8 +117,8 @@ func TestFetch(t *testing.T) {
 	if profile.Username != "guido" {
 		t.Errorf("Username = %q, want %q", profile.Username, "guido")
 	}
-	if profile.Name != "Guido van Rossum" {
-		t.Errorf("Name = %q, want %q", profile.Name, "Guido van Rossum")
+	if profile.DisplayName != "Guido van Rossum" {
+		t.Errorf("Name = %q, want %q", profile.DisplayName, "Guido van Rossum")
 	}
 	if profile.Fields["projects"] != "12" {
 		t.Errorf("projects = %q, want %q", profile.Fields["projects"], "12")
@@ -214,8 +214,8 @@ func TestParseHTML(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			profile := parseHTML([]byte(tt.html), "https://pypi.org/user/"+tt.username+"/", tt.username)
 
-			if profile.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", profile.Name, tt.wantName)
+			if profile.DisplayName != tt.wantName {
+				t.Errorf("Name = %q, want %q", profile.DisplayName, tt.wantName)
 			}
 			if tt.wantProjects != "" && profile.Fields["projects"] != tt.wantProjects {
 				t.Errorf("projects = %q, want %q", profile.Fields["projects"], tt.wantProjects)

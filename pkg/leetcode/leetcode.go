@@ -205,9 +205,9 @@ func parseProfile(data *apiUser, url string) *profile.Profile {
 		prof := data.Profile
 
 		if prof.RealName != "" {
-			p.Name = prof.RealName
+			p.DisplayName = prof.RealName
 		} else {
-			p.Name = data.Username
+			p.DisplayName = data.Username
 		}
 
 		if prof.AboutMe != "" {
@@ -241,7 +241,7 @@ func parseProfile(data *apiUser, url string) *profile.Profile {
 			}
 		}
 	} else {
-		p.Name = data.Username
+		p.DisplayName = data.Username
 	}
 
 	return p

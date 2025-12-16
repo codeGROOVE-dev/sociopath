@@ -142,8 +142,8 @@ func parseHTML(body []byte, userID, url string) (*profile.Profile, error) {
 
 			switch property {
 			case "og:title":
-				if p.Name == "" && content != "" {
-					p.Name = strings.TrimSpace(content)
+				if p.DisplayName == "" && content != "" {
+					p.DisplayName = strings.TrimSpace(content)
 				}
 			case "og:description":
 				if p.Bio == "" && content != "" {
@@ -193,12 +193,12 @@ func parseHTML(body []byte, userID, url string) (*profile.Profile, error) {
 	extract(doc)
 
 	// Fallback name from user ID
-	if p.Name == "" {
-		p.Name = userID
+	if p.DisplayName == "" {
+		p.DisplayName = userID
 	}
 
 	// Check for not found
-	if p.Name == "" && p.Bio == "" {
+	if p.DisplayName == "" && p.Bio == "" {
 		return nil, profile.ErrProfileNotFound
 	}
 

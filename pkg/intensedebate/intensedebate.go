@@ -135,17 +135,17 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 func parseProfile(html, url, username string) *profile.Profile {
 	p := &profile.Profile{
-		Platform: platform,
-		URL:      url,
-		Username: username,
-		Name:     username,
-		Fields:   make(map[string]string),
+		Platform:    platform,
+		URL:         url,
+		Username:    username,
+		DisplayName: username,
+		Fields:      make(map[string]string),
 	}
 
 	// Try to extract better name from title
 	title := htmlutil.Title(html)
 	if name, found := strings.CutPrefix(title, "IntenseDebate - "); found && name != "" {
-		p.Name = name
+		p.DisplayName = name
 	}
 
 	// Extract social links from profile

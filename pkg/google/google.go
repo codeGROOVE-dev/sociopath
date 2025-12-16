@@ -215,7 +215,7 @@ func (c *Client) Fetch(ctx context.Context, input string) (*profile.Profile, err
 			c.logger.WarnContext(ctx, "failed to fetch maps data", "gaia_id", gaiaID, "error", err)
 			prof.Error = fmt.Sprintf("maps fetch failed: %v", err)
 		} else {
-			prof.Name = mapsData.name
+			prof.DisplayName = mapsData.name
 			prof.Posts = append(prof.Posts, mapsData.reviews...)
 			prof.Posts = append(prof.Posts, mapsData.photos...)
 

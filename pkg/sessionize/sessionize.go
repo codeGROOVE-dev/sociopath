@@ -137,9 +137,9 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 				if strings.Contains(title, "Speaker Profile") {
 					// Format: "Name's Speaker Profile @ Sessionize"
 					if idx := strings.Index(title, "'s Speaker Profile"); idx > 0 {
-						p.Name = strings.TrimSpace(title[:idx])
+						p.DisplayName = strings.TrimSpace(title[:idx])
 					} else if idx := strings.Index(title, " Speaker Profile"); idx > 0 {
-						p.Name = strings.TrimSpace(title[:idx])
+						p.DisplayName = strings.TrimSpace(title[:idx])
 					}
 				}
 			}
@@ -190,8 +190,8 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 	extract(doc)
 
 	// Default name if not found
-	if p.Name == "" {
-		p.Name = username
+	if p.DisplayName == "" {
+		p.DisplayName = username
 	}
 
 	// Check for not found

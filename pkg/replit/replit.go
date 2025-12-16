@@ -185,13 +185,13 @@ func (c *Client) parseProfile(ctx context.Context, html, profileURL string) (*pr
 	}
 
 	p := &profile.Profile{
-		Platform:  platform,
-		URL:       profileURL,
-		Username:  user.Username,
-		Name:      user.FullName,
-		Bio:       user.Bio,
-		AvatarURL: user.Image,
-		Fields:    make(map[string]string),
+		Platform:    platform,
+		URL:         profileURL,
+		Username:    user.Username,
+		DisplayName: user.FullName,
+		Bio:         user.Bio,
+		AvatarURL:   user.Image,
+		Fields:      make(map[string]string),
 	}
 
 	if user.Location != "" {

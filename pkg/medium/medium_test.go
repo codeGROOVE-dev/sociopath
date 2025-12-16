@@ -111,8 +111,8 @@ func TestFetch(t *testing.T) {
 	if profile.Username != "ev" {
 		t.Errorf("Username = %q, want %q", profile.Username, "ev")
 	}
-	if profile.Name != "Ev Williams" {
-		t.Errorf("Name = %q, want %q", profile.Name, "Ev Williams")
+	if profile.DisplayName != "Ev Williams" {
+		t.Errorf("Name = %q, want %q", profile.DisplayName, "Ev Williams")
 	}
 }
 
@@ -222,8 +222,8 @@ func TestParseProfile(t *testing.T) {
 				t.Fatalf("parseProfile() error = %v", err)
 			}
 
-			if profile.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", profile.Name, tt.wantName)
+			if profile.DisplayName != tt.wantName {
+				t.Errorf("Name = %q, want %q", profile.DisplayName, tt.wantName)
 			}
 			if tt.wantBio != "" && profile.Bio != tt.wantBio {
 				t.Errorf("Bio = %q, want %q", profile.Bio, tt.wantBio)

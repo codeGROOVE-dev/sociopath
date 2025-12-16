@@ -194,10 +194,10 @@ func (*Client) parseHTML(content string, prof *profile.Profile) {
 		}
 		// The format is typically "Name - Age" or just "Name"
 		if idx := strings.LastIndex(title, " - "); idx > 0 {
-			prof.Name = strings.TrimSpace(title[:idx])
+			prof.DisplayName = strings.TrimSpace(title[:idx])
 			// Age info could be extracted here if needed
 		} else {
-			prof.Name = strings.TrimSpace(title)
+			prof.DisplayName = strings.TrimSpace(title)
 		}
 	}
 

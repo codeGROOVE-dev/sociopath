@@ -333,7 +333,7 @@ func parseTooltipHTML(htmlContent, username, userID string) (*profile.Profile, e
 			// Extract username from memberTooltip-name
 			if n.Data == "h4" && strings.Contains(classes, "memberTooltip-name") {
 				if name := extractText(n); name != "" {
-					p.Name = strings.TrimSpace(name)
+					p.DisplayName = strings.TrimSpace(name)
 				}
 			}
 
@@ -372,8 +372,8 @@ func parseTooltipHTML(htmlContent, username, userID string) (*profile.Profile, e
 
 	extract(doc)
 
-	if p.Name == "" {
-		p.Name = username
+	if p.DisplayName == "" {
+		p.DisplayName = username
 	}
 
 	return p, nil

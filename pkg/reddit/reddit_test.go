@@ -127,8 +127,8 @@ func TestFetch(t *testing.T) {
 	if prof.Username != "testuser" {
 		t.Errorf("Username = %q, want %q", prof.Username, "testuser")
 	}
-	if prof.Name != "testuser" {
-		t.Errorf("Name = %q, want %q", prof.Name, "testuser")
+	if prof.DisplayName != "testuser" {
+		t.Errorf("Name = %q, want %q", prof.DisplayName, "testuser")
 	}
 }
 
@@ -214,8 +214,8 @@ func TestParseProfile(t *testing.T) {
 			if prof.Username != tt.wantUsername {
 				t.Errorf("Username = %q, want %q", prof.Username, tt.wantUsername)
 			}
-			if prof.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", prof.Name, tt.wantName)
+			if prof.DisplayName != tt.wantName {
+				t.Errorf("Name = %q, want %q", prof.DisplayName, tt.wantName)
 			}
 			if tt.wantPostKarma != "" && prof.Fields["post_karma"] != tt.wantPostKarma {
 				t.Errorf("post_karma = %q, want %q", prof.Fields["post_karma"], tt.wantPostKarma)

@@ -119,11 +119,11 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	}
 
 	// Extract name from title or profile header
-	prof.Name = htmlutil.Title(html)
-	if prof.Name != "" {
-		// Clean up title (remove " - JS / Habr" suffix)
-		if idx := strings.Index(prof.Name, " - "); idx != -1 {
-			prof.Name = strings.TrimSpace(prof.Name[:idx])
+	prof.PageTitle = htmlutil.Title(html)
+	if prof.PageTitle != "" {
+		// Clean up title (remove " - JS / Habr" suffix) to get display name
+		if idx := strings.Index(prof.PageTitle, " - "); idx != -1 {
+			prof.DisplayName = strings.TrimSpace(prof.PageTitle[:idx])
 		}
 	}
 
@@ -210,7 +210,7 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 		}
 	}
 
-	if prof.Name == "" {
+	if prof.DisplayName == "" {
 		return nil, errors.New("failed to extract profile name")
 	}
 

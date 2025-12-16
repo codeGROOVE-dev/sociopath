@@ -72,8 +72,8 @@ func TestParseNextData(t *testing.T) {
 
 	p := parseHTML([]byte(html), "https://linktr.ee/testuser", "testuser")
 
-	if p.Name != "Test User" {
-		t.Errorf("Name = %q, want %q", p.Name, "Test User")
+	if p.DisplayName != "Test User" {
+		t.Errorf("Name = %q, want %q", p.DisplayName, "Test User")
 	}
 
 	if p.Bio != "Developer at Company" {

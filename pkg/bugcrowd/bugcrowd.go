@@ -214,8 +214,8 @@ func parseProfile(ctx context.Context, data *profileResponse, profileURL string,
 	}
 
 	// Default name to username if not provided
-	if prof.Name == "" {
-		prof.Name = prof.Username
+	if prof.DisplayName == "" {
+		prof.DisplayName = prof.Username
 	}
 
 	return prof

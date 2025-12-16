@@ -127,11 +127,11 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 func parseProfile(data *userData, url string) *profile.Profile {
 	p := &profile.Profile{
-		Platform: platform,
-		URL:      url,
-		Username: data.Login,
-		Name:     data.Name,
-		Fields:   make(map[string]string),
+		Platform:    platform,
+		URL:         url,
+		Username:    data.Login,
+		DisplayName: data.Name,
+		Fields:      make(map[string]string),
 	}
 
 	if data.Avatar != "" {
@@ -148,8 +148,8 @@ func parseProfile(data *userData, url string) *profile.Profile {
 		}
 	}
 
-	if p.Name == "" {
-		p.Name = p.Username
+	if p.DisplayName == "" {
+		p.DisplayName = p.Username
 	}
 
 	return p

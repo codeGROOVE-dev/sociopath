@@ -110,16 +110,17 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	}
 
 	// Extract name from title
-	prof.Name = htmlutil.Title(html)
-	if prof.Name != "" {
-		// Clean up "overview for username - Reddit"
-		prof.Name = strings.TrimPrefix(prof.Name, "overview for ")
-		if idx := strings.Index(prof.Name, " - Reddit"); idx != -1 {
-			prof.Name = strings.TrimSpace(prof.Name[:idx])
+	prof.PageTitle = htmlutil.Title(html)
+	if prof.PageTitle != "" {
+		// Clean up "overview for username - Reddit" to get display name
+		displayName := strings.TrimPrefix(prof.PageTitle, "overview for ")
+		if idx := strings.Index(displayName, " - Reddit"); idx != -1 {
+			displayName = strings.TrimSpace(displayName[:idx])
 		}
+		prof.DisplayName = displayName
 	}
-	if prof.Name == "" {
-		prof.Name = username
+	if prof.DisplayName == "" {
+		prof.DisplayName = username
 	}
 
 	// Extract karma

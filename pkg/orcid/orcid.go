@@ -166,11 +166,11 @@ func parseProfile(data *apiResponse, orcidID, url string) *profile.Profile {
 	// Name - prefer credit name, then display name, then constructed name
 	switch {
 	case data.Names.CreditName.Value != "":
-		p.Name = data.Names.CreditName.Value
+		p.DisplayName = data.Names.CreditName.Value
 	case data.DisplayName != "":
-		p.Name = data.DisplayName
+		p.DisplayName = data.DisplayName
 	default:
-		p.Name = strings.TrimSpace(data.Names.GivenNames.Value + " " + data.Names.FamilyName.Value)
+		p.DisplayName = strings.TrimSpace(data.Names.GivenNames.Value + " " + data.Names.FamilyName.Value)
 	}
 
 	// Bio

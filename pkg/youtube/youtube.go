@@ -113,11 +113,11 @@ func parseProfile(html, url string) (*profile.Profile, error) {
 	}
 
 	// Extract name from title or meta tags
-	prof.Name = htmlutil.Title(html)
-	if prof.Name != "" {
-		// Clean up "Channel Name - YouTube"
-		if idx := strings.Index(prof.Name, " - YouTube"); idx != -1 {
-			prof.Name = strings.TrimSpace(prof.Name[:idx])
+	prof.PageTitle = htmlutil.Title(html)
+	if prof.PageTitle != "" {
+		// Clean up "Channel Name - YouTube" to get display name
+		if idx := strings.Index(prof.PageTitle, " - YouTube"); idx != -1 {
+			prof.DisplayName = strings.TrimSpace(prof.PageTitle[:idx])
 		}
 	}
 
@@ -162,8 +162,8 @@ func parseProfile(html, url string) (*profile.Profile, error) {
 	}
 	prof.SocialLinks = filtered
 
-	if prof.Name == "" {
-		prof.Name = prof.Username
+	if prof.DisplayName == "" {
+		prof.DisplayName = prof.Username
 	}
 
 	return prof, nil

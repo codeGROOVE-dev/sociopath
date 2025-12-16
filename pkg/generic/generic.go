@@ -139,7 +139,7 @@ func parseHTML(data []byte, urlStr string) *profile.Profile {
 		Fields:        make(map[string]string),
 	}
 
-	p.Name = htmlutil.Title(content)
+	p.PageTitle = htmlutil.Title(content)
 	p.Bio = htmlutil.Description(content)
 	p.Content = content
 

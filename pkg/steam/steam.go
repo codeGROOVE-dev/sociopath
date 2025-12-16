@@ -144,13 +144,13 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 			// Extract persona name (display name)
 			if n.Data == "span" && hasClass(n, "actual_persona_name") {
 				if text := getTextContent(n); text != "" {
-					p.Name = text
+					p.DisplayName = text
 				}
 			}
 
 			// Extract real name from <bdi> inside header_real_name
 			if n.Data == "bdi" && n.Parent != nil && hasClass(n.Parent, "header_real_name") {
-				if text := strings.TrimSpace(getTextContent(n)); text != "" && text != p.Name {
+				if text := strings.TrimSpace(getTextContent(n)); text != "" && text != p.DisplayName {
 					p.Fields["real_name"] = text
 				}
 			}
@@ -213,8 +213,8 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 	extract(doc)
 
 	// Default name if not found
-	if p.Name == "" {
-		p.Name = username
+	if p.DisplayName == "" {
+		p.DisplayName = username
 	}
 
 	return p, nil

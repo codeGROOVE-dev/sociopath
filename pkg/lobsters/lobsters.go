@@ -151,11 +151,11 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 func parseProfile(data *apiUser, url string) *profile.Profile {
 	p := &profile.Profile{
-		Platform: platform,
-		URL:      url,
-		Username: data.Username,
-		Name:     data.Username,
-		Fields:   make(map[string]string),
+		Platform:    platform,
+		URL:         url,
+		Username:    data.Username,
+		DisplayName: data.Username,
+		Fields:      make(map[string]string),
 	}
 
 	// Parse creation date

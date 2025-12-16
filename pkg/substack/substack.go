@@ -129,11 +129,11 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 
 	// Extract author name from meta author tag (most reliable)
 	if matches := metaAuthorPattern.FindStringSubmatch(html); len(matches) > 1 {
-		prof.Name = strings.TrimSpace(matches[1])
+		prof.DisplayName = strings.TrimSpace(matches[1])
 	}
 
 	// Fallback: extract from title format "Publication Name | Author Name | Substack"
-	if prof.Name == "" {
+	if prof.DisplayName == "" {
 		title := htmlutil.Title(html)
 		if title != "" {
 			parts := strings.Split(title, " | ")
@@ -141,18 +141,18 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 				// Second part is usually the author name
 				author := strings.TrimSpace(parts[1])
 				if author != "Substack" && author != "" {
-					prof.Name = author
+					prof.DisplayName = author
 				}
 			}
 			// Clean up "About - Newsletter Name" format
-			if prof.Name == "" {
+			if prof.DisplayName == "" {
 				if idx := strings.Index(title, "About - "); idx != -1 {
-					prof.Name = strings.TrimSpace(title[idx+8:])
+					prof.DisplayName = strings.TrimSpace(title[idx+8:])
 				}
 			}
 			// Use title directly if no special format detected
-			if prof.Name == "" && title != "Substack" {
-				prof.Name = strings.TrimSpace(title)
+			if prof.DisplayName == "" && title != "Substack" {
+				prof.DisplayName = strings.TrimSpace(title)
 			}
 		}
 	}
@@ -177,8 +177,8 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	}
 	prof.SocialLinks = filtered
 
-	if prof.Name == "" {
-		prof.Name = username
+	if prof.DisplayName == "" {
+		prof.DisplayName = username
 	}
 
 	return prof, nil

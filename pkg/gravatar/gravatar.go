@@ -232,9 +232,9 @@ func (*Client) parseResponse(data []byte, prof *profile.Profile) error {
 
 	// Set display name
 	if entry.DisplayName != "" {
-		prof.Name = entry.DisplayName
+		prof.DisplayName = entry.DisplayName
 	} else if entry.Name != nil && entry.Name.Formatted != "" {
-		prof.Name = entry.Name.Formatted
+		prof.DisplayName = entry.Name.Formatted
 	}
 
 	// Set avatar

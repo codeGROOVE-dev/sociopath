@@ -863,7 +863,7 @@ func parseGraphQLResponse(ctx context.Context, data []byte, urlStr, _ string, lo
 		URL:           urlStr,
 		Authenticated: true,
 		Username:      user.Login,
-		Name:          strings.TrimSpace(user.Name),
+		DisplayName:   strings.TrimSpace(user.Name),
 		Bio:           strings.TrimSpace(user.Bio),
 		Location:      strings.TrimSpace(user.Location),
 		Fields:        make(map[string]string),
@@ -1292,7 +1292,7 @@ func parseJSON(data []byte, urlStr, _ string) (*profile.Profile, error) {
 		URL:           urlStr,
 		Authenticated: false,
 		Username:      ghUser.Login,
-		Name:          strings.TrimSpace(ghUser.Name),
+		DisplayName:   strings.TrimSpace(ghUser.Name),
 		Bio:           strings.TrimSpace(ghUser.Bio),
 		Location:      strings.TrimSpace(ghUser.Location),
 		Fields:        make(map[string]string),
@@ -1430,7 +1430,7 @@ func (c *Client) parseProfileFromHTML(ctx context.Context, html, urlStr, usernam
 	// Extract full name: <span class="p-name vcard-fullname..." itemprop="name">
 	namePattern := regexp.MustCompile(`<span[^>]+class="[^"]*p-name[^"]*"[^>]*itemprop="name"[^>]*>\s*([^<]+)`)
 	if matches := namePattern.FindStringSubmatch(html); len(matches) > 1 {
-		prof.Name = strings.TrimSpace(matches[1])
+		prof.DisplayName = strings.TrimSpace(matches[1])
 	}
 
 	// Extract bio: <div class="p-note user-profile-bio..." data-bio-text="...">
@@ -1469,7 +1469,7 @@ func (c *Client) parseProfileFromHTML(ctx context.Context, html, urlStr, usernam
 
 	c.logger.DebugContext(ctx, "parsed profile from HTML",
 		"username", username,
-		"name", prof.Name,
+		"name", prof.DisplayName,
 		"bio", prof.Bio,
 		"location", prof.Location,
 		"website", prof.Website,

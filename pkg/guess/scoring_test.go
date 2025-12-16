@@ -248,21 +248,21 @@ func TestScoreMatchIntegration(t *testing.T) {
 		{
 			name: "high confidence - username, name, employer, location match",
 			guessed: &profile.Profile{
-				Platform: "linkedin",
-				URL:      "https://linkedin.com/in/daveworth",
-				Username: "daveworth",
-				Name:     "David Worth",
-				Location: "Denver, CO",
-				Fields:   map[string]string{"employer": "Defense Unicorns"},
+				Platform:    "linkedin",
+				URL:         "https://linkedin.com/in/daveworth",
+				Username:    "daveworth",
+				DisplayName: "David Worth",
+				Location:    "Denver, CO",
+				Fields:      map[string]string{"employer": "Defense Unicorns"},
 			},
 			known: []*profile.Profile{
 				{
-					Platform: "github",
-					URL:      "https://github.com/daveworth",
-					Username: "daveworth",
-					Name:     "David E Worth",
-					Location: "Denver, Colorado",
-					Fields:   map[string]string{"company": "defenseunicorns"},
+					Platform:    "github",
+					URL:         "https://github.com/daveworth",
+					Username:    "daveworth",
+					DisplayName: "David E Worth",
+					Location:    "Denver, Colorado",
+					Fields:      map[string]string{"company": "defenseunicorns"},
 				},
 			},
 			candidate: candidateURL{
@@ -276,18 +276,18 @@ func TestScoreMatchIntegration(t *testing.T) {
 		{
 			name: "name-based LinkedIn guess with employer boost",
 			guessed: &profile.Profile{
-				Platform: "linkedin",
-				URL:      "https://linkedin.com/in/david-e-worth",
-				Username: "david-e-worth",
-				Name:     "David Worth",
-				Fields:   map[string]string{"employer": "Defense Unicorns"},
+				Platform:    "linkedin",
+				URL:         "https://linkedin.com/in/david-e-worth",
+				Username:    "david-e-worth",
+				DisplayName: "David Worth",
+				Fields:      map[string]string{"employer": "Defense Unicorns"},
 			},
 			known: []*profile.Profile{
 				{
-					Platform: "github",
-					Username: "daveworth",
-					Name:     "David E Worth",
-					Fields:   map[string]string{"company": "defenseunicorns"},
+					Platform:    "github",
+					Username:    "daveworth",
+					DisplayName: "David E Worth",
+					Fields:      map[string]string{"company": "defenseunicorns"},
 				},
 			},
 			candidate: candidateURL{
@@ -303,15 +303,15 @@ func TestScoreMatchIntegration(t *testing.T) {
 		{
 			name: "medium confidence - username and name match only",
 			guessed: &profile.Profile{
-				Platform: "twitter",
-				Username: "johndoe",
-				Name:     "John Doe",
+				Platform:    "twitter",
+				Username:    "johndoe",
+				DisplayName: "John Doe",
 			},
 			known: []*profile.Profile{
 				{
-					Platform: "github",
-					Username: "johndoe",
-					Name:     "John Doe",
+					Platform:    "github",
+					Username:    "johndoe",
+					DisplayName: "John Doe",
 				},
 			},
 			candidate: candidateURL{
@@ -325,16 +325,16 @@ func TestScoreMatchIntegration(t *testing.T) {
 		{
 			name: "cross-platform link detection",
 			guessed: &profile.Profile{
-				Platform: "mastodon",
-				URL:      "https://mastodon.social/@johndoe",
-				Username: "johndoe",
-				Name:     "John Doe",
+				Platform:    "mastodon",
+				URL:         "https://mastodon.social/@johndoe",
+				Username:    "johndoe",
+				DisplayName: "John Doe",
 			},
 			known: []*profile.Profile{
 				{
 					Platform:    "github",
 					Username:    "johndoe",
-					Name:        "John Doe",
+					DisplayName: "John Doe",
 					SocialLinks: []string{"https://mastodon.social/@johndoe"},
 				},
 			},
@@ -349,17 +349,17 @@ func TestScoreMatchIntegration(t *testing.T) {
 		{
 			name: "website match boost",
 			guessed: &profile.Profile{
-				Platform: "twitter",
-				Username: "johndoe",
-				Name:     "John Doe",
-				Website:  "https://example.com",
+				Platform:    "twitter",
+				Username:    "johndoe",
+				DisplayName: "John Doe",
+				Website:     "https://example.com",
 			},
 			known: []*profile.Profile{
 				{
-					Platform: "github",
-					Username: "johndoe",
-					Name:     "John Doe",
-					Website:  "https://example.com",
+					Platform:    "github",
+					Username:    "johndoe",
+					DisplayName: "John Doe",
+					Website:     "https://example.com",
 				},
 			},
 			candidate: candidateURL{
@@ -373,17 +373,17 @@ func TestScoreMatchIntegration(t *testing.T) {
 		{
 			name: "bio overlap detection",
 			guessed: &profile.Profile{
-				Platform: "twitter",
-				Username: "rustdev",
-				Name:     "Jane Smith",
-				Bio:      "Rust developer, kubernetes contributor, cloud-native enthusiast",
+				Platform:    "twitter",
+				Username:    "rustdev",
+				DisplayName: "Jane Smith",
+				Bio:         "Rust developer, kubernetes contributor, cloud-native enthusiast",
 			},
 			known: []*profile.Profile{
 				{
-					Platform: "github",
-					Username: "rustdev",
-					Name:     "Jane Smith",
-					Bio:      "Working on kubernetes and cloud-native tools in Rust",
+					Platform:    "github",
+					Username:    "rustdev",
+					DisplayName: "Jane Smith",
+					Bio:         "Working on kubernetes and cloud-native tools in Rust",
 				},
 			},
 			candidate: candidateURL{
@@ -397,15 +397,15 @@ func TestScoreMatchIntegration(t *testing.T) {
 		{
 			name: "low confidence - short username no other signals",
 			guessed: &profile.Profile{
-				Platform: "twitter",
-				Username: "john",
-				Name:     "J. Smith",
+				Platform:    "twitter",
+				Username:    "john",
+				DisplayName: "J. Smith",
 			},
 			known: []*profile.Profile{
 				{
-					Platform: "github",
-					Username: "john",
-					Name:     "John Doe",
+					Platform:    "github",
+					Username:    "john",
+					DisplayName: "John Doe",
 				},
 			},
 			candidate: candidateURL{

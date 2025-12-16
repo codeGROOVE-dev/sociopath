@@ -386,24 +386,24 @@ func TestExtractNames(t *testing.T) {
 		{
 			name: "extract names from profiles",
 			profiles: []*profile.Profile{
-				{Platform: "github", Name: "Dan Lorenc"},
-				{Platform: "twitter", Name: "Dawid Lorenc"},
+				{Platform: "github", DisplayName: "Dan Lorenc"},
+				{Platform: "twitter", DisplayName: "Dawid Lorenc"},
 			},
 			want: []string{"Dan Lorenc", "Dawid Lorenc"},
 		},
 		{
 			name: "deduplicate names",
 			profiles: []*profile.Profile{
-				{Platform: "github", Name: "Dan Lorenc"},
-				{Platform: "twitter", Name: "Dan Lorenc"},
+				{Platform: "github", DisplayName: "Dan Lorenc"},
+				{Platform: "twitter", DisplayName: "Dan Lorenc"},
 			},
 			want: []string{"Dan Lorenc"},
 		},
 		{
 			name: "skip empty names",
 			profiles: []*profile.Profile{
-				{Platform: "github", Name: ""},
-				{Platform: "twitter", Name: "Dan Lorenc"},
+				{Platform: "github", DisplayName: ""},
+				{Platform: "twitter", DisplayName: "Dan Lorenc"},
 			},
 			want: []string{"Dan Lorenc"},
 		},

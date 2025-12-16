@@ -85,15 +85,16 @@ type Profile struct {
 	Error         string `json:",omitempty"` // Error message if fetch failed (e.g., "login required")
 
 	// Core profile data
-	Username  string   `json:",omitempty"` // Handle/username (without @ prefix)
-	Name      string   `json:",omitempty"` // Display name
-	AvatarURL string   `json:",omitempty"` // Profile photo/avatar URL
-	Bio       string   `json:",omitempty"` // Profile bio/description
-	Location  string   `json:",omitempty"` // Geographic location
-	Website   string   `json:",omitempty"` // Personal website URL
-	CreatedAt string   `json:",omitempty"` // Account creation date (ISO timestamp)
-	UpdatedAt string   `json:",omitempty"` // Most recent activity or profile update (ISO timestamp)
-	UTCOffset *float64 `json:",omitempty"` // UTC offset in hours (e.g., -8 for PST, 5.5 for IST)
+	Username    string   `json:",omitempty"` // Handle/username (without @ prefix)
+	DisplayName string   `json:",omitempty"` // Person's chosen display name on the platform (not page title or error messages)
+	PageTitle   string   `json:",omitempty"` // HTML page title (may contain errors or site name)
+	AvatarURL   string   `json:",omitempty"` // Profile photo/avatar URL
+	Bio         string   `json:",omitempty"` // Profile bio/description
+	Location    string   `json:",omitempty"` // Geographic location
+	Website     string   `json:",omitempty"` // Personal website URL
+	CreatedAt   string   `json:",omitempty"` // Account creation date (ISO timestamp)
+	UpdatedAt   string   `json:",omitempty"` // Most recent activity or profile update (ISO timestamp)
+	UTCOffset   *float64 `json:",omitempty"` // UTC offset in hours (e.g., -8 for PST, 5.5 for IST)
 
 	// Account state (for renamed/deleted accounts)
 	AccountState AccountState `json:",omitempty"` // Current account state (renamed, deleted)

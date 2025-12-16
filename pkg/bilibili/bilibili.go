@@ -110,13 +110,13 @@ func parseProfile(html, url, userID string) (*profile.Profile, error) {
 	}
 
 	// Extract name from title or meta tags
-	prof.Name = htmlutil.Title(html)
-	if prof.Name != "" {
-		// Clean up "Name的个人空间_哔哩哔哩_bilibili"
-		prof.Name = strings.TrimSuffix(prof.Name, "的个人空间_哔哩哔哩_bilibili") //nolint:gosmopolitan // Chinese text is intentional for Bilibili
-		prof.Name = strings.TrimSuffix(prof.Name, "的个人空间")               //nolint:gosmopolitan // Chinese text is intentional for Bilibili
-		prof.Name = strings.TrimSuffix(prof.Name, "_哔哩哔哩_bilibili")      //nolint:gosmopolitan // Chinese text is intentional for Bilibili
-		prof.Name = strings.TrimSpace(prof.Name)
+	prof.PageTitle = htmlutil.Title(html)
+	if prof.PageTitle != "" {
+		// Clean up "Name的个人空间_哔哩哔哩_bilibili" to get display name
+		displayName := strings.TrimSuffix(prof.PageTitle, "的个人空间_哔哩哔哩_bilibili") //nolint:gosmopolitan // Chinese text is intentional for Bilibili
+		displayName = strings.TrimSuffix(displayName, "的个人空间")                   //nolint:gosmopolitan // Chinese text is intentional for Bilibili
+		displayName = strings.TrimSuffix(displayName, "_哔哩哔哩_bilibili")          //nolint:gosmopolitan // Chinese text is intentional for Bilibili
+		prof.DisplayName = strings.TrimSpace(displayName)
 	}
 
 	// Extract bio/description
@@ -153,8 +153,8 @@ func parseProfile(html, url, userID string) (*profile.Profile, error) {
 	}
 	prof.SocialLinks = filtered
 
-	if prof.Name == "" {
-		prof.Name = userID
+	if prof.DisplayName == "" {
+		prof.DisplayName = userID
 	}
 
 	return prof, nil

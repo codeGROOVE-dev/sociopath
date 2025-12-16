@@ -129,8 +129,8 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 			// Extract name from title tag
 			if n.Data == "title" && n.FirstChild != nil {
 				title := strings.TrimSpace(n.FirstChild.Data)
-				if title != "" && p.Name == "" {
-					p.Name = title
+				if title != "" && p.DisplayName == "" {
+					p.DisplayName = title
 				}
 			}
 
@@ -178,8 +178,8 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 	extract(doc)
 
 	// Default name if not found
-	if p.Name == "" {
-		p.Name = username
+	if p.DisplayName == "" {
+		p.DisplayName = username
 	}
 
 	// Check for not found

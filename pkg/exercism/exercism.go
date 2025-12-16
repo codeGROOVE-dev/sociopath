@@ -136,7 +136,7 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 	if m := titlePattern.FindStringSubmatch(content); len(m) > 1 {
 		name := strings.TrimSpace(m[1])
 		if name != username {
-			prof.Name = html.UnescapeString(name)
+			prof.DisplayName = html.UnescapeString(name)
 		}
 	}
 
@@ -147,7 +147,7 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 		if strings.Contains(title, "'s profile") {
 			name := strings.Split(title, "'s profile")[0]
 			if name != username && name != "" {
-				prof.Name = html.UnescapeString(name)
+				prof.DisplayName = html.UnescapeString(name)
 			}
 		}
 	}

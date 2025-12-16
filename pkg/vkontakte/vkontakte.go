@@ -179,11 +179,11 @@ func parseProfile(html, originalURL, originalUsername string) (*profile.Profile,
 	}
 
 	// Extract name from title or meta tags
-	prof.Name = htmlutil.Title(html)
-	if prof.Name != "" {
-		// Clean up VK title format "Name | VK"
-		if idx := strings.Index(prof.Name, " | VK"); idx != -1 {
-			prof.Name = strings.TrimSpace(prof.Name[:idx])
+	prof.PageTitle = htmlutil.Title(html)
+	if prof.PageTitle != "" {
+		// Clean up VK title format "Name | VK" to get display name
+		if idx := strings.Index(prof.PageTitle, " | VK"); idx != -1 {
+			prof.DisplayName = strings.TrimSpace(prof.PageTitle[:idx])
 		}
 	}
 

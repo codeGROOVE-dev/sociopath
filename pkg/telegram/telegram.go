@@ -132,12 +132,12 @@ func parseProfile(ctx context.Context, html, username, profileURL string, logger
 
 	// Extract display name from og:title (Telegram puts clean name here)
 	if match := ogTitlePattern.FindStringSubmatch(html); len(match) > 1 {
-		p.Name = strings.TrimSpace(match[1])
+		p.DisplayName = strings.TrimSpace(match[1])
 	}
-	if p.Name == "" {
+	if p.DisplayName == "" {
 		// Fallback: extract from tgme_page_title class
 		if match := pageTitleClass.FindStringSubmatch(html); len(match) > 1 {
-			p.Name = strings.TrimSpace(match[1])
+			p.DisplayName = strings.TrimSpace(match[1])
 		}
 	}
 
@@ -158,7 +158,7 @@ func parseProfile(ctx context.Context, html, username, profileURL string, logger
 	}
 
 	// Check if this is a valid user profile (not a bot, channel, or group)
-	if p.Name == "" && p.Bio == "" {
+	if p.DisplayName == "" && p.Bio == "" {
 		logger.InfoContext(ctx, "telegram profile appears empty or invalid", "username", username)
 		return nil, profile.ErrProfileNotFound
 	}

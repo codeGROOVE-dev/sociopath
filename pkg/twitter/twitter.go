@@ -435,7 +435,7 @@ func (*Client) buildProfileFromUser(user map[string]any, screenName string) *pro
 	}
 
 	if name, ok := user["name"].(string); ok {
-		p.Name = name
+		p.DisplayName = name
 	}
 	if desc, ok := user["description"].(string); ok {
 		p.Bio = desc
@@ -606,7 +606,7 @@ func parseGraphQLResponse(body []byte, profileURL, _ string) (*profile.Profile, 
 		URL:           profileURL,
 		Authenticated: true,
 		Username:      result.Core.ScreenName,
-		Name:          result.Core.Name,
+		DisplayName:   result.Core.Name,
 		AvatarURL:     result.Legacy.ProfileImageURLHTTPS,
 		Bio:           result.Legacy.Description,
 		Location:      result.Location.Location,

@@ -169,11 +169,11 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 func parseProfile(data *apiUser) *profile.Profile {
 	p := &profile.Profile{
-		Platform: platform,
-		URL:      data.ProfileURL,
-		Username: data.Username,
-		Name:     data.Name,
-		Fields:   make(map[string]string),
+		Platform:    platform,
+		URL:         data.ProfileURL,
+		Username:    data.Username,
+		DisplayName: data.Name,
+		Fields:      make(map[string]string),
 	}
 
 	if data.About != "" {

@@ -190,8 +190,8 @@ func TestFetch_ViaAPI(t *testing.T) {
 	if profile.Username != "Gargron" {
 		t.Errorf("Username = %q, want %q", profile.Username, "Gargron")
 	}
-	if profile.Name != "Eugen Rochko" {
-		t.Errorf("Name = %q, want %q", profile.Name, "Eugen Rochko")
+	if profile.DisplayName != "Eugen Rochko" {
+		t.Errorf("Name = %q, want %q", profile.DisplayName, "Eugen Rochko")
 	}
 	if profile.Location != "Germany" {
 		t.Errorf("Location = %q, want %q", profile.Location, "Germany")
@@ -341,8 +341,8 @@ func TestParseAPIResponse(t *testing.T) {
 			if prof.Username != tt.wantUsername {
 				t.Errorf("Username = %q, want %q", prof.Username, tt.wantUsername)
 			}
-			if prof.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", prof.Name, tt.wantName)
+			if prof.DisplayName != tt.wantName {
+				t.Errorf("Name = %q, want %q", prof.DisplayName, tt.wantName)
 			}
 			if tt.wantLocation != "" && prof.Location != tt.wantLocation {
 				t.Errorf("Location = %q, want %q", prof.Location, tt.wantLocation)

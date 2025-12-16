@@ -144,7 +144,7 @@ func parseHTML(body []byte, username, urlStr string) (*profile.Profile, error) {
 
 	// Extract user info
 	if data.User.Fullname != "" {
-		prof.Name = data.User.Fullname
+		prof.DisplayName = data.User.Fullname
 	}
 	if data.User.AvatarURL != "" {
 		prof.AvatarURL = data.User.AvatarURL

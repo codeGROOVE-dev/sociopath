@@ -6,7 +6,7 @@
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-//	fmt.Println(profile.Name, profile.Bio)
+//	fmt.Println(profile.DisplayName, profile.Bio)
 //
 // For platforms requiring authentication (LinkedIn, Twitter):
 //

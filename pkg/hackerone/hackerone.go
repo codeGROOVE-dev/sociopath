@@ -202,12 +202,12 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 func parseProfile(data *userData, profileURL string) *profile.Profile {
 	prof := &profile.Profile{
-		Platform: platform,
-		URL:      profileURL,
-		Username: data.Username,
-		Name:     data.Name,
-		Bio:      data.Bio,
-		Fields:   make(map[string]string),
+		Platform:    platform,
+		URL:         profileURL,
+		Username:    data.Username,
+		DisplayName: data.Name,
+		Bio:         data.Bio,
+		Fields:      make(map[string]string),
 	}
 
 	if data.ProfilePicture != "" {
@@ -274,8 +274,8 @@ func parseProfile(data *userData, profileURL string) *profile.Profile {
 		prof.SocialLinks = append(prof.SocialLinks, socialURL)
 	}
 
-	if prof.Name == "" {
-		prof.Name = prof.Username
+	if prof.DisplayName == "" {
+		prof.DisplayName = prof.Username
 	}
 
 	return prof

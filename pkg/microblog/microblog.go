@@ -160,7 +160,7 @@ func parseProfile(ctx context.Context, feed *jsonFeed, profileURL string, logger
 	}
 
 	if feed.Author != nil {
-		p.Name = feed.Author.Name
+		p.DisplayName = feed.Author.Name
 		p.AvatarURL = feed.Author.Avatar
 		if feed.Author.URL != "" {
 			p.Website = feed.Author.URL

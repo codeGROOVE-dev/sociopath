@@ -126,12 +126,12 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 func parseProfile(data *apiResponse, url string) *profile.Profile {
 	p := &profile.Profile{
-		Platform: platform,
-		URL:      url,
-		Username: data.Username,
-		Name:     data.FullName,
-		Location: data.Location,
-		Fields:   make(map[string]string),
+		Platform:    platform,
+		URL:         url,
+		Username:    data.Username,
+		DisplayName: data.FullName,
+		Location:    data.Location,
+		Fields:      make(map[string]string),
 	}
 
 	if data.GravatarURL != "" {
@@ -147,8 +147,8 @@ func parseProfile(data *apiResponse, url string) *profile.Profile {
 		p.SocialLinks = append(p.SocialLinks, data.ProfileURL)
 	}
 
-	if p.Name == "" {
-		p.Name = p.Username
+	if p.DisplayName == "" {
+		p.DisplayName = p.Username
 	}
 
 	return p

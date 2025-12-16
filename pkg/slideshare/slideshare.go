@@ -186,17 +186,17 @@ func parseHTML(ctx context.Context, body []byte, profileURL string, logger *slog
 
 	user := data.Props.PageProps.User
 	p := &profile.Profile{
-		Platform: platform,
-		URL:      profileURL,
-		Username: user.Login,
-		Name:     user.Name,
-		Bio:      user.Description,
-		Fields:   make(map[string]string),
+		Platform:    platform,
+		URL:         profileURL,
+		Username:    user.Login,
+		DisplayName: user.Name,
+		Bio:         user.Description,
+		Fields:      make(map[string]string),
 	}
 
 	// Use login as name if name is just the username
-	if p.Name == p.Username || p.Name == "" {
-		p.Name = user.Login
+	if p.DisplayName == p.Username || p.DisplayName == "" {
+		p.DisplayName = user.Login
 	}
 
 	if user.Photo != "" && !strings.Contains(user.Photo, "profile-picture.png") {

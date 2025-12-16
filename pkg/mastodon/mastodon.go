@@ -210,7 +210,7 @@ func (*Client) parseAPIResponse(data []byte) (*profile.Profile, string, error) {
 		Platform:      platform,
 		Authenticated: false,
 		Username:      acc.Username,
-		Name:          acc.DisplayName,
+		DisplayName:   acc.DisplayName,
 		Bio:           stripHTML(acc.Note),
 		Fields:        make(map[string]string),
 	}
@@ -277,7 +277,7 @@ func (*Client) parseHTML(data []byte, urlStr, username string) *profile.Profile 
 
 	// Extract bio from meta description
 	p.Bio = htmlutil.Description(content)
-	p.Name = htmlutil.Title(content)
+	p.PageTitle = htmlutil.Title(content)
 	p.SocialLinks = htmlutil.SocialLinks(content)
 
 	// Filter out same-server Mastodon links

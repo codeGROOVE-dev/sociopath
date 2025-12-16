@@ -1048,11 +1048,11 @@ func extractNames(profiles []*profile.Profile) []string {
 	var names []string
 
 	for _, p := range profiles {
-		if p.Name == "" || !isSocialPlatform(p.Platform) {
+		if p.DisplayName == "" || !isSocialPlatform(p.Platform) {
 			continue
 		}
 
-		name := strings.TrimSpace(p.Name)
+		name := strings.TrimSpace(p.DisplayName)
 		// Skip if too short or looks like a username (no spaces)
 		if len(name) < 3 || !strings.Contains(name, " ") {
 			continue
@@ -1316,7 +1316,7 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 		}
 
 		// Check name similarity (high signal) - track best score
-		if nameScore := scoreName(guessed.Name, kp.Name); nameScore > bestNameScore {
+		if nameScore := scoreName(guessed.DisplayName, kp.DisplayName); nameScore > bestNameScore {
 			if bestNameScore == 0 {
 				matches = append(matches, "name:"+kp.Platform)
 			}

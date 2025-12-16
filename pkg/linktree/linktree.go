@@ -128,11 +128,11 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 	}
 
 	// Fallback: extract from meta tags
-	if p.Name == "" {
-		p.Name = extractMetaContent(content, "og:title")
+	if p.DisplayName == "" {
+		p.DisplayName = extractMetaContent(content, "og:title")
 		// Clean up title (remove " | Linktree" suffix)
-		if idx := strings.Index(p.Name, " | "); idx > 0 {
-			p.Name = strings.TrimSpace(p.Name[:idx])
+		if idx := strings.Index(p.DisplayName, " | "); idx > 0 {
+			p.DisplayName = strings.TrimSpace(p.DisplayName[:idx])
 		}
 	}
 
@@ -181,9 +181,9 @@ func parseAccountInfo(p *profile.Profile, pageProps map[string]any) {
 	}
 	// Try profileTitle first, then pageTitle
 	if profileTitle, ok := account["profileTitle"].(string); ok && profileTitle != "" {
-		p.Name = profileTitle
+		p.DisplayName = profileTitle
 	} else if pageTitle, ok := account["pageTitle"].(string); ok && pageTitle != "" {
-		p.Name = strings.TrimPrefix(pageTitle, "@")
+		p.DisplayName = strings.TrimPrefix(pageTitle, "@")
 	}
 	if desc, ok := account["description"].(string); ok {
 		p.Bio = desc

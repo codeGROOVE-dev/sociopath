@@ -138,15 +138,15 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 	// Pattern: <meta property="og:title" content="Woohyun Joh">
 	ogTitlePattern := regexp.MustCompile(`<meta\s+property="og:title"\s+content="([^"]+)"`)
 	if m := ogTitlePattern.FindStringSubmatch(content); len(m) > 1 {
-		prof.Name = strings.TrimSpace(html.UnescapeString(m[1]))
+		prof.DisplayName = strings.TrimSpace(html.UnescapeString(m[1]))
 	}
 
 	// Fallback: Extract from avatar title attribute
 	// Pattern: title="Woohyun Joh"
-	if prof.Name == "" {
+	if prof.DisplayName == "" {
 		avatarTitlePattern := regexp.MustCompile(`<img[^>]+class="[^"]*avatar[^"]*"[^>]+title="([^"]+)"`)
 		if m := avatarTitlePattern.FindStringSubmatch(content); len(m) > 1 {
-			prof.Name = strings.TrimSpace(html.UnescapeString(m[1]))
+			prof.DisplayName = strings.TrimSpace(html.UnescapeString(m[1]))
 		}
 	}
 
@@ -163,10 +163,10 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 
 	// Fallback: Extract from profile-avatar-name header
 	// Pattern: <span class="header text center">Woohyun Joh</span>
-	if prof.Name == "" {
+	if prof.DisplayName == "" {
 		headerPattern := regexp.MustCompile(`<span\s+class="header[^"]*"[^>]*>([^<]+)</span>`)
 		if m := headerPattern.FindStringSubmatch(content); len(m) > 1 {
-			prof.Name = strings.TrimSpace(html.UnescapeString(m[1]))
+			prof.DisplayName = strings.TrimSpace(html.UnescapeString(m[1]))
 		}
 	}
 

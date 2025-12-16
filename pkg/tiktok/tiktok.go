@@ -207,7 +207,7 @@ func (c *Client) parseProfile(ctx context.Context, body []byte, profileURL strin
 		p.Username = username
 	}
 	if name, ok := user["nickname"].(string); ok {
-		p.Name = name
+		p.DisplayName = name
 	}
 	if avatarURL, ok := user["avatarLarger"].(string); ok {
 		p.AvatarURL = avatarURL
@@ -224,7 +224,7 @@ func (c *Client) parseProfile(ctx context.Context, body []byte, profileURL strin
 
 	c.logger.InfoContext(ctx, "tiktok profile parsed",
 		"username", p.Username,
-		"name", p.Name,
+		"name", p.DisplayName,
 		"bio_length", len(p.Bio))
 
 	return p, nil

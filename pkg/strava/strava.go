@@ -130,7 +130,7 @@ func parseHTML(body []byte, athleteID, url string) (*profile.Profile, error) {
 				// Format: "Signup for free to see more about Name"
 				if strings.Contains(title, "see more about ") {
 					if idx := strings.Index(title, "see more about "); idx >= 0 {
-						p.Name = strings.TrimSpace(title[idx+len("see more about "):])
+						p.DisplayName = strings.TrimSpace(title[idx+len("see more about "):])
 					}
 				}
 			}
@@ -157,8 +157,8 @@ func parseHTML(body []byte, athleteID, url string) (*profile.Profile, error) {
 							joinPrefix := "Join "
 							if strings.HasPrefix(content, joinPrefix) { //nolint:revive // nested conditionals for HTML parsing
 								extractedName := content[len(joinPrefix):idx]
-								if p.Name == "" {
-									p.Name = extractedName
+								if p.DisplayName == "" {
+									p.DisplayName = extractedName
 								}
 							}
 						}
@@ -183,8 +183,8 @@ func parseHTML(body []byte, athleteID, url string) (*profile.Profile, error) {
 	extract(doc)
 
 	// Default name if not found
-	if p.Name == "" {
-		p.Name = athleteID
+	if p.DisplayName == "" {
+		p.DisplayName = athleteID
 	}
 
 	// Check for not found - Strava returns 200 but shows a different page for invalid IDs

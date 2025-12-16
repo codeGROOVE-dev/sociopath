@@ -177,8 +177,8 @@ func TestParseGraphQLResponse(t *testing.T) {
 			if profile.Username != tt.wantUsername {
 				t.Errorf("Username = %q, want %q", profile.Username, tt.wantUsername)
 			}
-			if profile.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", profile.Name, tt.wantName)
+			if profile.DisplayName != tt.wantName {
+				t.Errorf("Name = %q, want %q", profile.DisplayName, tt.wantName)
 			}
 			if tt.wantBio != "" && profile.Bio != tt.wantBio {
 				t.Errorf("Bio = %q, want %q", profile.Bio, tt.wantBio)

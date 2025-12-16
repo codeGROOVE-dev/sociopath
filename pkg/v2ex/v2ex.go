@@ -131,7 +131,7 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 				if strings.Contains(title, "V2EX ›") {
 					parts := strings.Split(title, "›")
 					if len(parts) > 1 {
-						p.Name = strings.TrimSpace(parts[len(parts)-1])
+						p.DisplayName = strings.TrimSpace(parts[len(parts)-1])
 					}
 				}
 			}
@@ -202,8 +202,8 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 	extract(doc)
 
 	// Default name if not found
-	if p.Name == "" {
-		p.Name = username
+	if p.DisplayName == "" {
+		p.DisplayName = username
 	}
 
 	// Check for not found

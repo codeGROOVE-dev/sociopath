@@ -139,7 +139,7 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 		if strings.Contains(title, " on sourcehut") {
 			name := strings.TrimSuffix(title, " on sourcehut")
 			if name != username {
-				prof.Name = html.UnescapeString(name)
+				prof.DisplayName = html.UnescapeString(name)
 			}
 		}
 	}

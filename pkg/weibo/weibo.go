@@ -196,7 +196,7 @@ func (*Client) toProfile(wp *weiboProfile, urlStr string) *profile.Profile {
 		URL:           urlStr,
 		Authenticated: true,
 		Username:      wp.ScreenName,
-		Name:          wp.ScreenName,
+		DisplayName:   wp.ScreenName,
 		Bio:           wp.Description,
 		Location:      wp.Location,
 		Fields:        make(map[string]string),

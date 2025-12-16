@@ -154,18 +154,18 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	}
 
 	// Extract name from title or meta tags
-	prof.Name = htmlutil.Title(html)
-	if prof.Name != "" {
-		// Clean up Medium title format "Name - Medium"
-		if idx := strings.Index(prof.Name, " - Medium"); idx != -1 {
-			prof.Name = strings.TrimSpace(prof.Name[:idx])
-		} else if idx := strings.Index(prof.Name, " – Medium"); idx != -1 {
-			prof.Name = strings.TrimSpace(prof.Name[:idx])
+	prof.PageTitle = htmlutil.Title(html)
+	if prof.PageTitle != "" {
+		// Clean up Medium title format "Name - Medium" to get display name
+		if idx := strings.Index(prof.PageTitle, " - Medium"); idx != -1 {
+			prof.DisplayName = strings.TrimSpace(prof.PageTitle[:idx])
+		} else if idx := strings.Index(prof.PageTitle, " – Medium"); idx != -1 {
+			prof.DisplayName = strings.TrimSpace(prof.PageTitle[:idx])
 		}
 	}
 
 	// Detect if title is just "Medium" (error page indicator)
-	if prof.Name == "Medium" || prof.Name == "" {
+	if prof.PageTitle == "Medium" || prof.PageTitle == "" {
 		return nil, errors.New("profile not found (invalid or missing name)")
 	}
 
@@ -190,9 +190,9 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	}
 	prof.SocialLinks = filtered
 
-	// If we still don't have a name, return error
-	if prof.Name == "" {
-		prof.Name = username // Fallback to username
+	// If we still don't have a name, fallback to username
+	if prof.DisplayName == "" {
+		prof.DisplayName = username
 	}
 
 	return prof, nil

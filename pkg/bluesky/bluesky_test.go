@@ -104,8 +104,8 @@ func TestFetch(t *testing.T) {
 	if profile.Username != "jay.bsky.social" {
 		t.Errorf("Username = %q, want %q", profile.Username, "jay.bsky.social")
 	}
-	if profile.Name != "Jay Graber" {
-		t.Errorf("Name = %q, want %q", profile.Name, "Jay Graber")
+	if profile.DisplayName != "Jay Graber" {
+		t.Errorf("Name = %q, want %q", profile.DisplayName, "Jay Graber")
 	}
 	if profile.Bio == "" {
 		t.Error("Bio should not be empty")
@@ -213,8 +213,8 @@ func TestParseAPIResponse(t *testing.T) {
 				t.Fatalf("parseAPIResponse() error = %v", err)
 			}
 
-			if profile.Name != tt.wantName {
-				t.Errorf("Name = %q, want %q", profile.Name, tt.wantName)
+			if profile.DisplayName != tt.wantName {
+				t.Errorf("Name = %q, want %q", profile.DisplayName, tt.wantName)
 			}
 			if profile.Bio != tt.wantBio {
 				t.Errorf("Bio = %q, want %q", profile.Bio, tt.wantBio)

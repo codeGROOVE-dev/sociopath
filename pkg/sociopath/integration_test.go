@@ -84,12 +84,12 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:   "github",
-				URL:        "https://github.com/tstromberg",
-				Username:   "tstromberg",
-				Name:       "Thomas |Ström`ber`g",
-				CreatedAt:  "2009-07-03T14:32:35Z",
-				DatabaseID: "101424",
+				Platform:    "github",
+				URL:         "https://github.com/tstromberg",
+				Username:    "tstromberg",
+				DisplayName: "Thomas |Ström`ber`g",
+				CreatedAt:   "2009-07-03T14:32:35Z",
+				DatabaseID:  "101424",
 			},
 		},
 		{
@@ -107,12 +107,12 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:   "github",
-				URL:        "https://github.com/kentcdodds",
-				Username:   "kentcdodds",
-				Name:       "Kent C. Dodds",
-				CreatedAt:  "2012-03-04T22:32:01Z",
-				DatabaseID: "1500684",
+				Platform:    "github",
+				URL:         "https://github.com/kentcdodds",
+				Username:    "kentcdodds",
+				DisplayName: "Kent C. Dodds",
+				CreatedAt:   "2012-03-04T22:32:01Z",
+				DatabaseID:  "1500684",
 			},
 		},
 		{
@@ -130,12 +130,12 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:   "github",
-				URL:        "https://github.com/torvalds",
-				Username:   "torvalds",
-				Name:       "Linus Torvalds",
-				CreatedAt:  "2011-09-03T15:26:22Z",
-				DatabaseID: "1024025",
+				Platform:    "github",
+				URL:         "https://github.com/torvalds",
+				Username:    "torvalds",
+				DisplayName: "Linus Torvalds",
+				CreatedAt:   "2011-09-03T15:26:22Z",
+				DatabaseID:  "1024025",
 			},
 		},
 		{
@@ -153,12 +153,12 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*github.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:   "github",
-				URL:        "https://github.com/gvanrossum",
-				Username:   "gvanrossum",
-				Name:       "Guido van Rossum",
-				CreatedAt:  "2012-11-26T18:46:40Z",
-				DatabaseID: "2894642",
+				Platform:    "github",
+				URL:         "https://github.com/gvanrossum",
+				Username:    "gvanrossum",
+				DisplayName: "Guido van Rossum",
+				CreatedAt:   "2012-11-26T18:46:40Z",
+				DatabaseID:  "2894642",
 			},
 		},
 		{
@@ -176,11 +176,11 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*mastodon.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "mastodon",
-				URL:       "https://mastodon.social/@Gargron",
-				Username:  "Gargron",
-				Name:      "Eugen Rochko",
-				CreatedAt: "2016-03-16T00:00:00.000Z",
+				Platform:    "mastodon",
+				URL:         "https://mastodon.social/@Gargron",
+				Username:    "Gargron",
+				DisplayName: "Eugen Rochko",
+				CreatedAt:   "2016-03-16T00:00:00.000Z",
 			},
 		},
 		{
@@ -198,11 +198,11 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*mastodon.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "mastodon",
-				URL:       "https://mastodon.social/@dansup",
-				Username:  "dansup",
-				Name:      "dansup",
-				CreatedAt: "2016-11-27T00:00:00.000Z",
+				Platform:    "mastodon",
+				URL:         "https://mastodon.social/@dansup",
+				Username:    "dansup",
+				DisplayName: "dansup",
+				CreatedAt:   "2016-11-27T00:00:00.000Z",
 			},
 		},
 		{
@@ -220,12 +220,12 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*mastodon.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "mastodon",
-				URL:       "https://triangletoot.party/@thomrstrom",
-				Username:  "thomrstrom",
-				Name:      "Thomas Strömberg",
-				Bio:       "KD4UHP - based out of Carrboro, NC\nfounder & CEO @ codeGROOVE\nformer Director of Security @ Chainguard & Xoogler\n#unix #infosec #bikes #carrboro #motorcycles #photography #hamradio",
-				CreatedAt: "2022-11-03T00:00:00.000Z",
+				Platform:    "mastodon",
+				URL:         "https://triangletoot.party/@thomrstrom",
+				Username:    "thomrstrom",
+				DisplayName: "Thomas Strömberg",
+				Bio:         "KD4UHP - based out of Carrboro, NC\nfounder & CEO @ codeGROOVE\nformer Director of Security @ Chainguard & Xoogler\n#unix #infosec #bikes #carrboro #motorcycles #photography #hamradio",
+				CreatedAt:   "2022-11-03T00:00:00.000Z",
 			},
 			cmpOpts: []cmp.Option{
 				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Location", "Website", "UpdatedAt", "SocialLinks", "Fields", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
@@ -246,11 +246,11 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*bluesky.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "bluesky",
-				URL:       "https://bsky.app/profile/bsky.app",
-				Username:  "bsky.app",
-				Name:      "Bluesky",
-				CreatedAt: "2023-04-12T04:53:57.057Z",
+				Platform:    "bluesky",
+				URL:         "https://bsky.app/profile/bsky.app",
+				Username:    "bsky.app",
+				DisplayName: "Bluesky",
+				CreatedAt:   "2023-04-12T04:53:57.057Z",
 			},
 		},
 		{
@@ -268,11 +268,11 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*bluesky.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "bluesky",
-				URL:       "https://bsky.app/profile/jack.bsky.social",
-				Username:  "jack.bsky.social",
-				Name:      "jack",
-				CreatedAt: "2023-09-12T22:33:06.369Z",
+				Platform:    "bluesky",
+				URL:         "https://bsky.app/profile/jack.bsky.social",
+				Username:    "jack.bsky.social",
+				DisplayName: "jack",
+				CreatedAt:   "2023-09-12T22:33:06.369Z",
 			},
 		},
 		{
@@ -290,11 +290,11 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*devto.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "devto",
-				URL:       "https://dev.to/tstromberg",
-				Username:  "tstromberg",
-				Name:      "Thomas Strömberg",
-				CreatedAt: "2020-12-05T17:05:35Z",
+				Platform:    "devto",
+				URL:         "https://dev.to/tstromberg",
+				Username:    "tstromberg",
+				DisplayName: "Thomas Strömberg",
+				CreatedAt:   "2020-12-05T17:05:35Z",
 			},
 		},
 		{
@@ -312,11 +312,11 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*devto.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform:  "devto",
-				URL:       "https://dev.to/ben",
-				Username:  "ben",
-				Name:      "Ben Halpern",
-				CreatedAt: "2015-12-27T04:02:17Z",
+				Platform:    "devto",
+				URL:         "https://dev.to/ben",
+				Username:    "ben",
+				DisplayName: "Ben Halpern",
+				CreatedAt:   "2015-12-27T04:02:17Z",
 			},
 		},
 		{
@@ -334,10 +334,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*medium.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "medium",
-				URL:      "https://medium.com/@ev",
-				Username: "ev",
-				Name:     "Ev Williams",
+				Platform:    "medium",
+				URL:         "https://medium.com/@ev",
+				Username:    "ev",
+				DisplayName: "Ev Williams",
 			},
 		},
 		{
@@ -355,10 +355,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*reddit.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "reddit",
-				URL:      "https://old.reddit.com/user/spez",
-				Username: "spez",
-				Name:     "spez",
+				Platform:    "reddit",
+				URL:         "https://old.reddit.com/user/spez",
+				Username:    "spez",
+				DisplayName: "spez",
 			},
 		},
 		{
@@ -376,10 +376,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*reddit.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "reddit",
-				URL:      "https://old.reddit.com/user/kn0thing",
-				Username: "kn0thing",
-				Name:     "kn0thing",
+				Platform:    "reddit",
+				URL:         "https://old.reddit.com/user/kn0thing",
+				Username:    "kn0thing",
+				DisplayName: "kn0thing",
 			},
 		},
 		{
@@ -397,10 +397,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*reddit.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "reddit",
-				URL:      "https://old.reddit.com/user/GovSchwarzenegger",
-				Username: "GovSchwarzenegger",
-				Name:     "GovSchwarzenegger",
+				Platform:    "reddit",
+				URL:         "https://old.reddit.com/user/GovSchwarzenegger",
+				Username:    "GovSchwarzenegger",
+				DisplayName: "GovSchwarzenegger",
 			},
 		},
 		{
@@ -418,10 +418,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*reddit.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "reddit",
-				URL:      "https://old.reddit.com/user/medyagh",
-				Username: "medyagh",
-				Name:     "medyagh",
+				Platform:    "reddit",
+				URL:         "https://old.reddit.com/user/medyagh",
+				Username:    "medyagh",
+				DisplayName: "medyagh",
 			},
 		},
 		{
@@ -439,10 +439,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*stackoverflow.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "stackoverflow",
-				URL:      "https://stackoverflow.com/users/22656/jon-skeet",
-				Username: "jon-skeet",
-				Name:     "Jon Skeet",
+				Platform:    "stackoverflow",
+				URL:         "https://stackoverflow.com/users/22656/jon-skeet",
+				Username:    "jon-skeet",
+				DisplayName: "Jon Skeet",
 			},
 		},
 		{
@@ -460,10 +460,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*stackoverflow.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "stackoverflow",
-				URL:      "https://stackoverflow.com/users/1144035/gordon-linoff",
-				Username: "gordon-linoff",
-				Name:     "Gordon Linoff",
+				Platform:    "stackoverflow",
+				URL:         "https://stackoverflow.com/users/1144035/gordon-linoff",
+				Username:    "gordon-linoff",
+				DisplayName: "Gordon Linoff",
 			},
 		},
 		{
@@ -481,10 +481,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*youtube.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "youtube",
-				URL:      "https://youtube.com/@MKBHD",
-				Username: "MKBHD",
-				Name:     "Marques Brownlee",
+				Platform:    "youtube",
+				URL:         "https://youtube.com/@MKBHD",
+				Username:    "MKBHD",
+				DisplayName: "Marques Brownlee",
 			},
 		},
 		{
@@ -502,10 +502,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*youtube.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "youtube",
-				URL:      "https://youtube.com/@LinusTechTips",
-				Username: "LinusTechTips",
-				Name:     "Linus Tech Tips",
+				Platform:    "youtube",
+				URL:         "https://youtube.com/@LinusTechTips",
+				Username:    "LinusTechTips",
+				DisplayName: "Linus Tech Tips",
 			},
 		},
 		{
@@ -523,10 +523,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*youtube.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "youtube",
-				URL:      "https://youtube.com/@veritasium",
-				Username: "veritasium",
-				Name:     "Veritasium",
+				Platform:    "youtube",
+				URL:         "https://youtube.com/@veritasium",
+				Username:    "veritasium",
+				DisplayName: "Veritasium",
 			},
 		},
 		{
@@ -544,10 +544,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*linktree.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "linktree",
-				URL:      "https://linktr.ee/m0nad",
-				Username: "m0nad",
-				Name:     "m0nad",
+				Platform:    "linktree",
+				URL:         "https://linktr.ee/m0nad",
+				Username:    "m0nad",
+				DisplayName: "m0nad",
 			},
 		},
 		{
@@ -565,10 +565,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*substack.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "substack",
-				URL:      "https://paulabartabajo.substack.com/",
-				Username: "paulabartabajo",
-				Name:     "Pau Labarta Bajo",
+				Platform:    "substack",
+				URL:         "https://paulabartabajo.substack.com/",
+				Username:    "paulabartabajo",
+				DisplayName: "Pau Labarta Bajo",
 			},
 		},
 		{
@@ -586,10 +586,10 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				return c.(*habr.Client).Fetch(ctx, url)
 			},
 			want: &profile.Profile{
-				Platform: "habr",
-				URL:      "https://habr.com/en/users/rock",
-				Username: "rock",
-				Name:     "Денис Пушкарев aka rock",
+				Platform:    "habr",
+				URL:         "https://habr.com/en/users/rock",
+				Username:    "rock",
+				DisplayName: "Денис Пушкарев aka rock",
 			},
 		},
 		{
@@ -612,7 +612,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				URL:           "https://x.com/elonmusk",
 				Authenticated: true,
 				Username:      "elonmusk",
-				Name:          "Elon Musk",
+				DisplayName:   "Elon Musk",
 			},
 		},
 		// NOTE: LinkedIn auth is broken, so these tests expect minimal profiles
@@ -639,7 +639,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				// Name, Bio, Location are empty when auth is broken
 			},
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "Name", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
+				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "DisplayName", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
 			},
 		},
 		{
@@ -664,7 +664,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				Username:      "mattmoor",
 			},
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "Name", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
+				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "DisplayName", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
 			},
 		},
 		{
@@ -689,7 +689,7 @@ func TestIntegrationLiveFetch(t *testing.T) {
 				Username:      "austen-bryan-23485a19",
 			},
 			cmpOpts: []cmp.Option{
-				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "Name", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
+				cmpopts.IgnoreFields(profile.Profile{}, "AvatarURL", "Fields", "DisplayName", "Bio", "Location", "Website", "CreatedAt", "UpdatedAt", "SocialLinks", "Posts", "Content", "Repositories", "IsGuess", "Confidence", "GuessMatch", "UTCOffset"),
 			},
 		},
 	}
@@ -733,9 +733,9 @@ func TestIntegrationLiveFetch(t *testing.T) {
 			if got.Username != tt.want.Username {
 				t.Errorf("Fetch(%q).Username = %q, want %q", tt.url, got.Username, tt.want.Username)
 			}
-			// LinkedIn auth is broken, so Name will be empty for LinkedIn profiles
-			if got.Name == "" && got.Platform != "linkedin" {
-				t.Errorf("Fetch(%q).Name is empty", tt.url)
+			// LinkedIn auth is broken, so DisplayName will be empty for LinkedIn profiles
+			if got.DisplayName == "" && got.Platform != "linkedin" {
+				t.Errorf("Fetch(%q).DisplayName is empty", tt.url)
 			}
 
 			t.Logf("successfully fetched %s profile: %s", got.Platform, got.Username)

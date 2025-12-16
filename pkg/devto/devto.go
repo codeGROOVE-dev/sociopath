@@ -129,7 +129,7 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 	// Extract name from crayons-title h1
 	namePattern := regexp.MustCompile(`<h1[^>]*class="[^"]*crayons-title[^"]*"[^>]*>\s*([^<]+)\s*</h1>`)
 	if m := namePattern.FindStringSubmatch(content); len(m) > 1 {
-		p.Name = strings.TrimSpace(html.UnescapeString(m[1]))
+		p.DisplayName = strings.TrimSpace(html.UnescapeString(m[1]))
 	}
 
 	// Extract avatar URL from profile image
@@ -139,10 +139,10 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 	}
 
 	// Fallback to og:title
-	if p.Name == "" {
+	if p.DisplayName == "" {
 		title := htmlutil.Title(content)
 		if idx := strings.Index(title, " - DEV"); idx > 0 {
-			p.Name = strings.TrimSpace(title[:idx])
+			p.DisplayName = strings.TrimSpace(title[:idx])
 		}
 	}
 

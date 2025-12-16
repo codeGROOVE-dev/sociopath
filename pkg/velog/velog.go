@@ -194,9 +194,9 @@ func parseProfile(data *apiUser, url string) *profile.Profile {
 
 	// Display name
 	if data.Profile.DisplayName != "" {
-		p.Name = data.Profile.DisplayName
+		p.DisplayName = data.Profile.DisplayName
 	} else {
-		p.Name = data.Username
+		p.DisplayName = data.Username
 	}
 
 	// Bio - prefer short_bio, fallback to about

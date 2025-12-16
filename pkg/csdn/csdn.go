@@ -134,7 +134,7 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 				if strings.Contains(title, "-CSDN") {
 					parts := strings.Split(title, "-CSDN")
 					if len(parts) > 0 && parts[0] != "" {
-						p.Name = strings.TrimSpace(parts[0])
+						p.DisplayName = strings.TrimSpace(parts[0])
 					}
 				}
 			}
@@ -169,8 +169,8 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 	extract(doc)
 
 	// Default name if not found
-	if p.Name == "" {
-		p.Name = username
+	if p.DisplayName == "" {
+		p.DisplayName = username
 	}
 
 	// Check for not found

@@ -145,7 +145,7 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 		URL:           urlStr,
 		Authenticated: false,
 		Username:      username,
-		Name:          username,
+		DisplayName:   username,
 		Fields:        make(map[string]string),
 	}
 
@@ -153,7 +153,7 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 	title := htmlutil.Title(content)
 	if name, found := strings.CutPrefix(title, "User "); found {
 		if idx := strings.Index(name, " - "); idx != -1 {
-			p.Name = strings.TrimSpace(name[:idx])
+			p.DisplayName = strings.TrimSpace(name[:idx])
 		}
 	}
 

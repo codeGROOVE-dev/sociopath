@@ -135,9 +135,9 @@ func parseProfile(data *apiUser, url string) *profile.Profile {
 	}
 
 	if data.FullName != "" {
-		p.Name = data.FullName
+		p.DisplayName = data.FullName
 	} else {
-		p.Name = data.Username
+		p.DisplayName = data.Username
 	}
 
 	if data.Email != "" {
