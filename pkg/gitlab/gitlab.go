@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,7 +28,16 @@ func (platformInfo) AuthRequired() bool         { return AuthRequired() }
 
 func init() { profile.Register(platformInfo{}) }
 
-var usernamePattern = regexp.MustCompile(`(?i)gitlab\.com/([a-zA-Z0-9_.-]+)(?:/|$)`)
+var (
+	usernamePattern    = regexp.MustCompile(`(?i)gitlab\.com/([a-zA-Z0-9_.-]+)(?:/|$)`)
+	memberSincePattern = regexp.MustCompile(`Member since ([A-Za-z]+ \d{1,2}, \d{4})`)
+	bioPattern         = regexp.MustCompile(`(?s)profile-user-bio[^>]*>\s*([^<]+)\s*</p>`)
+	locationPattern    = regexp.MustCompile(`(?s)addressLocality">\s*([^<]+)\s*</span>`)
+	jobTitlePattern    = regexp.MustCompile(`itemprop="jobTitle">([^<]+)</span>`)
+	websitePattern     = regexp.MustCompile(`itemprop="url" href="([^"]+)">`)
+	twitterPattern     = regexp.MustCompile(`href="https://twitter\.com/([^"]+)">[^<]+</a>`)
+	utcOffsetPattern   = regexp.MustCompile(`data-utc-offset="(-?\d+)"`)
+)
 
 // Match returns true if the URL is a GitLab profile URL.
 func Match(urlStr string) bool {
@@ -74,12 +84,11 @@ func WithLogger(logger *slog.Logger) Option {
 }
 
 // New creates a GitLab client.
-func New(ctx context.Context, opts ...Option) (*Client, error) {
+func New(_ context.Context, opts ...Option) (*Client, error) {
 	cfg := &config{logger: slog.Default()}
 	for _, opt := range opts {
 		opt(cfg)
 	}
-
 	return &Client{
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		cache:      cfg.cache,
@@ -87,44 +96,40 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 	}, nil
 }
 
-// apiUser represents a GitLab user from the API.
-//
-//nolint:govet // field alignment not critical for JSON parsing
+// apiUser represents a GitLab user from the search API.
+// Bio, location, and created_at are fetched from HTML since they require auth via API.
 type apiUser struct {
-	ID           int    `json:"id"`
-	Username     string `json:"username"`
-	Name         string `json:"name"`
-	State        string `json:"state"`
-	AvatarURL    string `json:"avatar_url"`
-	WebURL       string `json:"web_url"`
-	Bio          string `json:"bio"`
-	Location     string `json:"location"`
-	PublicEmail  string `json:"public_email"`
-	Website      string `json:"website_url"`
-	Twitter      string `json:"twitter"`
-	LinkedIn     string `json:"linkedin"`
-	Skype        string `json:"skype"`
-	JobTitle     string `json:"job_title"`
-	Organization string `json:"organization"`
+	Username  string `json:"username"`
+	Name      string `json:"name"`
+	State     string `json:"state"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+type apiProject struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	WebURL      string `json:"web_url"`
+	StarCount   int    `json:"star_count"`
+	ForksCount  int    `json:"forks_count"`
 }
 
 // Fetch retrieves a GitLab profile.
-func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, error) {
-	username := extractUsername(urlStr)
-	if username == "" {
-		return nil, fmt.Errorf("could not extract username from URL: %s", urlStr)
+func (c *Client) Fetch(ctx context.Context, url string) (*profile.Profile, error) {
+	m := usernamePattern.FindStringSubmatch(url)
+	if len(m) < 2 {
+		return nil, fmt.Errorf("could not extract username from URL: %s", url)
 	}
+	user := m[1]
 
-	c.logger.InfoContext(ctx, "fetching gitlab profile", "url", urlStr, "username", username)
+	c.logger.InfoContext(ctx, "fetching gitlab profile", "url", url, "username", user)
 
-	// First, find the user ID by username
-	apiURL := fmt.Sprintf("https://gitlab.com/api/v4/users?username=%s", username)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	// Fetch user from API
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://gitlab.com/api/v4/users?username="+user, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
+	req.Header.Set("User-Agent", httpcache.UserAgent)
 	req.Header.Set("Accept", "application/json")
 
 	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
@@ -136,97 +141,100 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	if err := json.Unmarshal(body, &users); err != nil {
 		return nil, fmt.Errorf("failed to parse gitlab response: %w", err)
 	}
-
-	if len(users) == 0 {
+	if len(users) == 0 || users[0].State != "active" {
 		return nil, profile.ErrProfileNotFound
 	}
 
-	user := users[0]
-	if user.State != "active" {
-		return nil, profile.ErrProfileNotFound
+	p := buildProfile(&users[0], url)
+
+	// Fetch HTML for additional profile data (not available via API without auth)
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://gitlab.com/"+user, http.NoBody)
+	if err == nil {
+		req.Header.Set("User-Agent", httpcache.UserAgent)
+		if body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger); err == nil {
+			parseHTMLProfile(string(body), p)
+		}
 	}
 
-	// Fetch detailed user info (includes bio, location, etc.)
-	detailURL := fmt.Sprintf("https://gitlab.com/api/v4/users/%d", user.ID)
-	detailReq, err := http.NewRequestWithContext(ctx, http.MethodGet, detailURL, http.NoBody)
-	if err != nil {
-		return nil, err
+	// Fetch user's projects
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://gitlab.com/api/v4/users/"+user+"/projects?per_page=6&order_by=updated_at", http.NoBody)
+	if err == nil {
+		req.Header.Set("User-Agent", httpcache.UserAgent)
+		req.Header.Set("Accept", "application/json")
+		if body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger); err == nil {
+			var projects []apiProject
+			if json.Unmarshal(body, &projects) == nil {
+				for _, proj := range projects {
+					repo := profile.Repository{
+						Name:        proj.Name,
+						Description: proj.Description,
+						URL:         proj.WebURL,
+					}
+					if proj.StarCount > 0 {
+						repo.Stars = strconv.Itoa(proj.StarCount)
+					}
+					if proj.ForksCount > 0 {
+						repo.Forks = strconv.Itoa(proj.ForksCount)
+					}
+					p.Repositories = append(p.Repositories, repo)
+				}
+			}
+		}
 	}
-	detailReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
-	detailReq.Header.Set("Accept", "application/json")
 
-	detailBody, detailErr := httpcache.FetchURL(ctx, c.cache, c.httpClient, detailReq, c.logger)
-	if detailErr != nil {
-		// Fall back to basic info if detail fetch fails
-		c.logger.DebugContext(ctx, "failed to fetch user details, using basic info", "error", detailErr)
-		return parseProfile(&user, urlStr), nil
-	}
-
-	var detailedUser apiUser
-	if unmarshalErr := json.Unmarshal(detailBody, &detailedUser); unmarshalErr != nil {
-		// Fall back to basic info if parsing fails
-		c.logger.DebugContext(ctx, "failed to parse user details, using basic info", "error", unmarshalErr)
-		return parseProfile(&user, urlStr), nil
-	}
-
-	return parseProfile(&detailedUser, urlStr), nil
+	return p, nil
 }
 
-func parseProfile(data *apiUser, url string) *profile.Profile {
+func buildProfile(u *apiUser, url string) *profile.Profile {
 	p := &profile.Profile{
-		Platform: platform,
-		URL:      url,
-		Username: data.Username,
-		Name:     data.Name,
-		Bio:      data.Bio,
-		Location: data.Location,
-		Fields:   make(map[string]string),
+		Platform:  platform,
+		URL:       url,
+		Username:  u.Username,
+		Name:      u.Name,
+		AvatarURL: u.AvatarURL,
+		Fields:    make(map[string]string),
 	}
-
-	if data.AvatarURL != "" {
-		p.AvatarURL = data.AvatarURL
-	}
-
-	if data.Website != "" {
-		p.Website = data.Website
-		p.SocialLinks = append(p.SocialLinks, data.Website)
-	}
-
-	if data.Twitter != "" {
-		twitterURL := "https://twitter.com/" + data.Twitter
-		p.Fields["twitter"] = twitterURL
-		p.SocialLinks = append(p.SocialLinks, twitterURL)
-	}
-
-	if data.LinkedIn != "" {
-		linkedinURL := "https://linkedin.com/in/" + data.LinkedIn
-		p.Fields["linkedin"] = linkedinURL
-		p.SocialLinks = append(p.SocialLinks, linkedinURL)
-	}
-
-	if data.PublicEmail != "" {
-		p.Fields["email"] = data.PublicEmail
-	}
-
-	if data.JobTitle != "" {
-		p.Fields["title"] = data.JobTitle
-	}
-
-	if data.Organization != "" {
-		p.Fields["company"] = data.Organization
-	}
-
 	if p.Name == "" {
 		p.Name = p.Username
 	}
-
 	return p
 }
 
-func extractUsername(urlStr string) string {
-	matches := usernamePattern.FindStringSubmatch(urlStr)
-	if len(matches) > 1 {
-		return matches[1]
+func parseHTMLProfile(html string, p *profile.Profile) {
+	if m := memberSincePattern.FindStringSubmatch(html); len(m) > 1 {
+		if t, err := time.Parse("January 2, 2006", m[1]); err == nil {
+			p.CreatedAt = t.Format("2006-01-02")
+		}
 	}
-	return ""
+	if m := bioPattern.FindStringSubmatch(html); len(m) > 1 {
+		if s := strings.TrimSpace(m[1]); s != "" {
+			p.Bio = s
+		}
+	}
+	if m := locationPattern.FindStringSubmatch(html); len(m) > 1 {
+		if s := strings.TrimSpace(m[1]); s != "" {
+			p.Location = s
+		}
+	}
+	if m := jobTitlePattern.FindStringSubmatch(html); len(m) > 1 {
+		if s := strings.TrimSpace(m[1]); s != "" {
+			p.Fields["title"] = s
+		}
+	}
+	if m := websitePattern.FindStringSubmatch(html); len(m) > 1 {
+		p.Website = m[1]
+		p.SocialLinks = append(p.SocialLinks, m[1])
+	}
+	if m := twitterPattern.FindStringSubmatch(html); len(m) > 1 {
+		url := "https://twitter.com/" + m[1]
+		p.Fields["twitter"] = url
+		p.SocialLinks = append(p.SocialLinks, url)
+	}
+	if m := utcOffsetPattern.FindStringSubmatch(html); len(m) > 1 {
+		if sec, err := strconv.Atoi(m[1]); err == nil {
+			hrs := float64(sec) / 3600.0
+			p.UTCOffset = &hrs
+		}
+	}
 }

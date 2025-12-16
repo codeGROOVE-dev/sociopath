@@ -1393,8 +1393,8 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 		// Check organization match (GitHub organizations vs bio/employer/unstructured mentions)
 		if !hasOrgMatch {
 			// Get organizations from either profile (usually GitHub)
-			guessedOrgs := extractOrganizationList(guessed.Fields)
-			knownOrgs := extractOrganizationList(kp.Fields)
+			guessedOrgs := normalizeGroups(guessed.Groups)
+			knownOrgs := normalizeGroups(kp.Groups)
 
 			// Check if any organization appears in the other profile's bio, employer, content, or posts
 			if len(guessedOrgs) > 0 || len(knownOrgs) > 0 {
@@ -1717,23 +1717,14 @@ func extractSignificantWords(s string) []string {
 	return words
 }
 
-// extractOrganizationList parses organization names from Fields["organizations"].
-// It normalizes organization names by removing common suffixes like "-dev", "-org", etc.
-func extractOrganizationList(fields map[string]string) []string {
-	if fields == nil {
+// normalizeGroups normalizes group/organization names by removing common suffixes like "-dev", "-org", etc.
+func normalizeGroups(groups []string) []string {
+	if len(groups) == 0 {
 		return nil
 	}
 
-	orgsStr, ok := fields["organizations"]
-	if !ok || orgsStr == "" {
-		return nil
-	}
-
-	// Split by comma (GitHub stores as "org1, org2, org3")
-	parts := strings.Split(orgsStr, ",")
 	var normalized []string
-
-	for _, org := range parts {
+	for _, org := range groups {
 		org = strings.TrimSpace(org)
 		if org == "" {
 			continue
@@ -1937,18 +1928,16 @@ func extractInterests(p *profile.Profile) map[string]bool {
 			}
 		}
 
-		// Extract from GitHub organizations
-		if orgs := p.Fields["organizations"]; orgs != "" {
-			for org := range strings.SplitSeq(orgs, ",") {
-				org = strings.TrimSpace(strings.ToLower(org))
-				// Normalize org names (remove common suffixes)
-				org = strings.TrimSuffix(org, "-dev")
-				org = strings.TrimSuffix(org, "-org")
-				org = strings.TrimSuffix(org, "-io")
-				org = strings.TrimSuffix(org, "-labs")
-				if org != "" && len(org) >= 2 {
-					interests[org] = true
-				}
+		// Extract from groups (GitHub organizations, etc.)
+		for _, org := range p.Groups {
+			org = strings.TrimSpace(strings.ToLower(org))
+			// Normalize org names (remove common suffixes)
+			org = strings.TrimSuffix(org, "-dev")
+			org = strings.TrimSuffix(org, "-org")
+			org = strings.TrimSuffix(org, "-io")
+			org = strings.TrimSuffix(org, "-labs")
+			if org != "" && len(org) >= 2 {
+				interests[org] = true
 			}
 		}
 	}

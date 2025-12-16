@@ -27,6 +27,9 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
 )
 
+// UserAgent is the standard browser User-Agent string for all fetchers.
+const UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0"
+
 // Stats tracks cache hit/miss statistics.
 type Stats struct {
 	Hits   int64

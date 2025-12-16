@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -327,9 +328,13 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 			prof.Fields["email"] = email
 		}
 
-		// Extract achievements as badges (only visible in HTML)
+		// Extract achievements as badges (only visible in HTML) - merge with existing
 		if badges := extractAchievementsMap(htmlContent); badges != nil {
-			prof.Badges = badges
+			if prof.Badges == nil {
+				prof.Badges = badges
+			} else {
+				maps.Copy(prof.Badges, badges)
+			}
 		}
 
 		// Pro badge: <span title="Label: Pro" ...> (only visible in HTML, not API)
@@ -349,14 +354,16 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 			prof.Badges["Developer Program Member"] = "1"
 		}
 
-		// Extract organizations
-		orgs := extractOrganizations(htmlContent)
-		if len(orgs) > 0 {
-			prof.Fields["organizations"] = strings.Join(orgs, ", ")
+		// Extract organizations as groups
+		if orgs := extractOrganizations(htmlContent); len(orgs) > 0 {
+			slices.Sort(orgs)
+			prof.Groups = orgs
 		}
 
-		// Extract pinned/popular repositories
-		prof.Repositories = extractPinnedRepos(htmlContent)
+		// Extract pinned/popular repositories from HTML (prefer over GraphQL as HTML is authoritative)
+		if htmlRepos := extractPinnedRepos(htmlContent); len(htmlRepos) > 0 {
+			prof.Repositories = htmlRepos
+		}
 
 		// Extract README HTML
 		readmeHTML := extractREADMEHTML(htmlContent)
@@ -473,6 +480,21 @@ const graphQLUserFieldsWithEmail = `
 		}
 	}
 
+	pinnedItems(first: 6, types: REPOSITORY) {
+		nodes {
+			... on Repository {
+				name
+				description
+				url
+				stargazerCount
+				forkCount
+				primaryLanguage {
+					name
+				}
+			}
+		}
+	}
+
 	topRepositories(first: 1, orderBy: {field: STARGAZERS, direction: DESC}) {
 		totalCount
 	}
@@ -558,6 +580,21 @@ const graphQLUserFieldsWithoutEmail = `
 			provider
 			url
 			displayName
+		}
+	}
+
+	pinnedItems(first: 6, types: REPOSITORY) {
+		nodes {
+			... on Repository {
+				name
+				description
+				url
+				stargazerCount
+				forkCount
+				primaryLanguage {
+					name
+				}
+			}
 		}
 	}
 
@@ -760,6 +797,18 @@ type graphQLUser struct {
 			DisplayName string `json:"displayName"`
 		} `json:"nodes"`
 	} `json:"socialAccounts"`
+	PinnedItems struct {
+		Nodes []struct {
+			Name            string `json:"name"`
+			Description     string `json:"description"`
+			URL             string `json:"url"`
+			StargazerCount  int    `json:"stargazerCount"`
+			ForkCount       int    `json:"forkCount"`
+			PrimaryLanguage *struct {
+				Name string `json:"name"`
+			} `json:"primaryLanguage"`
+		} `json:"nodes"`
+	} `json:"pinnedItems"`
 	TopRepositories           struct{ TotalCount int } `json:"topRepositories"`
 	Followers                 struct{ TotalCount int } `json:"followers"`
 	Following                 struct{ TotalCount int } `json:"following"`
@@ -873,6 +922,11 @@ func parseGraphQLResponse(ctx context.Context, data []byte, urlStr, _ string, lo
 			prof.SocialLinks = append(prof.SocialLinks, keybaseURL)
 			logger.InfoContext(ctx, "discovered keybase from gist", "url", keybaseURL)
 		}
+	}
+
+	// Add pinned repositories from GraphQL
+	if len(user.PinnedItems.Nodes) > 0 {
+		prof.Repositories = pinnedItemsToRepos(user.PinnedItems.Nodes)
 	}
 
 	// Add Twitter from GraphQL
@@ -1558,6 +1612,51 @@ func gistsToPosts(gists []gistNode) []profile.Post {
 	return posts
 }
 
+// pinnedItemsToRepos converts GraphQL pinned items to profile repositories.
+//
+//nolint:govet // fieldalignment: struct layout matches GitHub GraphQL schema
+func pinnedItemsToRepos(nodes []struct {
+	Name            string `json:"name"`
+	Description     string `json:"description"`
+	URL             string `json:"url"`
+	StargazerCount  int    `json:"stargazerCount"`
+	ForkCount       int    `json:"forkCount"`
+	PrimaryLanguage *struct {
+		Name string `json:"name"`
+	} `json:"primaryLanguage"`
+},
+) []profile.Repository {
+	repos := make([]profile.Repository, 0, len(nodes))
+	for _, n := range nodes {
+		repo := profile.Repository{
+			Name:        n.Name,
+			Description: n.Description,
+			URL:         n.URL,
+			Stars:       formatCount(n.StargazerCount),
+			Forks:       formatCount(n.ForkCount),
+		}
+		if n.PrimaryLanguage != nil {
+			repo.Language = n.PrimaryLanguage.Name
+		}
+		repos = append(repos, repo)
+	}
+	return repos
+}
+
+// formatCount formats a count as a string, using k/m suffixes for large numbers.
+func formatCount(n int) string {
+	if n == 0 {
+		return ""
+	}
+	if n >= 1000000 {
+		return fmt.Sprintf("%.1fm", float64(n)/1000000)
+	}
+	if n >= 1000 {
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	}
+	return strconv.Itoa(n)
+}
+
 // keybaseProofPattern matches keybase.io URLs in gist content.
 var keybaseProofPattern = regexp.MustCompile(`https://keybase\.io/([a-zA-Z0-9_]+)`)
 
@@ -1747,9 +1846,10 @@ func (c *Client) fetchArchivedProfile(ctx context.Context, username string, snap
 		prof.Location = loc
 	}
 
-	// Extract organizations from archived HTML
+	// Extract organizations as groups from archived HTML
 	if orgs := extractOrganizations(html); len(orgs) > 0 {
-		prof.Fields["organizations"] = strings.Join(orgs, ", ")
+		slices.Sort(orgs)
+		prof.Groups = orgs
 	}
 
 	return prof
