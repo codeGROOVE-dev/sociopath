@@ -190,7 +190,8 @@ func FetchURLWithValidator(
 			if errors.As(fetchErr, &httpErr) {
 				return fmt.Appendf(nil, "ERROR:%d", httpErr.StatusCode), nil
 			}
-			return nil, fetchErr
+			// Cache network errors too (timeouts, DNS failures, connection refused).
+			return fmt.Appendf(nil, "NETERR:%s", fetchErr.Error()), nil
 		}
 		// If validator fails, return error to prevent caching.
 		if validator != nil && !validator(body) {
@@ -219,9 +220,13 @@ func FetchURLWithValidator(
 	}
 
 	// Check if this is a cached error.
-	if s := string(data); strings.HasPrefix(s, "ERROR:") {
-		code, _ := strconv.Atoi(strings.TrimPrefix(s, "ERROR:")) //nolint:errcheck // 0 is acceptable default
+	s := string(data)
+	if errCode, found := strings.CutPrefix(s, "ERROR:"); found {
+		code, _ := strconv.Atoi(errCode) //nolint:errcheck // 0 is acceptable default
 		return nil, &HTTPError{StatusCode: code, URL: req.URL.String()}
+	}
+	if errMsg, found := strings.CutPrefix(s, "NETERR:"); found {
+		return nil, fmt.Errorf("cached network error: %s", errMsg)
 	}
 
 	return data, nil

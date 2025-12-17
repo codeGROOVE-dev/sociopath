@@ -323,7 +323,7 @@ func TestExtractPosts(t *testing.T) {
 			if p.Date == "" {
 				t.Error("post.Date is empty for PostTypeComment")
 			}
-		case profile.PostTypeVideo, profile.PostTypeArticle, profile.PostTypeQuestion, profile.PostTypeAnswer, profile.PostTypeRepository:
+		case profile.PostTypeVideo, profile.PostTypeArticle, profile.PostTypeQuestion, profile.PostTypeAnswer, profile.PostTypeRepository, profile.PostTypeEvent:
 			t.Errorf("unexpected post type: %s", p.Type)
 		}
 	}

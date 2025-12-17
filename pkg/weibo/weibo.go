@@ -418,12 +418,14 @@ func (c *Client) fetchAPI(ctx context.Context, apiURL string) ([]byte, error) {
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return nil, err
+			// Cache network errors to avoid hammering unreachable servers.
+			return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
 		}
 		defer resp.Body.Close() //nolint:errcheck // Best-effort close
 
 		if resp.StatusCode != http.StatusOK {
-			return nil, &httpcache.HTTPError{StatusCode: resp.StatusCode, URL: apiURL}
+			// Cache HTTP errors to avoid hammering servers.
+			return fmt.Appendf(nil, "ERROR:%d", resp.StatusCode), nil
 		}
 
 		return io.ReadAll(resp.Body)
@@ -431,7 +433,22 @@ func (c *Client) fetchAPI(ctx context.Context, apiURL string) ([]byte, error) {
 
 	// Include auth marker in cache key since responses are user-specific
 	cacheKey := httpcache.URLToKey(apiURL + "|auth:" + c.sub)
-	return c.cache.GetSet(ctx, cacheKey, fetch, c.cache.TTL())
+	data, err := c.cache.GetSet(ctx, cacheKey, fetch, c.cache.TTL())
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if this is a cached error.
+	s := string(data)
+	if errCode, found := strings.CutPrefix(s, "ERROR:"); found {
+		code, _ := strconv.Atoi(errCode) //nolint:errcheck // 0 is acceptable default
+		return nil, &httpcache.HTTPError{StatusCode: code, URL: apiURL}
+	}
+	if errMsg, found := strings.CutPrefix(s, "NETERR:"); found {
+		return nil, fmt.Errorf("cached network error: %s", errMsg)
+	}
+
+	return data, nil
 }
 
 func setCommonHeaders(req *http.Request) {

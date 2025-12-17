@@ -447,6 +447,77 @@ func EmailAddresses(htmlContent string) []string {
 	return emails
 }
 
+// PhoneNumbers extracts phone numbers from HTML content.
+// Supports various formats: (555) 123-4567, 555-123-4567, +1-555-123-4567, etc.
+func PhoneNumbers(htmlContent string) []string {
+	var phones []string
+	seen := make(map[string]bool)
+
+	matches := phonePattern.FindAllString(htmlContent, -1)
+	for _, phone := range matches {
+		// Skip numbers that look like they're part of URLs/filenames
+		if looksLikeURLFragment(phone) {
+			continue
+		}
+
+		// Normalize: remove all non-digit characters except leading +
+		normalized := normalizePhone(phone)
+
+		// Skip too short (less than 7 digits) or too long numbers
+		digitCount := countDigits(normalized)
+		if digitCount < 7 || digitCount > 15 {
+			continue
+		}
+
+		if !seen[normalized] {
+			seen[normalized] = true
+			phones = append(phones, phone) // Return original format
+		}
+	}
+
+	return phones
+}
+
+// phonePattern matches common phone number formats.
+// Requires at least one separator (space, dash, dot, or parentheses) to avoid matching random digit sequences.
+var phonePattern = regexp.MustCompile(
+	`(?:tel:)?(?:\+?1[-.\s]?)?\([0-9]{3}\)[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}` + // (555) 123-4567
+		`|(?:tel:)?(?:\+?1[-.\s]?)?[0-9]{3}[-.\s][0-9]{3}[-.\s]?[0-9]{4}`, // 555-123-4567
+)
+
+// looksLikeURLFragment returns true if the string appears to be part of a URL or filename.
+func looksLikeURLFragment(s string) bool {
+	// Check if it contains characters typical of URLs/filenames
+	return strings.Contains(s, "/") ||
+		strings.Contains(s, ".js") ||
+		strings.Contains(s, ".css") ||
+		strings.Contains(s, ".html") ||
+		strings.ContainsAny(s, "abcdefABCDEF") // hex chars in hashes
+}
+
+func normalizePhone(phone string) string {
+	// Remove tel: prefix if present
+	phone = strings.TrimPrefix(phone, "tel:")
+	// Keep only digits and leading +
+	var result strings.Builder
+	for i, r := range phone {
+		if (r == '+' && i == 0) || (r >= '0' && r <= '9') {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
+}
+
+func countDigits(s string) int {
+	count := 0
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			count++
+		}
+	}
+	return count
+}
+
 // ContactLinks extracts contact/about page URLs from HTML content.
 // These pages often contain additional social media links.
 func ContactLinks(htmlContent, baseURL string) []string {
@@ -612,6 +683,7 @@ func isSocialPlatformURL(u string) bool {
 		"observablehq.com", "opencollective.com", "holopin.io",
 		"codepen.io", "freecodecamp.org", "t.me",
 		"join.skype.com",
+		"cal.com", "calendly.com",
 	}
 	for _, p := range platforms {
 		if strings.Contains(lower, p) {
@@ -691,6 +763,9 @@ var socialPatterns = []*regexp.Regexp{
 	// Telegram
 	regexp.MustCompile(`https?://t\.me/[\w-]+`),
 	regexp.MustCompile(`https?://(?:www\.)?telegram\.me/[\w-]+`),
+	// Scheduling/Calendar
+	regexp.MustCompile(`https?://(?:www\.)?cal\.com/[\w-]+(?:/[\w-]+)?`),
+	regexp.MustCompile(`https?://(?:www\.)?calendly\.com/[\w-]+(?:/[\w-]+)?`),
 }
 
 // Discord username patterns.

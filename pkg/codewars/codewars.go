@@ -120,14 +120,13 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	// Fetch API and HTML in parallel
 	apiData, apiErr := c.fetchAPI(ctx, username)
-	htmlLinks := c.fetchHTMLLinks(ctx, username)
+	html := c.fetchHTMLData(ctx, username)
 
 	if apiErr != nil {
 		return nil, apiErr
 	}
 
-	prof := parseProfile(apiData, urlStr)
-	prof.SocialLinks = htmlLinks
+	prof := parseProfile(apiData, html, urlStr)
 
 	return prof, nil
 }
@@ -161,34 +160,81 @@ func (c *Client) fetchAPI(ctx context.Context, username string) (*apiResponse, e
 
 var socialLinkPattern = regexp.MustCompile(`<b>Profiles:</b>.*?<a href="([^"]+)"`)
 
-func (c *Client) fetchHTMLLinks(ctx context.Context, username string) []string {
+// htmlData contains additional profile data extracted from HTML.
+//
+//nolint:govet // fieldalignment: struct ordering for logical grouping
+type htmlData struct {
+	socialLinks []string
+	avatarURL   string
+	memberSince string
+	lastSeen    string
+	following   string
+	followers   string
+	allies      string
+}
+
+func (c *Client) fetchHTMLData(ctx context.Context, username string) *htmlData {
 	htmlURL := "https://www.codewars.com/users/" + username
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, htmlURL, http.NoBody)
 	if err != nil {
-		return nil
+		return &htmlData{}
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
 
 	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
-		return nil
+		return &htmlData{}
+	}
+
+	content := string(body)
+	data := &htmlData{}
+
+	// Extract avatar URL
+	// Format: <img ... alt="username Avatar" src="https://www.codewars.com/avatars/..." />
+	avatarPattern := regexp.MustCompile(`<img[^>]+Avatar[^>]+src="([^"]+)"`)
+	if m := avatarPattern.FindStringSubmatch(content); len(m) > 1 {
+		data.avatarURL = m[1]
 	}
 
 	// Extract social links from the Profiles section
-	var links []string
-	matches := socialLinkPattern.FindAllStringSubmatch(string(body), -1)
+	matches := socialLinkPattern.FindAllStringSubmatch(content, -1)
 	for _, m := range matches {
 		if len(m) > 1 {
-			links = append(links, m[1])
+			data.socialLinks = append(data.socialLinks, m[1])
 		}
 	}
 
-	return links
+	// Extract additional profile fields
+	// Format: <b>Member Since:</b>Jan 2021
+	fieldPattern := regexp.MustCompile(`<b>(Member Since|Last Seen|Following|Followers|Allies):</b>([^<]+)`)
+	fieldMatches := fieldPattern.FindAllStringSubmatch(content, -1)
+	for _, m := range fieldMatches {
+		if len(m) < 3 {
+			continue
+		}
+		value := strings.TrimSpace(m[2])
+		switch m[1] {
+		case "Member Since":
+			data.memberSince = value
+		case "Last Seen":
+			data.lastSeen = value
+		case "Following":
+			data.following = value
+		case "Followers":
+			data.followers = value
+		case "Allies":
+			data.allies = value
+		default:
+			// Ignore unknown fields
+		}
+	}
+
+	return data
 }
 
-func parseProfile(data *apiResponse, url string) *profile.Profile {
-	p := &profile.Profile{
+func parseProfile(data *apiResponse, html *htmlData, url string) *profile.Profile {
+	prof := &profile.Profile{
 		Platform: platform,
 		URL:      url,
 		Username: data.Username,
@@ -196,41 +242,42 @@ func parseProfile(data *apiResponse, url string) *profile.Profile {
 	}
 
 	if data.Name != "" {
-		p.DisplayName = data.Name
+		prof.DisplayName = data.Name
 	} else {
-		p.DisplayName = data.Username
+		prof.DisplayName = data.Username
 	}
 
+	// Clan as a group membership
 	if data.Clan != "" {
-		p.Fields["clan"] = data.Clan
+		prof.Groups = append(prof.Groups, data.Clan)
 	}
 
 	if data.Honor > 0 {
-		p.Fields["honor"] = strconv.Itoa(data.Honor)
+		prof.Fields["honor"] = strconv.Itoa(data.Honor)
 	}
 
 	if data.Ranks.Overall.Name != "" {
 		// Parse rank like "6 kyu" or "2 dan" into badge format: kyu=6, dan=2
 		parts := strings.SplitN(data.Ranks.Overall.Name, " ", 2)
 		if len(parts) == 2 {
-			p.Badges = map[string]string{parts[1]: parts[0]}
+			prof.Badges = map[string]string{parts[1]: parts[0]}
 		}
 	}
 
 	if data.CodeChallenges.TotalCompleted > 0 {
-		p.Fields["kata_completed"] = strconv.Itoa(data.CodeChallenges.TotalCompleted)
+		prof.Fields["kata_completed"] = strconv.Itoa(data.CodeChallenges.TotalCompleted)
 	}
 
 	if data.CodeChallenges.TotalAuthored > 0 {
-		p.Fields["kata_authored"] = strconv.Itoa(data.CodeChallenges.TotalAuthored)
+		prof.Fields["kata_authored"] = strconv.Itoa(data.CodeChallenges.TotalAuthored)
 	}
 
 	if data.LeaderboardPosition != nil && *data.LeaderboardPosition > 0 {
-		p.Fields["leaderboard_position"] = strconv.Itoa(*data.LeaderboardPosition)
+		prof.Fields["leaderboard_position"] = strconv.Itoa(*data.LeaderboardPosition)
 	}
 
 	if len(data.Skills) > 0 {
-		p.Fields["skills"] = strings.Join(data.Skills, ", ")
+		prof.Fields["skills"] = strings.Join(data.Skills, ", ")
 	}
 
 	// Extract languages with ranks
@@ -239,10 +286,33 @@ func parseProfile(data *apiResponse, url string) *profile.Profile {
 		for lang, rank := range data.Ranks.Languages {
 			langs = append(langs, fmt.Sprintf("%s (%s)", lang, rank.Name))
 		}
-		p.Fields["languages"] = strings.Join(langs, ", ")
+		prof.Fields["languages"] = strings.Join(langs, ", ")
 	}
 
-	return p
+	// Add HTML-extracted data
+	if html != nil {
+		if html.avatarURL != "" {
+			prof.AvatarURL = html.avatarURL
+		}
+		if html.memberSince != "" {
+			prof.CreatedAt = html.memberSince
+		}
+		if html.lastSeen != "" {
+			prof.Fields["last_seen"] = html.lastSeen
+		}
+		if html.following != "" {
+			prof.Fields["following"] = html.following
+		}
+		if html.followers != "" {
+			prof.Fields["followers"] = html.followers
+		}
+		if html.allies != "" {
+			prof.Fields["allies"] = html.allies
+		}
+		prof.SocialLinks = html.socialLinks
+	}
+
+	return prof
 }
 
 func extractUsername(urlStr string) string {

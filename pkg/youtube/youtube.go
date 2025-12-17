@@ -17,6 +17,21 @@ import (
 
 const platform = "youtube"
 
+// Pre-compiled regex patterns for performance.
+var (
+	avatarPattern    = regexp.MustCompile(`"avatar":\{"thumbnails":\[\{"url":"([^"]+)"`)
+	subPattern       = regexp.MustCompile(`([\d.]+[KMB]?)\s*(?:subscribers|Subscribers)`)
+	videoCountPat    = regexp.MustCompile(`([\d,]+)\s*(?:videos|Videos)`)
+	accessPattern    = regexp.MustCompile(`"accessibilityData":\{"label":"([^"]+)\s+\d+\s*(?:minutes?|seconds?|hours?)`)
+	durationPattern  = regexp.MustCompile(`\s*\d+\s*(?:minutes?|seconds?|hours?).*$`)
+	usernamePatterns = []*regexp.Regexp{
+		regexp.MustCompile(`youtube\.com/@([^/?#]+)`),
+		regexp.MustCompile(`youtube\.com/c/([^/?#]+)`),
+		regexp.MustCompile(`youtube\.com/user/([^/?#]+)`),
+		regexp.MustCompile(`youtube\.com/channel/([^/?#]+)`),
+	}
+)
+
 // platformInfo implements profile.Platform for YouTube.
 type platformInfo struct{}
 
@@ -128,20 +143,17 @@ func parseProfile(html, url string) (*profile.Profile, error) {
 	}
 
 	// Extract avatar/channel image from og:image or channelMetadataRenderer
-	avatarPattern := regexp.MustCompile(`"avatar":\{"thumbnails":\[\{"url":"([^"]+)"`)
 	if matches := avatarPattern.FindStringSubmatch(html); len(matches) > 1 {
 		prof.AvatarURL = matches[1]
 	}
 
 	// Try to extract subscriber count
-	subPattern := regexp.MustCompile(`([\d.]+[KMB]?)\s*(?:subscribers|Subscribers)`)
 	if matches := subPattern.FindStringSubmatch(html); len(matches) > 1 {
 		prof.Fields["subscribers"] = matches[1]
 	}
 
 	// Try to extract video count
-	videoPattern := regexp.MustCompile(`([\d,]+)\s*(?:videos|Videos)`)
-	if matches := videoPattern.FindStringSubmatch(html); len(matches) > 1 {
+	if matches := videoCountPat.FindStringSubmatch(html); len(matches) > 1 {
 		prof.Fields["videos"] = strings.ReplaceAll(matches[1], ",", "")
 	}
 
@@ -185,8 +197,6 @@ func extractVideoTitles(html string, limit int) []profile.Post {
 	seen := make(map[string]bool)
 
 	// Extract from accessibility labels - these contain actual video titles with duration
-	// Pattern: "accessibilityData":{"label":"VIDEO TITLE DURATION"}
-	accessPattern := regexp.MustCompile(`"accessibilityData":\{"label":"([^"]+)\s+\d+\s*(?:minutes?|seconds?|hours?)`)
 	matches := accessPattern.FindAllStringSubmatch(html, -1)
 
 	for _, match := range matches {
@@ -196,7 +206,7 @@ func extractVideoTitles(html string, limit int) []profile.Post {
 
 		title := strings.TrimSpace(match[1])
 		// Clean up the title - remove trailing duration info
-		title = regexp.MustCompile(`\s*\d+\s*(?:minutes?|seconds?|hours?).*$`).ReplaceAllString(title, "")
+		title = durationPattern.ReplaceAllString(title, "")
 		title = strings.TrimSuffix(title, ",")
 		title = strings.TrimSpace(title)
 
@@ -218,15 +228,8 @@ func extractUsername(s string) string {
 	s = strings.TrimPrefix(s, "http://")
 	s = strings.TrimPrefix(s, "www.")
 
-	// Try each YouTube URL pattern
-	patterns := []string{
-		`youtube\.com/@([^/?#]+)`,
-		`youtube\.com/c/([^/?#]+)`,
-		`youtube\.com/user/([^/?#]+)`,
-		`youtube\.com/channel/([^/?#]+)`,
-	}
-	for _, p := range patterns {
-		if m := regexp.MustCompile(p).FindStringSubmatch(s); len(m) > 1 {
+	for _, p := range usernamePatterns {
+		if m := p.FindStringSubmatch(s); len(m) > 1 {
 			return m[1]
 		}
 	}

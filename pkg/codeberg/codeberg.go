@@ -206,9 +206,10 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 		}
 	}
 
-	// Extract join date
-	// Pattern: Joined on 2023-04-06
-	joinedPattern := regexp.MustCompile(`Joined\s+on\s+(\d{4}-\d{2}-\d{2})`)
+	// Extract join date - handles both old format and new absolute-date element
+	// Old: Joined on 2023-04-06
+	// New: Joined on <absolute-date date="2025-12-13T16:08:30+01:00">2025-12-13</absolute-date>
+	joinedPattern := regexp.MustCompile(`Joined\s+on\s+(?:<absolute-date[^>]*>)?(\d{4}-\d{2}-\d{2})`)
 	if m := joinedPattern.FindStringSubmatch(content); len(m) > 1 {
 		prof.CreatedAt = m[1]
 	}

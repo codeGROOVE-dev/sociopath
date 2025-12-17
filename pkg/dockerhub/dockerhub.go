@@ -89,6 +89,27 @@ type apiResponse struct {
 	GravatarURL string `json:"gravatar_url"`
 }
 
+// reposResponse represents the Docker Hub repos API response.
+//
+//nolint:govet // fieldalignment: struct ordering for JSON readability
+type reposResponse struct {
+	Count   int    `json:"count"`
+	Results []repo `json:"results"`
+}
+
+// repo represents a Docker Hub repository.
+//
+//nolint:govet // fieldalignment: struct ordering for JSON readability
+type repo struct {
+	Name           string `json:"name"`
+	Namespace      string `json:"namespace"`
+	Description    string `json:"description"`
+	PullCount      int    `json:"pull_count"`
+	StarCount      int    `json:"star_count"`
+	LastUpdated    string `json:"last_updated"`
+	DateRegistered string `json:"date_registered"`
+}
+
 // Fetch retrieves a Docker Hub profile.
 func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, error) {
 	username := extractUsername(urlStr)
@@ -121,7 +142,66 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, profile.ErrProfileNotFound
 	}
 
-	return parseProfile(&resp, urlStr), nil
+	prof := parseProfile(&resp, urlStr)
+
+	// Fetch repositories
+	repos := c.fetchRepos(ctx, username)
+	prof.Posts = repos
+
+	return prof, nil
+}
+
+func (c *Client) fetchRepos(ctx context.Context, username string) []profile.Post {
+	reposURL := fmt.Sprintf("https://hub.docker.com/v2/repositories/%s/", username)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reposURL, http.NoBody)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
+	req.Header.Set("Accept", "application/json")
+
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		return nil
+	}
+
+	var resp reposResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil
+	}
+
+	var posts []profile.Post
+	for _, r := range resp.Results {
+		post := profile.Post{
+			Type:  profile.PostTypeRepository,
+			Title: r.Name,
+			URL:   fmt.Sprintf("https://hub.docker.com/r/%s/%s", r.Namespace, r.Name),
+		}
+
+		// Build content with description and stats
+		var parts []string
+		if r.Description != "" {
+			parts = append(parts, r.Description)
+		}
+		if r.PullCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d pulls", r.PullCount))
+		}
+		if r.StarCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d stars", r.StarCount))
+		}
+		if len(parts) > 0 {
+			post.Content = strings.Join(parts, " | ")
+		}
+
+		// Format date as YYYY-MM-DD
+		if r.LastUpdated != "" && len(r.LastUpdated) >= 10 {
+			post.Date = r.LastUpdated[:10]
+		}
+		posts = append(posts, post)
+	}
+
+	return posts
 }
 
 func parseProfile(data *apiResponse, url string) *profile.Profile {

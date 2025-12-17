@@ -43,6 +43,7 @@ func main() {
 	cacheTTL := flag.Duration("cache-ttl", 75*24*time.Hour, "cache time-to-live (default: 75 days, use 24h for testing)")
 	recursive := flag.Bool("r", false, "recursively fetch social media profiles from discovered links")
 	guessMode := flag.Bool("guess", false, "guess related profiles based on discovered usernames (implies -r)")
+	maxPerPlatform := flag.Int("max-per-platform", 0, "max guess candidates per platform (default: 2)")
 	jsonOutput := flag.Bool("json", false, "output as JSON (default: pretty format when stdout is a terminal)")
 	prettyFlag := flag.Bool("pretty", false, "force pretty output even when stdout is not a terminal")
 	var emails emailList
@@ -130,6 +131,9 @@ func main() {
 	}
 	if len(emails) > 0 {
 		opts = append(opts, sociopath.WithEmailHints(emails...))
+	}
+	if *maxPerPlatform > 0 {
+		opts = append(opts, sociopath.WithMaxCandidatesPerPlatform(*maxPerPlatform))
 	}
 
 	ctx := context.Background()

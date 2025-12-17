@@ -43,7 +43,7 @@ func TestGenerateCandidates_SkipsKnownURLs(t *testing.T) {
 	knownPlatforms := map[string]bool{}
 
 	vouchedPlatforms := map[string]bool{}
-	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms)
+	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms, DefaultMaxCandidatesPerPlatform)
 
 	// Check that no Twitter candidate was generated (because x.com normalizes to twitter.com)
 	for _, c := range candidates {
@@ -63,7 +63,7 @@ func TestGenerateCandidates_SkipsXcomWhenTwitterKnown(t *testing.T) {
 	}
 	knownPlatforms := map[string]bool{}
 	vouchedPlatforms := map[string]bool{}
-	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms)
+	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms, DefaultMaxCandidatesPerPlatform)
 
 	// Check that no Twitter candidate was generated
 	for _, c := range candidates {
@@ -75,13 +75,13 @@ func TestGenerateCandidates_SkipsXcomWhenTwitterKnown(t *testing.T) {
 }
 
 func TestGenerateCandidates_LimitsPerPlatform(t *testing.T) {
-	// Multiple usernames should still only generate max 3 candidates per platform
+	// Multiple usernames should still only generate max DefaultMaxCandidatesPerPlatform candidates per platform
 	usernames := []string{"user1", "user2", "user3", "user4", "user5"}
 
 	knownURLs := map[string]bool{}
 	knownPlatforms := map[string]bool{}
 	vouchedPlatforms := map[string]bool{}
-	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms)
+	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms, DefaultMaxCandidatesPerPlatform)
 
 	// Count candidates per platform
 	platformCounts := make(map[string]int)
@@ -89,10 +89,10 @@ func TestGenerateCandidates_LimitsPerPlatform(t *testing.T) {
 		platformCounts[c.platform]++
 	}
 
-	// Verify no platform has more than maxCandidatesPerPlatform candidates
+	// Verify no platform has more than DefaultMaxCandidatesPerPlatform candidates
 	for platform, count := range platformCounts {
-		if count > maxCandidatesPerPlatform {
-			t.Errorf("platform %q has %d candidates, want at most %d", platform, count, maxCandidatesPerPlatform)
+		if count > DefaultMaxCandidatesPerPlatform {
+			t.Errorf("platform %q has %d candidates, want at most %d", platform, count, DefaultMaxCandidatesPerPlatform)
 		}
 	}
 }
@@ -104,9 +104,9 @@ func TestGenerateCandidates_PrioritizesQualityUsernames(t *testing.T) {
 	knownURLs := map[string]bool{}
 	knownPlatforms := map[string]bool{}
 	vouchedPlatforms := map[string]bool{}
-	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms)
+	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms, DefaultMaxCandidatesPerPlatform)
 
-	// Find the GitHub candidates (limited to 3)
+	// Find the GitHub candidates (limited to DefaultMaxCandidatesPerPlatform)
 	var githubUsernames []string
 	for _, c := range candidates {
 		if c.platform == "github" {
@@ -207,7 +207,7 @@ func TestGenerateCandidates_SkipsInvalidUsernames(t *testing.T) {
 	knownURLs := map[string]bool{}
 	knownPlatforms := map[string]bool{}
 	vouchedPlatforms := map[string]bool{}
-	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms)
+	candidates := generateCandidates(usernames, nil, knownURLs, knownPlatforms, vouchedPlatforms, DefaultMaxCandidatesPerPlatform)
 
 	// Check that no LinkedIn candidate was generated (dots not allowed)
 	for _, c := range candidates {
@@ -367,7 +367,7 @@ func TestGenerateCandidates_NoLinkedInGuessing(t *testing.T) {
 	knownPlatforms := map[string]bool{}
 	vouchedPlatforms := map[string]bool{}
 
-	candidates := generateCandidates(usernames, names, knownURLs, knownPlatforms, vouchedPlatforms)
+	candidates := generateCandidates(usernames, names, knownURLs, knownPlatforms, vouchedPlatforms, DefaultMaxCandidatesPerPlatform)
 
 	// Should not generate any LinkedIn candidates
 	for _, c := range candidates {

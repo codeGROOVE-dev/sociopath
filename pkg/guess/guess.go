@@ -22,9 +22,10 @@ type PlatformDetector func(url string) string
 
 // Config holds configuration for guessing.
 type Config struct {
-	Logger           *slog.Logger
-	Fetcher          Fetcher
-	PlatformDetector PlatformDetector
+	Logger                   *slog.Logger
+	Fetcher                  Fetcher
+	PlatformDetector         PlatformDetector
+	MaxCandidatesPerPlatform int // Limit candidates per platform (default: 2)
 }
 
 // Popular Mastodon servers to check.
@@ -560,6 +561,9 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	if cfg.MaxCandidatesPerPlatform <= 0 {
+		cfg.MaxCandidatesPerPlatform = DefaultMaxCandidatesPerPlatform
+	}
 
 	// Extract all known usernames
 	usernames := extractUsernamesWithLogger(known, cfg.Logger)
@@ -592,8 +596,8 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 
 	// Generate candidate URLs
 	// Pass vouchedPlatforms for name-based guessing (we skip only if vouched)
-	candidates := generateCandidates(usernames, names, knownURLs, knownPlatforms, vouchedPlatforms)
-	cfg.Logger.Info("generated guess candidates", "count", len(candidates))
+	candidates := generateCandidates(usernames, names, knownURLs, knownPlatforms, vouchedPlatforms, cfg.MaxCandidatesPerPlatform)
+	cfg.Logger.Info("generated guess candidates", "count", len(candidates), "max_per_platform", cfg.MaxCandidatesPerPlatform)
 
 	// Fetch candidates concurrently
 	var guessed []*profile.Profile
@@ -785,7 +789,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 			cfg.Logger.Debug("second round: found new usernames from guessed profiles",
 				"new_usernames", len(newUsernames), "new_names", len(newNames))
 
-			secondCandidates := generateCandidates(newUsernames, newNames, knownURLs, knownPlatforms, vouchedPlatforms)
+			secondCandidates := generateCandidates(newUsernames, newNames, knownURLs, knownPlatforms, vouchedPlatforms, cfg.MaxCandidatesPerPlatform)
 			cfg.Logger.Info("generated second round candidates", "count", len(secondCandidates))
 
 			// Fetch second round candidates
@@ -1150,8 +1154,8 @@ func isValidUsername(u string) bool {
 	return !invalid[u]
 }
 
-// maxCandidatesPerPlatform limits how many URLs we try per platform to avoid excessive requests.
-const maxCandidatesPerPlatform = 3
+// DefaultMaxCandidatesPerPlatform limits how many URLs we try per platform to avoid excessive requests.
+const DefaultMaxCandidatesPerPlatform = 2
 
 func generateCandidates(
 	usernames []string,
@@ -1159,6 +1163,7 @@ func generateCandidates(
 	knownURLs map[string]bool,
 	knownPlatforms map[string]bool,
 	_ map[string]bool, // vouchedPlatforms - unused after removing LinkedIn name-based guessing
+	maxPerPlatform int,
 ) []candidateURL {
 	// Track candidates per platform, prioritizing higher-quality guesses
 	platformCandidates := make(map[string][]candidateURL)
@@ -1180,7 +1185,7 @@ func generateCandidates(
 			}
 
 			// Skip if we already have enough candidates for this platform
-			if len(platformCandidates[pp.name]) >= maxCandidatesPerPlatform {
+			if len(platformCandidates[pp.name]) >= maxPerPlatform {
 				continue
 			}
 
@@ -1201,13 +1206,13 @@ func generateCandidates(
 		}
 
 		// Add Mastodon servers only if we don't already have a Mastodon profile
-		if !knownPlatforms["mastodon"] && len(platformCandidates["mastodon"]) < maxCandidatesPerPlatform {
+		if !knownPlatforms["mastodon"] && len(platformCandidates["mastodon"]) < maxPerPlatform {
 			// Check if username is valid for Mastodon
 			if !isValidUsernameForPlatform(username, "mastodon") {
 				continue
 			}
 			for _, server := range mastodonServers {
-				if len(platformCandidates["mastodon"]) >= maxCandidatesPerPlatform {
+				if len(platformCandidates["mastodon"]) >= maxPerPlatform {
 					break
 				}
 				url := "https://" + server + "/@" + username

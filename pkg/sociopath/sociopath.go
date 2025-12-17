@@ -25,14 +25,19 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/codeGROOVE-dev/sociopath/pkg/arstechnica"
 	"github.com/codeGROOVE-dev/sociopath/pkg/avatar"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bilibili"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bluesky"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bugcrowd"
+	"github.com/codeGROOVE-dev/sociopath/pkg/calcom"
+	"github.com/codeGROOVE-dev/sociopath/pkg/calendly"
 	"github.com/codeGROOVE-dev/sociopath/pkg/codeberg"
 	"github.com/codeGROOVE-dev/sociopath/pkg/codewars"
 	"github.com/codeGROOVE-dev/sociopath/pkg/crates"
@@ -47,6 +52,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/gitlab"
 	"github.com/codeGROOVE-dev/sociopath/pkg/goodreads"
 	"github.com/codeGROOVE-dev/sociopath/pkg/google"
+	"github.com/codeGROOVE-dev/sociopath/pkg/googlecal"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gravatar"
 	"github.com/codeGROOVE-dev/sociopath/pkg/guess"
 	"github.com/codeGROOVE-dev/sociopath/pkg/habr"
@@ -116,12 +122,13 @@ type Option func(*config)
 
 //nolint:govet // fieldalignment: intentional layout for readability
 type config struct {
-	cache          httpcache.Cacher
-	cookies        map[string]string
-	logger         *slog.Logger
-	githubToken    string
-	browserCookies bool
-	emailHints     []string // Email addresses to associate with profiles
+	cache                    httpcache.Cacher
+	cookies                  map[string]string
+	logger                   *slog.Logger
+	githubToken              string
+	browserCookies           bool
+	emailHints               []string // Email addresses to associate with profiles
+	maxCandidatesPerPlatform int      // Limit guess candidates per platform (default: 2)
 }
 
 // WithCookies sets explicit cookie values for authenticated platforms.
@@ -156,6 +163,14 @@ func WithEmailHints(emails ...string) Option {
 	return func(c *config) { c.emailHints = append(c.emailHints, emails...) }
 }
 
+// WithMaxCandidatesPerPlatform limits how many guess candidates are tried per platform.
+// This controls the number of URLs probed when guessing profiles on platforms
+// like Mastodon (multiple servers) or when trying multiple username variations.
+// Default is 2. Set to 0 to use the default.
+func WithMaxCandidatesPerPlatform(n int) Option {
+	return func(c *config) { c.maxCandidatesPerPlatform = n }
+}
+
 // Fetch retrieves a profile from the given URL.
 // The platform is automatically detected from the URL.
 //
@@ -168,6 +183,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 
 	var p *profile.Profile //nolint:varnamelen // short name is clear in this switch context
 	var err error
+	var platform string
+
+	start := time.Now()
 
 	// Try each platform's Match function in order of specificity
 	// Note: Order matters! More specific patterns should come before generic ones.
@@ -175,129 +193,207 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	// Substack must come before generic because it has specific domain pattern.
 	switch {
 	case linkedin.Match(url):
+		platform = "linkedin"
 		p, err = fetchLinkedIn(ctx, url, cfg)
 	case twitter.Match(url):
+		platform = "twitter"
 		p, err = fetchTwitter(ctx, url, cfg)
 	case linktree.Match(url):
+		platform = "linktree"
 		p, err = fetchLinktree(ctx, url, cfg)
 	case github.Match(url):
+		platform = "github"
 		p, err = fetchGitHub(ctx, url, cfg)
 	case medium.Match(url):
+		platform = "medium"
 		p, err = fetchMedium(ctx, url, cfg)
 	case microblog.Match(url):
+		platform = "microblog"
 		p, err = fetchMicroblog(ctx, url, cfg)
 	case reddit.Match(url):
+		platform = "reddit"
 		p, err = fetchReddit(ctx, url, cfg)
 	case replit.Match(url):
+		platform = "replit"
 		p, err = fetchReplit(ctx, url, cfg)
 	case youtube.Match(url):
+		platform = "youtube"
 		p, err = fetchYouTube(ctx, url, cfg)
 	case substack.Match(url):
+		platform = "substack"
 		p, err = fetchSubstack(ctx, url, cfg)
 	case bilibili.Match(url):
+		platform = "bilibili"
 		p, err = fetchBilibili(ctx, url, cfg)
 	case codeberg.Match(url):
+		platform = "codeberg"
 		p, err = fetchCodeberg(ctx, url, cfg)
 	case codewars.Match(url):
+		platform = "codewars"
 		p, err = fetchCodewars(ctx, url, cfg)
 	case bluesky.Match(url):
+		platform = "bluesky"
 		p, err = fetchBlueSky(ctx, url, cfg)
 	case devto.Match(url):
+		platform = "devto"
 		p, err = fetchDevTo(ctx, url, cfg)
 	case stackoverflow.Match(url):
+		platform = "stackoverflow"
 		p, err = fetchStackOverflow(ctx, url, cfg)
 	case habr.Match(url):
+		platform = "habr"
 		p, err = fetchHabr(ctx, url, cfg)
 	case instagram.Match(url):
+		platform = "instagram"
 		p, err = fetchInstagram(ctx, url, cfg)
 	case keybase.Match(url):
+		platform = "keybase"
 		p, err = fetchKeybase(ctx, url, cfg)
 	case crates.Match(url):
+		platform = "crates"
 		p, err = fetchCrates(ctx, url, cfg)
 	case disqus.Match(url):
+		platform = "disqus"
 		p, err = fetchDisqus(ctx, url, cfg)
 	case intensedebate.Match(url):
+		platform = "intensedebate"
 		p, err = fetchIntenseDebate(ctx, url, cfg)
 	case dockerhub.Match(url):
+		platform = "dockerhub"
 		p, err = fetchDockerHub(ctx, url, cfg)
 	case gitlab.Match(url):
+		platform = "gitlab"
 		p, err = fetchGitLab(ctx, url, cfg)
 	case tiktok.Match(url):
+		platform = "tiktok"
 		p, err = fetchTikTok(ctx, url, cfg)
 	case vkontakte.Match(url):
+		platform = "vkontakte"
 		p, err = fetchVKontakte(ctx, url, cfg)
 	case weibo.Match(url):
+		platform = "weibo"
 		p, err = fetchWeibo(ctx, url, cfg)
 	case mailru.Match(url):
+		platform = "mailru"
 		p, err = fetchMailRu(ctx, url, cfg)
 	case google.Match(url):
+		platform = "google"
 		p, err = fetchGoogle(ctx, url, cfg)
+	case googlecal.Match(url):
+		platform = "googlecal"
+		p, err = fetchGoogleCal(ctx, url, cfg)
 	case gravatar.Match(url):
+		platform = "gravatar"
 		p, err = fetchGravatar(ctx, url, cfg)
 	case hackernews.Match(url):
+		platform = "hackernews"
 		p, err = fetchHackerNews(ctx, url, cfg)
 	case hackerone.Match(url):
+		platform = "hackerone"
 		p, err = fetchHackerOne(ctx, url, cfg)
 	case bugcrowd.Match(url):
+		platform = "bugcrowd"
 		p, err = fetchBugcrowd(ctx, url, cfg)
+	case calcom.Match(url):
+		platform = "calcom"
+		p, err = fetchCalcom(ctx, url, cfg)
+	case calendly.Match(url):
+		platform = "calendly"
+		p, err = fetchCalendly(ctx, url, cfg)
 	case lobsters.Match(url):
+		platform = "lobsters"
 		p, err = fetchLobsters(ctx, url, cfg)
 	case arstechnica.Match(url):
+		platform = "arstechnica"
 		p, err = fetchArsTechnica(ctx, url, cfg)
 	case sessionize.Match(url):
+		platform = "sessionize"
 		p, err = fetchSessionize(ctx, url, cfg)
 	case slideshare.Match(url):
+		platform = "slideshare"
 		p, err = fetchSlideshare(ctx, url, cfg)
 	case strava.Match(url):
+		platform = "strava"
 		p, err = fetchStrava(ctx, url, cfg)
 	case douban.Match(url):
+		platform = "douban"
 		p, err = fetchDouban(ctx, url, cfg)
 	case juejin.Match(url):
+		platform = "juejin"
 		p, err = fetchJuejin(ctx, url, cfg)
 	case csdn.Match(url):
+		platform = "csdn"
 		p, err = fetchCSDN(ctx, url, cfg)
 	case v2ex.Match(url):
+		platform = "v2ex"
 		p, err = fetchV2EX(ctx, url, cfg)
 	case gitee.Match(url):
+		platform = "gitee"
 		p, err = fetchGitee(ctx, url, cfg)
 	case velog.Match(url):
+		platform = "velog"
 		p, err = fetchVelog(ctx, url, cfg)
 	case qiita.Match(url):
+		platform = "qiita"
 		p, err = fetchQiita(ctx, url, cfg)
 	case zenn.Match(url):
+		platform = "zenn"
 		p, err = fetchZenn(ctx, url, cfg)
 	case hashnode.Match(url):
+		platform = "hashnode"
 		p, err = fetchHashnode(ctx, url, cfg)
 	case orcid.Match(url):
+		platform = "orcid"
 		p, err = fetchORCID(ctx, url, cfg)
 	case hexpm.Match(url):
+		platform = "hexpm"
 		p, err = fetchHexpm(ctx, url, cfg)
 	case telegram.Match(url):
+		platform = "telegram"
 		p, err = fetchTelegram(ctx, url, cfg)
 	case tryhackme.Match(url):
+		platform = "tryhackme"
 		p, err = fetchTryHackMe(ctx, url, cfg)
 	case twitch.Match(url):
+		platform = "twitch"
 		p, err = fetchTwitch(ctx, url, cfg)
 	case steam.Match(url):
+		platform = "steam"
 		p, err = fetchSteam(ctx, url, cfg)
 	case leetcode.Match(url):
+		platform = "leetcode"
 		p, err = fetchLeetCode(ctx, url, cfg)
 	case goodreads.Match(url):
+		platform = "goodreads"
 		p, err = fetchGoodreads(ctx, url, cfg)
 	case rubygems.Match(url):
+		platform = "rubygems"
 		p, err = fetchRubyGems(ctx, url, cfg)
 	case huggingface.Match(url):
+		platform = "huggingface"
 		p, err = fetchHuggingFace(ctx, url, cfg)
 	case holopin.Match(url):
+		platform = "holopin"
 		p, err = fetchHolopin(ctx, url, cfg)
 	case mastodon.Match(url):
+		platform = "mastodon"
 		p, err = fetchMastodon(ctx, url, cfg)
 	case pypi.Match(url):
+		platform = "pypi"
 		p, err = fetchPyPI(ctx, url, cfg)
 	case scratch.Match(url):
+		platform = "scratch"
 		p, err = fetchScratch(ctx, url, cfg)
 	default:
+		platform = "generic"
 		p, err = fetchGeneric(ctx, url, cfg)
+	}
+
+	// Log fetch latency
+	if cfg.logger != nil {
+		latency := time.Since(start).Milliseconds()
+		cfg.logger.DebugContext(ctx, "fetch completed",
+			"platform", platform, "url", url, "latency_ms", latency, "error", err != nil)
 	}
 
 	// Apply email hints to the profile
@@ -689,6 +785,22 @@ func fetchGoogle(ctx context.Context, url string, cfg *config) (*profile.Profile
 	return client.Fetch(ctx, url)
 }
 
+func fetchGoogleCal(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []googlecal.Option
+	if cfg.cache != nil {
+		opts = append(opts, googlecal.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, googlecal.WithLogger(cfg.logger))
+	}
+
+	client, err := googlecal.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 func fetchGravatar(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []gravatar.Option
 	if cfg.cache != nil {
@@ -907,6 +1019,38 @@ func fetchBugcrowd(ctx context.Context, url string, cfg *config) (*profile.Profi
 	}
 
 	client, err := bugcrowd.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCalcom(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []calcom.Option
+	if cfg.cache != nil {
+		opts = append(opts, calcom.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, calcom.WithLogger(cfg.logger))
+	}
+
+	client, err := calcom.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCalendly(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []calendly.Option
+	if cfg.cache != nil {
+		opts = append(opts, calendly.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, calendly.WithLogger(cfg.logger))
+	}
+
+	client, err := calendly.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1331,137 +1475,190 @@ func fetchGeneric(ctx context.Context, url string, cfg *config) (*profile.Profil
 
 // FetchRecursive fetches a profile and recursively fetches all social links found.
 // It deduplicates by URL and skips same-platform links for single-account platforms.
+// URLs at each depth level are fetched in parallel for better performance.
 //
-//nolint:gocognit,varnamelen // recursive crawling with multi-platform auth fallback is inherently complex
+//nolint:gocognit,varnamelen,maintidx // recursive crawling with multi-platform auth fallback is inherently complex
 func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile.Profile, error) {
 	cfg := &config{logger: slog.Default()}
 	for _, opt := range opts {
 		opt(cfg)
 	}
 
+	var mu sync.Mutex
 	visited := make(map[string]bool)
 	collectedPlatforms := make(map[string]bool) // Track platforms we've already got profiles for
 	var out []*profile.Profile
 	initial := ""
 
-	type item struct {
-		url   string
-		depth int
-	}
 	const maxDepth, maxLinks = 3, 8
 
-	queue := []item{{url, 0}}
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
+	// Process URLs level by level, fetching all URLs at each depth in parallel
+	currentLevel := []string{url}
 
-		// Handle redirects, preserving usernames that might be lost
-		p, resolved := handleRedirectWithUsernamePreservation(ctx, cur.url, cfg.cache, cfg.logger)
-		if p != nil {
-			out = append(out, p)
-			continue
+	for depth := 0; depth <= maxDepth && len(currentLevel) > 0; depth++ {
+		cfg.logger.DebugContext(ctx, "processing depth level", "depth", depth, "urls", len(currentLevel))
+
+		// Results from this level's parallel fetches
+		type fetchResult struct {
+			profile  *profile.Profile
+			newLinks []string
 		}
-		cur.url = resolved
+		results := make(chan fetchResult, len(currentLevel))
 
-		norm := normalizeURL(cur.url)
-		if visited[norm] {
-			continue
-		}
-		visited[norm] = true
+		var wg sync.WaitGroup
+		for _, urlStr := range currentLevel {
+			// Check visited before spawning goroutine
+			mu.Lock()
+			norm := normalizeURL(urlStr)
+			if visited[norm] {
+				mu.Unlock()
+				continue
+			}
+			visited[norm] = true
+			mu.Unlock()
 
-		cfg.logger.InfoContext(ctx, "fetching profile", "url", cur.url, "depth", cur.depth, "visited", len(visited))
+			wg.Add(1) //nolint:revive // errgroup not needed for this simple use case
+			go func(urlStr string, depth int) {
+				defer wg.Done()
 
-		p, err := Fetch(ctx, cur.url, opts...)
-		if err != nil {
-			// For auth-required platforms (except LinkedIn), try generic parser
-			// LinkedIn's generic HTML has "People Also Viewed" links that cause runaway crawling
-			authPlatform := twitter.Match(cur.url) || instagram.Match(cur.url) ||
-				tiktok.Match(cur.url) || vkontakte.Match(cur.url)
-			if !authPlatform || linkedin.Match(cur.url) {
-				cfg.logger.WarnContext(ctx, "failed to fetch profile", "url", cur.url, "error", err)
-				if errors.Is(err, profile.ErrNoCookies) || errors.Is(err, profile.ErrAuthRequired) {
-					out = append(out, &profile.Profile{
-						Platform: PlatformForURL(cur.url),
-						URL:      cur.url,
-						Error:    "login required",
-					})
+				// Handle redirects, preserving usernames that might be lost
+				p, resolved := handleRedirectWithUsernamePreservation(ctx, urlStr, cfg.cache, cfg.logger)
+				if p != nil {
+					results <- fetchResult{profile: p}
+					return
 				}
-				continue
-			}
-			cfg.logger.InfoContext(ctx, "fetch failed, trying generic", "url", cur.url, "error", err)
-			if p, err = fetchGeneric(ctx, cur.url, cfg); err != nil {
-				cfg.logger.WarnContext(ctx, "generic fetch failed", "url", cur.url, "error", err)
-				continue
-			}
-			// Fix platform name after generic fallback - use actual platform, not "website"
-			if actualPlatform := PlatformForURL(cur.url); actualPlatform != "website" {
-				p.Platform = actualPlatform
-				// Don't include raw content for platforms that support post extraction
-				// (we just can't extract posts without auth, but content would be misleading)
-				p.Content = ""
-			}
-		}
-		out = append(out, p)
 
-		// Track platforms we've successfully collected profiles for.
-		// This prevents fetching additional profiles for single-account platforms
-		// (e.g., if we found lizthegrey's LinkedIn, don't fetch gmiranda's LinkedIn).
-		// Only trust profiles at depth <= 1 as being the target user. At deeper depths,
-		// we may have drifted to different people, so keep looking.
-		if isSingleAccountPlatform(p.Platform) && cur.depth <= 1 {
-			collectedPlatforms[p.Platform] = true
+				// If redirect resolved to a different URL, check if it's already visited
+				if resolved != urlStr {
+					mu.Lock()
+					norm := normalizeURL(resolved)
+					alreadyVisited := visited[norm]
+					if !alreadyVisited {
+						visited[norm] = true
+					}
+					mu.Unlock()
+					if alreadyVisited {
+						return
+					}
+					urlStr = resolved
+				}
+
+				cfg.logger.InfoContext(ctx, "fetching profile", "url", urlStr, "depth", depth)
+
+				p, err := Fetch(ctx, urlStr, opts...)
+				if err != nil {
+					// For auth-required platforms (except LinkedIn), try generic parser
+					authPlatform := twitter.Match(urlStr) || instagram.Match(urlStr) ||
+						tiktok.Match(urlStr) || vkontakte.Match(urlStr)
+					if !authPlatform || linkedin.Match(urlStr) {
+						cfg.logger.WarnContext(ctx, "failed to fetch profile", "url", urlStr, "error", err)
+						if errors.Is(err, profile.ErrNoCookies) || errors.Is(err, profile.ErrAuthRequired) {
+							results <- fetchResult{profile: &profile.Profile{
+								Platform: PlatformForURL(urlStr),
+								URL:      urlStr,
+								Error:    "login required",
+							}}
+						}
+						return
+					}
+					cfg.logger.InfoContext(ctx, "fetch failed, trying generic", "url", urlStr, "error", err)
+					if p, err = fetchGeneric(ctx, urlStr, cfg); err != nil {
+						cfg.logger.WarnContext(ctx, "generic fetch failed", "url", urlStr, "error", err)
+						return
+					}
+					if actualPlatform := PlatformForURL(urlStr); actualPlatform != "website" {
+						p.Platform = actualPlatform
+						p.Content = ""
+					}
+				}
+
+				// Collect new links for next level (only if not at max depth)
+				var newLinks []string
+				if depth < maxDepth {
+					onlyKnown := p.Platform == "website"
+
+					mu.Lock()
+					initialPlatform := initial
+					platforms := make(map[string]bool, len(collectedPlatforms))
+					maps.Copy(platforms, collectedPlatforms)
+					mu.Unlock()
+
+					for _, link := range p.SocialLinks {
+						if !isValidProfileURL(link) {
+							continue
+						}
+						linkPlatform := PlatformForURL(link)
+						if platforms[linkPlatform] {
+							continue
+						}
+						if isSingleAccountPlatform(initialPlatform) && platformMatches(link, initialPlatform) {
+							continue
+						}
+						if !onlyKnown || isSocialPlatform(link) || isSameDomainContactPage(link, urlStr) {
+							newLinks = append(newLinks, link)
+						}
+					}
+					if p.Website != "" && isValidProfileURL(p.Website) {
+						newLinks = append(newLinks, p.Website)
+					}
+
+					// Check Fields for social URLs
+					keys := make([]string, 0, len(p.Fields))
+					for k := range p.Fields {
+						keys = append(keys, k)
+					}
+					sort.Strings(keys)
+					for _, k := range keys {
+						if v := p.Fields[k]; isLikelySocialURL(k, v) && isValidProfileURL(v) {
+							newLinks = append(newLinks, v)
+						}
+					}
+
+					if len(newLinks) > maxLinks {
+						newLinks = newLinks[:maxLinks]
+					}
+				}
+
+				results <- fetchResult{profile: p, newLinks: newLinks}
+			}(urlStr, depth)
 		}
 
-		if cur.depth == 0 {
-			initial = p.Platform
-		}
-		if cur.depth >= maxDepth {
-			continue
-		}
+		// Close results channel when all goroutines complete
+		go func() {
+			wg.Wait()
+			close(results)
+		}()
 
-		// From generic pages, only follow known social platforms
-		onlyKnown := p.Platform == "website"
+		// Collect results and build next level
+		var nextLevel []string
+		for result := range results {
+			if result.profile != nil {
+				out = append(out, result.profile)
 
-		var links []string
-		for _, link := range p.SocialLinks {
-			if visited[normalizeURL(link)] || !isValidProfileURL(link) {
-				continue
+				// Track platforms and initial
+				if depth == 0 && initial == "" {
+					initial = result.profile.Platform
+				}
+				if isSingleAccountPlatform(result.profile.Platform) && depth <= 1 {
+					mu.Lock()
+					collectedPlatforms[result.profile.Platform] = true
+					mu.Unlock()
+				}
 			}
-			// Skip if we've already collected a profile for this single-account platform.
-			// Once we have the target user's LinkedIn/Twitter/etc., skip any other URLs for that platform.
-			linkPlatform := PlatformForURL(link)
-			if collectedPlatforms[linkPlatform] {
-				continue
-			}
-			if isSingleAccountPlatform(initial) && platformMatches(link, initial) {
-				continue
-			}
-			if !onlyKnown || isSocialPlatform(link) || isSameDomainContactPage(link, cur.url) {
-				links = append(links, link)
-			}
-		}
-		if p.Website != "" && !visited[normalizeURL(p.Website)] && isValidProfileURL(p.Website) {
-			links = append(links, p.Website)
-		}
 
-		// Check Fields for social URLs (sorted for determinism)
-		keys := make([]string, 0, len(p.Fields))
-		for k := range p.Fields {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			if v := p.Fields[k]; isLikelySocialURL(k, v) && !visited[normalizeURL(v)] && isValidProfileURL(v) {
-				links = append(links, v)
+			// Add new links for next level (deduped against visited)
+			for _, link := range result.newLinks {
+				mu.Lock()
+				norm := normalizeURL(link)
+				if !visited[norm] && !collectedPlatforms[PlatformForURL(link)] {
+					nextLevel = append(nextLevel, link)
+				}
+				mu.Unlock()
 			}
 		}
 
-		if len(links) > maxLinks {
-			links = links[:maxLinks]
-		}
-		for _, link := range dedupeLinks(links, visited) {
-			queue = append(queue, item{link, cur.depth + 1})
-		}
+		// Dedupe next level
+		currentLevel = dedupeLinks(nextLevel, visited)
 	}
 
 	return out, nil
@@ -1813,9 +2010,10 @@ func FetchRecursiveWithGuess(ctx context.Context, url string, opts ...Option) ([
 
 	// Guess additional profiles
 	guessCfg := guess.Config{
-		Logger:           cfg.logger,
-		Fetcher:          fetcher,
-		PlatformDetector: PlatformForURL,
+		Logger:                   cfg.logger,
+		Fetcher:                  fetcher,
+		PlatformDetector:         PlatformForURL,
+		MaxCandidatesPerPlatform: cfg.maxCandidatesPerPlatform,
 	}
 
 	guessed := guess.Related(ctx, profiles, guessCfg)
@@ -1849,9 +2047,10 @@ func GuessFromUsername(ctx context.Context, username string, opts ...Option) ([]
 
 	// Guess profiles
 	guessCfg := guess.Config{
-		Logger:           cfg.logger,
-		Fetcher:          fetcher,
-		PlatformDetector: PlatformForURL,
+		Logger:                   cfg.logger,
+		Fetcher:                  fetcher,
+		PlatformDetector:         PlatformForURL,
+		MaxCandidatesPerPlatform: cfg.maxCandidatesPerPlatform,
 	}
 
 	guessed := guess.Related(ctx, []*profile.Profile{seedProfile}, guessCfg)

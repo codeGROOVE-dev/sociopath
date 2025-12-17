@@ -171,14 +171,20 @@ func (d *Discoverer) LookupBluesky(ctx context.Context, domain string) *Result {
 	cacheKey := "dns:" + dnsKey
 
 	data, err := d.cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
-		records, err := net.DefaultResolver.LookupTXT(ctx, dnsKey)
-		if err != nil {
-			return nil, err
+		records, dnsErr := net.DefaultResolver.LookupTXT(ctx, dnsKey)
+		if dnsErr != nil {
+			return []byte(errPrefix + dnsErr.Error()), nil //nolint:nilerr // intentionally cache error as data
 		}
 		return []byte(strings.Join(records, "\n")), nil
 	}, d.cache.TTL())
 	if err != nil {
 		d.logger.DebugContext(ctx, "bluesky DNS lookup failed", "domain", domain, "error", err)
+		return nil
+	}
+
+	// Check if this is a cached error
+	if errMsg, found := strings.CutPrefix(string(data), errPrefix); found {
+		d.logger.DebugContext(ctx, "bluesky DNS lookup failed", "domain", domain, "error", errMsg)
 		return nil
 	}
 
@@ -259,31 +265,44 @@ func (d *Discoverer) LookupMatrix(ctx context.Context, domain string) *Result {
 	}
 }
 
+// errPrefix marks cached error responses.
+const errPrefix = "ERR:"
+
 // fetch performs an HTTP GET request and returns the response body.
+// Errors are cached to avoid repeated network requests for failing endpoints.
 func (d *Discoverer) fetch(ctx context.Context, urlStr string) ([]byte, error) {
 	doFetch := func(ctx context.Context) ([]byte, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
 		if err != nil {
-			return nil, err
+			return []byte(errPrefix + err.Error()), nil // cache the error
 		}
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", "sociopath/1.0")
 
 		resp, err := d.client.Do(req)
 		if err != nil {
-			return nil, err
+			return []byte(errPrefix + err.Error()), nil // cache the error
 		}
 		defer resp.Body.Close() //nolint:errcheck // response body must be closed
 
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("status %d", resp.StatusCode)
+			return fmt.Appendf(nil, "%s%d", errPrefix, resp.StatusCode), nil // cache HTTP errors
 		}
 
 		return io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	}
 
 	cacheKey := "discovery:" + httpcache.URLToKey(urlStr)
-	return d.cache.GetSet(ctx, cacheKey, doFetch, d.cache.TTL())
+	data, err := d.cache.GetSet(ctx, cacheKey, doFetch, d.cache.TTL())
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if this is a cached error
+	if errMsg, found := strings.CutPrefix(string(data), errPrefix); found {
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+	return data, nil
 }
 
 // isValidHexPubkey validates a 64-character hex string.

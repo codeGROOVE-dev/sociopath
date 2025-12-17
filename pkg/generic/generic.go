@@ -141,12 +141,19 @@ func parseHTML(data []byte, urlStr string) *profile.Profile {
 
 	p.PageTitle = htmlutil.Title(content)
 	p.Bio = htmlutil.Description(content)
+	p.AvatarURL = htmlutil.OGImage(content)
 	p.Content = content
 
 	// Extract only rel="me" links from personal websites.
 	// This avoids picking up links to collaborators/co-authors mentioned on the page.
 	// rel="me" is the standard way to indicate "this is another profile of mine".
 	p.SocialLinks = htmlutil.RelMeLinks(content)
+
+	// For contact/about pages, also extract all social media links since these
+	// pages are typically about a single person, not collaborators.
+	if isContactPage(urlStr) {
+		p.SocialLinks = append(p.SocialLinks, htmlutil.SocialLinks(content)...)
+	}
 
 	// Also extract contact/about page links for recursion
 	contactLinks := htmlutil.ContactLinks(content, urlStr)
@@ -167,6 +174,12 @@ func parseHTML(data []byte, urlStr string) *profile.Profile {
 		}
 	}
 
+	// Extract phone numbers
+	phones := htmlutil.PhoneNumbers(content)
+	if len(phones) > 0 {
+		p.Fields["phone"] = phones[0]
+	}
+
 	// Extract blog posts if this looks like a blog
 	if posts, lastActive := extractBlogPosts(content, urlStr); len(posts) > 0 {
 		p.Posts = posts
@@ -179,6 +192,16 @@ func parseHTML(data []byte, urlStr string) *profile.Profile {
 	}
 
 	return p
+}
+
+// isContactPage returns true if the URL is likely a contact or about page.
+func isContactPage(urlStr string) bool {
+	lower := strings.ToLower(urlStr)
+	return strings.Contains(lower, "/contact") ||
+		strings.Contains(lower, "/about") ||
+		strings.Contains(lower, "/links") ||
+		strings.Contains(lower, "/connect") ||
+		strings.Contains(lower, "/socials")
 }
 
 // blogPost represents a blog post with optional date for sorting.
