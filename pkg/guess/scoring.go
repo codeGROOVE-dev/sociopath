@@ -498,127 +498,96 @@ func extractInterestKeywords(text string) map[string]bool {
 
 // boostCrossPlatformMatches increases confidence for guessed profiles when the same
 // username is found on multiple platforms of the same type (e.g., GitHub and GitLab are both "code" platforms).
-// This is a strong signal because users commonly reuse usernames across similar platforms.
-// IMPORTANT: Only applies bonus when at least one profile of that type is verified (from known profiles).
-func boostCrossPlatformMatches(guessed []*profile.Profile, known []*profile.Profile, logger *slog.Logger) {
-	// Build map of verified profiles by type+username
-	verifiedByTypeUsername := make(map[string]bool)
-	for _, p := range known {
-		pType := effectivePlatformType(p.Platform)
-		if pType == profile.PlatformTypeOther || p.Username == "" {
+// Only boosts from a higher-confidence profile, capped at that source's confidence.
+// Skips profiles with conflicting display names.
+func boostCrossPlatformMatches(guessed, known []*profile.Profile, logger *slog.Logger) {
+	// Index all profiles by platformType:username
+	byKey := make(map[string][]*profile.Profile)
+	for _, p := range slices.Concat(known, guessed) {
+		pt := effectivePlatformType(p.Platform)
+		if pt == profile.PlatformTypeOther || p.Username == "" {
 			continue
 		}
-		key := string(pType) + ":" + strings.ToLower(p.Username)
-		verifiedByTypeUsername[key] = true
+		k := string(pt) + ":" + strings.ToLower(p.Username)
+		byKey[k] = append(byKey[k], p)
 	}
 
-	byTypeAndUsername := buildPlatformTypeUsernameMap(known, guessed)
-
 	for _, p := range guessed {
-		pType := effectivePlatformType(p.Platform)
-		if pType == profile.PlatformTypeOther || p.Username == "" {
+		pt := effectivePlatformType(p.Platform)
+		if pt == profile.PlatformTypeOther || p.Username == "" {
 			continue
 		}
 
-		key := string(pType) + ":" + strings.ToLower(p.Username)
-		others := byTypeAndUsername[key]
+		others := byKey[string(pt)+":"+strings.ToLower(p.Username)]
 		if len(others) < 2 {
 			continue
 		}
 
-		// Only boost if at least one profile of this type+username is verified
-		if !verifiedByTypeUsername[key] {
+		// Find best source: higher confidence, no name conflict
+		var src *profile.Profile
+		var locMatch, tzMatch bool
+		for _, o := range others {
+			if o.URL == p.URL || o.Confidence <= p.Confidence {
+				continue
+			}
+			if p.DisplayName != "" && o.DisplayName != "" && scoreName(p.DisplayName, o.DisplayName) == 0 {
+				logger.Debug("cross-platform boost skipped due to name mismatch",
+					"url", p.URL, "source_url", o.URL,
+					"name", p.DisplayName, "source_name", o.DisplayName)
+				continue
+			}
+			if src == nil || o.Confidence > src.Confidence {
+				src = o
+			}
+			if p.Location != "" && o.Location != "" && scoreLocation(p.Location, o.Location) > 0.5 {
+				locMatch = true
+			}
+			if p.UTCOffset != nil && o.UTCOffset != nil && *p.UTCOffset == *o.UTCOffset {
+				tzMatch = true
+			}
+		}
+		if src == nil {
 			continue
 		}
 
-		bonus, matchingLocation, matchingTimezone := calculateCrossPlatformBonus(p, others)
-		if bonus == 0 {
+		// 0.15 base + 0.10 each for location/timezone match, capped at source confidence
+		bonus := 0.15
+		if locMatch {
+			bonus += 0.10
+		}
+		if tzMatch {
+			bonus += 0.10
+		}
+		newConf := min(p.Confidence+bonus, src.Confidence)
+		if newConf <= p.Confidence {
 			continue
 		}
 
-		newConfidence := min(p.Confidence+bonus, 1.0)
-		if newConfidence > p.Confidence {
-			logger.Info("cross-platform boost",
-				"url", p.URL,
-				"username", p.Username,
-				"platform_type", pType,
-				"old_confidence", p.Confidence,
-				"new_confidence", newConfidence,
-				"matching_location", matchingLocation,
-				"matching_timezone", matchingTimezone)
+		logger.Info("cross-platform boost",
+			"url", p.URL, "username", p.Username, "platform_type", pt,
+			"old_confidence", p.Confidence, "new_confidence", newConf,
+			"source_url", src.URL, "source_confidence", src.Confidence,
+			"loc_match", locMatch, "tz_match", tzMatch)
 
-			p.Confidence = newConfidence
-			p.GuessMatch = append(p.GuessMatch, "cross-platform:"+string(pType))
-			if matchingLocation {
-				p.GuessMatch = append(p.GuessMatch, "cross-platform:location")
-			}
-			if matchingTimezone {
-				p.GuessMatch = append(p.GuessMatch, "cross-platform:timezone")
-			}
+		p.Confidence = newConf
+		p.GuessMatch = append(p.GuessMatch, "cross-platform:"+string(pt))
+		if locMatch {
+			p.GuessMatch = append(p.GuessMatch, "cross-platform:location")
+		}
+		if tzMatch {
+			p.GuessMatch = append(p.GuessMatch, "cross-platform:timezone")
 		}
 	}
 }
 
 // effectivePlatformType returns the platform type for cross-platform matching.
-// Package registries (PyPI, RubyGems, crates.io, npm, Docker Hub) are treated as
-// code platforms since they're closely related to code hosting.
+// Package registries are treated as code platforms since they're closely related.
 func effectivePlatformType(platform string) profile.PlatformType {
 	pType := profile.TypeOf(platform)
-	// Treat package registries as code platforms for cross-platform matching
 	if pType == profile.PlatformTypePackage {
 		return profile.PlatformTypeCode
 	}
 	return pType
-}
-
-// buildPlatformTypeUsernameMap creates a map of "platformType:username" to profiles.
-// This groups profiles by their platform type (code, blog, microblog, etc.) and username.
-// Uses effectivePlatformType to treat package registries as code platforms.
-func buildPlatformTypeUsernameMap(known, guessed []*profile.Profile) map[string][]*profile.Profile {
-	byTypeAndUsername := make(map[string][]*profile.Profile)
-	for _, profiles := range [][]*profile.Profile{known, guessed} {
-		for _, p := range profiles {
-			pType := effectivePlatformType(p.Platform)
-			if pType == profile.PlatformTypeOther || p.Username == "" {
-				continue
-			}
-			key := string(pType) + ":" + strings.ToLower(p.Username)
-			byTypeAndUsername[key] = append(byTypeAndUsername[key], p)
-		}
-	}
-	return byTypeAndUsername
-}
-
-// calculateCrossPlatformBonus calculates the confidence boost for a profile based on
-// matching profiles on other platforms of the same type.
-func calculateCrossPlatformBonus(p *profile.Profile, others []*profile.Profile) (bonus float64, matchingLocation, matchingTimezone bool) {
-	var hasOther bool
-	for _, other := range others {
-		if other.URL == p.URL {
-			continue
-		}
-		hasOther = true
-
-		if p.Location != "" && other.Location != "" && scoreLocation(p.Location, other.Location) > 0.5 {
-			matchingLocation = true
-		}
-		if p.UTCOffset != nil && other.UTCOffset != nil && *p.UTCOffset == *other.UTCOffset {
-			matchingTimezone = true
-		}
-	}
-
-	if !hasOther {
-		return 0, false, false
-	}
-
-	bonus = 0.15 // Base bonus for matching username on another platform of the same type
-	if matchingLocation {
-		bonus += 0.10
-	}
-	if matchingTimezone {
-		bonus += 0.10
-	}
-	return bonus, matchingLocation, matchingTimezone
 }
 
 // isSystemPage returns true if the URL is a system/info page on a recognized platform.

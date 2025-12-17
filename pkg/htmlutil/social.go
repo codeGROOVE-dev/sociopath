@@ -7,6 +7,8 @@ import (
 )
 
 // SocialLinks extracts social media URLs from HTML content.
+// WARNING: This extracts ALL social media URLs, including links to other people.
+// For personal websites, use RelMeLinks instead to get only the page owner's profiles.
 func SocialLinks(htmlContent string) []string {
 	var urls []string
 	seen := make(map[string]bool)
@@ -32,6 +34,38 @@ func SocialLinks(htmlContent string) []string {
 		if !seen[u] && !IsEmailURL(u) {
 			seen[u] = true
 			urls = append(urls, u)
+		}
+	}
+
+	return urls
+}
+
+// relMePattern matches anchor tags with rel="me" attribute.
+// rel="me" is the standard way to indicate "this link is another profile of mine".
+// Matches both <a rel="me" href="..."> and <a href="..." rel="me">.
+var relMePattern = regexp.MustCompile(
+	`(?i)<a[^>]+rel=["'][^"']*\bme\b[^"']*["'][^>]+href=["']([^"']+)["']` +
+		`|<a[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*\bme\b[^"']*["']`)
+
+// RelMeLinks extracts only links with rel="me" attribute from HTML content.
+// These links indicate the page owner's profiles on other platforms.
+// This is the preferred method for personal websites to avoid picking up
+// links to collaborators, co-authors, or other people mentioned on the page.
+func RelMeLinks(htmlContent string) []string {
+	var urls []string
+	seen := make(map[string]bool)
+
+	matches := relMePattern.FindAllStringSubmatch(htmlContent, -1)
+	for _, match := range matches {
+		// One of these will be non-empty depending on attribute order
+		href := match[1]
+		if href == "" {
+			href = match[2]
+		}
+		href = cleanURL(href)
+		if href != "" && !seen[href] && !IsEmailURL(href) {
+			seen[href] = true
+			urls = append(urls, href)
 		}
 	}
 
@@ -220,7 +254,21 @@ func cleanURL(s string) string {
 
 var emailPattern = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
 
-// ExtractEmailFromURL extracts an email address from URLs like "https://user@domain.com" or "http://email@example.com".
+// knownEmailProviders are domains that are definitely email providers, not web hosts.
+// URLs like http://user@gmail.com are clearly misformatted emails, not HTTP basic auth.
+var knownEmailProviders = map[string]bool{
+	"gmail.com": true, "googlemail.com": true,
+	"yahoo.com": true, "yahoo.co.uk": true, "ymail.com": true,
+	"hotmail.com": true, "outlook.com": true, "live.com": true, "msn.com": true,
+	"icloud.com": true, "me.com": true, "mac.com": true,
+	"aol.com": true, "protonmail.com": true, "proton.me": true,
+	"fastmail.com": true, "fastmail.fm": true,
+	"hey.com": true, "pm.me": true, "mail.com": true, "zoho.com": true,
+}
+
+// ExtractEmailFromURL extracts an email address from URLs like "http://user@gmail.com".
+// Only recognizes emails at known email providers to avoid confusing HTTP basic auth
+// URLs (like https://user@domain.com) with misformatted email addresses.
 // Returns the email address and true if found, empty string and false otherwise.
 func ExtractEmailFromURL(urlStr string) (string, bool) {
 	lower := strings.ToLower(urlStr)
@@ -238,12 +286,24 @@ func ExtractEmailFromURL(urlStr string) (string, bool) {
 		withoutProtocol = withoutProtocol[:idx]
 	}
 
-	// Validate it's a proper email
-	if emailPattern.MatchString(withoutProtocol) {
-		return withoutProtocol, true
+	// Validate it's a proper email pattern
+	if !emailPattern.MatchString(withoutProtocol) {
+		return "", false
 	}
 
-	return "", false
+	// Only treat as email if domain is a known email provider.
+	// This avoids confusing HTTP basic auth URLs (https://user@domain.com)
+	// with misformatted emails (http://user@gmail.com).
+	parts := strings.SplitN(withoutProtocol, "@", 2)
+	if len(parts) != 2 {
+		return "", false
+	}
+	domain := parts[1]
+	if !knownEmailProviders[domain] {
+		return "", false
+	}
+
+	return withoutProtocol, true
 }
 
 // IsEmailURL returns true if the URL is a mailto: link or an email address with http(s):// prefix.
@@ -460,6 +520,12 @@ func ContactLinks(htmlContent, baseURL string) []string {
 			continue
 		}
 
+		// Only follow contact/about pages on the same domain to avoid
+		// picking up external sites that happen to have "about" in their URL.
+		if !isSameDomain(resolved, baseURL) {
+			continue
+		}
+
 		if !seen[resolved] {
 			seen[resolved] = true
 			links = append(links, resolved)
@@ -467,6 +533,28 @@ func ContactLinks(htmlContent, baseURL string) []string {
 	}
 
 	return links
+}
+
+// isSameDomain checks if two URLs are on the same domain (ignoring www prefix).
+func isSameDomain(url1, url2 string) bool {
+	host1 := extractHost(url1)
+	host2 := extractHost(url2)
+	if host1 == "" || host2 == "" {
+		return false
+	}
+	// Normalize by removing www. prefix
+	host1 = strings.TrimPrefix(host1, "www.")
+	host2 = strings.TrimPrefix(host2, "www.")
+	return host1 == host2
+}
+
+// extractHost extracts the hostname from a URL.
+func extractHost(urlStr string) string {
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(parsed.Host)
 }
 
 func resolveURL(href, baseURL string) string {

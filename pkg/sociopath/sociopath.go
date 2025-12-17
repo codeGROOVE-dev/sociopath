@@ -1340,6 +1340,7 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 	}
 
 	visited := make(map[string]bool)
+	collectedPlatforms := make(map[string]bool) // Track platforms we've already got profiles for
 	var out []*profile.Profile
 	initial := ""
 
@@ -1402,6 +1403,15 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 		}
 		out = append(out, p)
 
+		// Track platforms we've successfully collected profiles for.
+		// This prevents fetching additional profiles for single-account platforms
+		// (e.g., if we found lizthegrey's LinkedIn, don't fetch gmiranda's LinkedIn).
+		// Only trust profiles at depth <= 1 as being the target user. At deeper depths,
+		// we may have drifted to different people, so keep looking.
+		if isSingleAccountPlatform(p.Platform) && cur.depth <= 1 {
+			collectedPlatforms[p.Platform] = true
+		}
+
 		if cur.depth == 0 {
 			initial = p.Platform
 		}
@@ -1415,6 +1425,12 @@ func FetchRecursive(ctx context.Context, url string, opts ...Option) ([]*profile
 		var links []string
 		for _, link := range p.SocialLinks {
 			if visited[normalizeURL(link)] || !isValidProfileURL(link) {
+				continue
+			}
+			// Skip if we've already collected a profile for this single-account platform.
+			// Once we have the target user's LinkedIn/Twitter/etc., skip any other URLs for that platform.
+			linkPlatform := PlatformForURL(link)
+			if collectedPlatforms[linkPlatform] {
 				continue
 			}
 			if isSingleAccountPlatform(initial) && platformMatches(link, initial) {

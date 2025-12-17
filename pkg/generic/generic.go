@@ -143,8 +143,10 @@ func parseHTML(data []byte, urlStr string) *profile.Profile {
 	p.Bio = htmlutil.Description(content)
 	p.Content = content
 
-	// Extract social links
-	p.SocialLinks = htmlutil.SocialLinks(content)
+	// Extract only rel="me" links from personal websites.
+	// This avoids picking up links to collaborators/co-authors mentioned on the page.
+	// rel="me" is the standard way to indicate "this is another profile of mine".
+	p.SocialLinks = htmlutil.RelMeLinks(content)
 
 	// Also extract contact/about page links for recursion
 	contactLinks := htmlutil.ContactLinks(content, urlStr)

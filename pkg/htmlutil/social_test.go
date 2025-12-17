@@ -13,15 +13,21 @@ func TestExtractEmailFromURL(t *testing.T) {
 		wantOK    bool
 	}{
 		{
-			name:      "https with email",
+			name:      "http basic auth URL is not an email",
 			url:       "https://user@example.com",
-			wantEmail: "user@example.com",
+			wantEmail: "",
+			wantOK:    false,
+		},
+		{
+			name:      "http with gmail email",
+			url:       "http://sanchita.mishra1718@gmail.com",
+			wantEmail: "sanchita.mishra1718@gmail.com",
 			wantOK:    true,
 		},
 		{
-			name:      "http with email",
-			url:       "http://sanchita.mishra1718@gmail.com",
-			wantEmail: "sanchita.mishra1718@gmail.com",
+			name:      "https with outlook email",
+			url:       "https://user@outlook.com",
+			wantEmail: "user@outlook.com",
 			wantOK:    true,
 		},
 		{
@@ -37,16 +43,22 @@ func TestExtractEmailFromURL(t *testing.T) {
 			wantOK:    false,
 		},
 		{
-			name:      "https with path after email",
+			name:      "http basic auth with path is not email",
 			url:       "https://user@example.com/path",
-			wantEmail: "user@example.com",
+			wantEmail: "",
+			wantOK:    false,
+		},
+		{
+			name:      "HTTPS uppercase with known provider",
+			url:       "HTTPS://user@gmail.com",
+			wantEmail: "user@gmail.com",
 			wantOK:    true,
 		},
 		{
-			name:      "HTTPS uppercase",
-			url:       "HTTPS://user@example.com",
-			wantEmail: "user@example.com",
-			wantOK:    true,
+			name:      "unknown domain is not treated as email",
+			url:       "https://user@domain.com",
+			wantEmail: "",
+			wantOK:    false,
 		},
 	}
 
@@ -69,8 +81,8 @@ func TestIsEmailURL(t *testing.T) {
 		url  string
 		want bool
 	}{
-		{"https email", "https://user@example.com", true},
-		{"http email", "http://user@example.com", true},
+		{"http basic auth is not email", "https://user@example.com", false},
+		{"http with known provider is email", "http://user@gmail.com", true},
 		{"mailto link", "mailto:user@example.com", true},
 		{"mailto uppercase", "MAILTO:user@example.com", true},
 		{"regular URL", "https://example.com", false},
@@ -82,6 +94,62 @@ func TestIsEmailURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := IsEmailURL(tt.url); got != tt.want {
 				t.Errorf("IsEmailURL(%q) = %v, want %v", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRelMeLinks(t *testing.T) {
+	tests := []struct {
+		name string
+		html string
+		want []string
+	}{
+		{
+			name: "rel me link with href first",
+			html: `<a href="https://twitter.com/lizthegrey" rel="me">Twitter</a>`,
+			want: []string{"https://twitter.com/lizthegrey"},
+		},
+		{
+			name: "rel me link with rel first",
+			html: `<a rel="me" href="https://github.com/lizthegrey">GitHub</a>`,
+			want: []string{"https://github.com/lizthegrey"},
+		},
+		{
+			name: "rel me with other values",
+			html: `<a href="https://mastodon.social/@liz" rel="noopener me noreferrer">Mastodon</a>`,
+			want: []string{"https://mastodon.social/@liz"},
+		},
+		{
+			name: "regular link without rel me is ignored",
+			html: `<a href="https://twitter.com/sethvargo">Seth Vargo</a>`,
+			want: nil,
+		},
+		{
+			name: "mixed rel me and regular links",
+			html: `<p>Follow me: <a href="https://twitter.com/lizthegrey" rel="me">@lizthegrey</a></p>
+			       <p>Co-author: <a href="https://twitter.com/sethvargo">@sethvargo</a></p>`,
+			want: []string{"https://twitter.com/lizthegrey"},
+		},
+		{
+			name: "multiple rel me links",
+			html: `<a rel="me" href="https://twitter.com/user">Twitter</a>
+			       <a rel="me" href="https://github.com/user">GitHub</a>`,
+			want: []string{"https://twitter.com/user", "https://github.com/user"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RelMeLinks(tt.html)
+			if len(got) != len(tt.want) {
+				t.Errorf("RelMeLinks() = %v, want %v", got, tt.want)
+				return
+			}
+			for i, u := range got {
+				if u != tt.want[i] {
+					t.Errorf("RelMeLinks()[%d] = %q, want %q", i, u, tt.want[i])
+				}
 			}
 		})
 	}
