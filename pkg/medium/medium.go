@@ -19,6 +19,18 @@ import (
 
 const platform = "medium"
 
+// Pre-compiled patterns for URL matching and extraction.
+var (
+	subdomainPattern  = regexp.MustCompile(`^https?://([a-z0-9_-]+)\.medium\.com/?$`)
+	atUsernamePattern = regexp.MustCompile(`medium\.com/@([^/?#]+)`)
+	userPathPattern   = regexp.MustCompile(`medium\.com/user/([^/?#]+)`)
+	subdomainExtract  = regexp.MustCompile(`^([a-zA-Z0-9_-]+)\.medium\.com`)
+	followerPattern   = regexp.MustCompile(`(\d+(?:\.\d+)?[KMk]?)\s*(?:Followers|followers)`)
+	ogImagePattern    = regexp.MustCompile(
+		`property=["']og:image["'][^>]+content=["']([^"']+)["']` +
+			`|content=["']([^"']+)["'][^>]+property=["']og:image["']`)
+)
+
 // platformInfo implements profile.Platform for Medium.
 type platformInfo struct{}
 
@@ -32,9 +44,9 @@ func init() { profile.Register(platformInfo{}) }
 // Match returns true if the URL is a Medium profile URL.
 func Match(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
-	// Match medium.com/@username or custom domains
 	return strings.Contains(lower, "medium.com/@") ||
-		(strings.Contains(lower, "medium.com") && strings.Contains(lower, "/user/"))
+		(strings.Contains(lower, "medium.com") && strings.Contains(lower, "/user/")) ||
+		subdomainPattern.MatchString(lower)
 }
 
 // AuthRequired returns false because Medium profiles are public.
@@ -172,8 +184,16 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	// Extract bio/description
 	prof.Bio = htmlutil.Description(html)
 
+	// Extract avatar from og:image meta tag (handles both attribute orders)
+	if matches := ogImagePattern.FindStringSubmatch(html); len(matches) > 1 {
+		if matches[1] != "" {
+			prof.AvatarURL = matches[1]
+		} else if matches[2] != "" {
+			prof.AvatarURL = matches[2]
+		}
+	}
+
 	// Try to extract follower count
-	followerPattern := regexp.MustCompile(`(\d+(?:\.\d+)?[KMk]?)\s*(?:Followers|followers)`)
 	if matches := followerPattern.FindStringSubmatch(html); len(matches) > 1 {
 		prof.Fields["followers"] = matches[1]
 	}
@@ -199,22 +219,19 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 }
 
 func extractUsername(urlStr string) string {
-	// Remove protocol
-	urlStr = strings.TrimPrefix(urlStr, "https://")
-	urlStr = strings.TrimPrefix(urlStr, "http://")
+	// Remove protocol for subdomain matching
+	stripped := strings.TrimPrefix(strings.TrimPrefix(urlStr, "https://"), "http://")
 
-	// Extract medium.com/@username pattern
-	re := regexp.MustCompile(`medium\.com/@([^/?#]+)`)
-	if matches := re.FindStringSubmatch(urlStr); len(matches) > 1 {
+	// Try each pattern in order of specificity
+	if matches := atUsernamePattern.FindStringSubmatch(urlStr); len(matches) > 1 {
 		return matches[1]
 	}
-
-	// Also try /user/ pattern
-	re2 := regexp.MustCompile(`medium\.com/user/([^/?#]+)`)
-	if matches := re2.FindStringSubmatch(urlStr); len(matches) > 1 {
+	if matches := userPathPattern.FindStringSubmatch(urlStr); len(matches) > 1 {
 		return matches[1]
 	}
-
+	if matches := subdomainExtract.FindStringSubmatch(stripped); len(matches) > 1 {
+		return matches[1]
+	}
 	return ""
 }
 

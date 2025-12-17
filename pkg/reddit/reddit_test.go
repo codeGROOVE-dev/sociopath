@@ -250,23 +250,42 @@ func TestExtractSubreddits(t *testing.T) {
 }
 
 func TestExtractPosts(t *testing.T) {
+	// HTML structure that matches actual old.reddit.com format with timestamps
 	html := `
 <div class=" thing link" data-subreddit="golang">
+	<p class="tagline">
+		<time datetime="2025-12-01T10:30:00+00:00" class="live-timestamp">15 days ago</time>
+	</p>
 	<a class="title" href="/r/golang/test">How to use Go interfaces effectively</a>
 </div>
 <div class=" thing link" data-subreddit="kubernetes">
+	<p class="tagline">
+		<time datetime="2025-11-15T14:00:00+00:00" class="live-timestamp">1 month ago</time>
+	</p>
 	<a class="title" href="/r/kubernetes/test">Kubernetes deployment strategies</a>
 </div>
 <div class=" thing comment" data-subreddit="golang">
+	<p class="tagline">
+		<time datetime="2025-12-10T09:15:00+00:00" class="live-timestamp">6 days ago</time>
+	</p>
 	<div class="md"><p>This is a longer comment about Go programming that should be included.</p></div>
 </div>
 <div class=" thing comment" data-subreddit="rust">
+	<p class="tagline">
+		<time datetime="2025-12-05T12:00:00+00:00" class="live-timestamp">11 days ago</time>
+	</p>
 	<div class="md"><p>Short</p></div>
 </div>
 <div class=" thing comment" data-subreddit="programming">
+	<p class="tagline">
+		<time datetime="2025-12-08T16:45:00+00:00" class="live-timestamp">8 days ago</time>
+	</p>
 	<div class="md"><p>Another good comment that has enough content to be included in results.</p></div>
 </div>
 <div class=" thing comment" data-subreddit="test">
+	<p class="tagline">
+		<time datetime="2025-01-01T00:00:00+00:00" class="live-timestamp">11 months ago</time>
+	</p>
 	<div class="md"><p>This post is archived automatically archived.</p></div>
 </div>`
 
@@ -277,7 +296,7 @@ func TestExtractPosts(t *testing.T) {
 		t.Errorf("extractPosts() returned %d posts, want 4: %v", len(posts), posts)
 	}
 
-	// Verify first two are posts with titles
+	// Verify first two are posts with titles and dates
 	postCount := 0
 	commentCount := 0
 	for _, p := range posts {
@@ -290,6 +309,9 @@ func TestExtractPosts(t *testing.T) {
 			if p.Category == "" {
 				t.Error("post.Category is empty for PostTypePost")
 			}
+			if p.Date == "" {
+				t.Error("post.Date is empty for PostTypePost")
+			}
 		case profile.PostTypeComment:
 			commentCount++
 			if p.Content == "" {
@@ -297,6 +319,9 @@ func TestExtractPosts(t *testing.T) {
 			}
 			if p.Category == "" {
 				t.Error("post.Category is empty for PostTypeComment")
+			}
+			if p.Date == "" {
+				t.Error("post.Date is empty for PostTypeComment")
 			}
 		case profile.PostTypeVideo, profile.PostTypeArticle, profile.PostTypeQuestion, profile.PostTypeAnswer, profile.PostTypeRepository:
 			t.Errorf("unexpected post type: %s", p.Type)
@@ -311,7 +336,27 @@ func TestExtractPosts(t *testing.T) {
 	}
 }
 
-func TestIsGenericSubreddit(t *testing.T) {
+func TestFormatDate(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"2025-12-04T01:13:11+00:00", "2025-12-04"},
+		{"2025-01-15T14:30:00+00:00", "2025-01-15"},
+		{"", ""},
+		{"invalid", "invalid"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := formatDate(tt.input); got != tt.want {
+				t.Errorf("formatDate(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenericSubreddits(t *testing.T) {
 	tests := []struct {
 		sub  string
 		want bool
@@ -325,8 +370,8 @@ func TestIsGenericSubreddit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.sub, func(t *testing.T) {
-			if got := isGenericSubreddit(tt.sub); got != tt.want {
-				t.Errorf("isGenericSubreddit(%q) = %v, want %v", tt.sub, got, tt.want)
+			if got := genericSubreddits[tt.sub]; got != tt.want {
+				t.Errorf("genericSubreddits[%q] = %v, want %v", tt.sub, got, tt.want)
 			}
 		})
 	}

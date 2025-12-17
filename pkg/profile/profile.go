@@ -63,6 +63,7 @@ type Post struct {
 	Content  string   `json:"content,omitempty"`  // Body text or description
 	URL      string   `json:"url,omitempty"`      // Link to the original content
 	Category string   `json:"category,omitempty"` // Category (subreddit, channel, topic, etc.)
+	Date     string   `json:"date,omitempty"`     // Date/timestamp of the post (ISO 8601 or human-readable)
 }
 
 // Repository represents a code repository (pinned/popular on GitHub, etc.).

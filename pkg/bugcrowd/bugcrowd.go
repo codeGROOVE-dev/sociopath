@@ -108,6 +108,7 @@ func New(_ context.Context, opts ...Option) (*Client, error) {
 type profileResponse struct {
 	Username          string  `json:"username"`
 	AvatarURL         string  `json:"avatarUrl"`
+	BannerImageURL    string  `json:"bannerImageUrl"`
 	AccentColor       *string `json:"accentColor"`
 	CountryCode       string  `json:"countryCode"`
 	TwitterUsername   *string `json:"twitterUsername"`
@@ -116,6 +117,18 @@ type profileResponse struct {
 	Biography         string  `json:"biography"`
 	IdentityVerified  bool    `json:"identityVerified"`
 	ProfileVisibility string  `json:"profileVisibility"`
+}
+
+// performanceStatsResponse contains statistics including activity date range.
+type performanceStatsResponse struct {
+	DateRanges []dateRange `json:"dateRanges"`
+}
+
+type dateRange struct {
+	Name      string `json:"name"`
+	StartDate string `json:"startDate"`
+	EndDate   string `json:"endDate"`
+	Active    bool   `json:"active"`
 }
 
 // Fetch retrieves a Bugcrowd profile.
@@ -151,19 +164,57 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, profile.ErrProfileNotFound
 	}
 
-	return parseProfile(ctx, &resp, urlStr, c.logger), nil
+	// Fetch performance statistics for account creation date
+	createdAt := c.fetchCreatedAt(ctx, username)
+
+	return parseProfile(ctx, &resp, urlStr, createdAt, c.logger), nil
 }
 
-func parseProfile(ctx context.Context, data *profileResponse, profileURL string, logger *slog.Logger) *profile.Profile {
-	prof := &profile.Profile{
-		Platform: platform,
-		URL:      profileURL,
-		Username: data.Username,
-		Bio:      data.Biography,
-		Fields:   make(map[string]string),
+// fetchCreatedAt retrieves the account creation date from performance statistics.
+func (c *Client) fetchCreatedAt(ctx context.Context, username string) string {
+	statsURL := fmt.Sprintf("https://bugcrowd.com/profile-service/v1/profiles/%s/performanceStatistics", username)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, statsURL, http.NoBody)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0")
+
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		return ""
 	}
 
-	if data.AvatarURL != "" {
+	var stats performanceStatsResponse
+	if err := json.Unmarshal(body, &stats); err != nil {
+		return ""
+	}
+
+	// Find the "All time" date range - its start date is the account creation/first activity date
+	for _, dr := range stats.DateRanges {
+		if dr.Name == "All time" && dr.StartDate != "" {
+			return dr.StartDate
+		}
+	}
+
+	return ""
+}
+
+func parseProfile(ctx context.Context, data *profileResponse, profileURL, createdAt string, logger *slog.Logger) *profile.Profile {
+	prof := &profile.Profile{
+		Platform:  platform,
+		URL:       profileURL,
+		Username:  data.Username,
+		Bio:       data.Biography,
+		CreatedAt: createdAt,
+		Fields:    make(map[string]string),
+	}
+
+	// Prefer banner image (typically a real photo) over generic avatar icon
+	if data.BannerImageURL != "" {
+		prof.AvatarURL = data.BannerImageURL
+	} else if data.AvatarURL != "" {
 		prof.AvatarURL = data.AvatarURL
 	}
 

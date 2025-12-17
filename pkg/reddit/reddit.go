@@ -17,6 +17,40 @@ import (
 
 const platform = "reddit"
 
+// Pre-compiled patterns for parsing Reddit HTML.
+var (
+	usernameRE     = regexp.MustCompile(`reddit\.com/(?:user|u)/([^/?#]+)`)
+	postKarmaRE    = regexp.MustCompile(`(\d+(?:,\d+)?)\s*(?:post|link)\s*karma`)
+	commentKarmaRE = regexp.MustCompile(`(\d+(?:,\d+)?)\s*comment\s*karma`)
+	cakeDayRE      = regexp.MustCompile(`(?i)redditor since.*?(\d{4})`)
+	subredditRE    = regexp.MustCompile(`data-subreddit="([^"]+)"`)
+	postRE         = regexp.MustCompile(
+		`(?s)<div[^>]+class="[^"]*\blink\b[^"]*"[^>]+data-subreddit="([^"]+)"[^>]*>` +
+			`.*?<time[^>]+datetime="([^"]+)"[^>]*>` +
+			`.*?<a[^>]+class="[^"]*\btitle\b[^"]*"[^>]*>([^<]+)</a>`)
+	commentRE = regexp.MustCompile(
+		`(?s)<div[^>]+class="[^"]*\bcomment\b[^"]*"[^>]+data-subreddit="([^"]+)"[^>]*>` +
+			`.*?<time[^>]+datetime="([^"]+)"[^>]*>` +
+			`.*?<div class="md"[^>]*>(.*?)</div>`)
+	htmlTagRE         = regexp.MustCompile(`<[^>]*>`)
+	genericSubreddits = map[string]bool{
+		"AskReddit": true, "pics": true, "funny": true, "movies": true,
+		"gaming": true, "worldnews": true, "news": true, "todayilearned": true,
+		"nottheonion": true, "explainlikeimfive": true, "mildlyinteresting": true,
+		"DIY": true, "videos": true, "OldSchoolCool": true, "TwoXChromosomes": true,
+		"tifu": true, "Music": true, "books": true, "LifeProTips": true,
+		"dataisbeautiful": true, "aww": true, "science": true, "space": true,
+		"Showerthoughts": true, "askscience": true, "Jokes": true, "IAmA": true,
+		"Futurology": true, "sports": true, "UpliftingNews": true, "food": true,
+		"nosleep": true, "creepy": true, "history": true, "gifs": true,
+		"InternetIsBeautiful": true, "GetMotivated": true, "gadgets": true,
+		"announcements": true, "WritingPrompts": true, "philosophy": true,
+		"Documentaries": true, "EarthPorn": true, "photoshopbattles": true,
+		"listentothis": true, "blog": true, "all": true, "popular": true,
+		"reddit": true,
+	}
+)
+
 // platformInfo implements profile.Platform for Reddit.
 type platformInfo struct{}
 
@@ -28,8 +62,8 @@ func (platformInfo) AuthRequired() bool         { return AuthRequired() }
 func init() { profile.Register(platformInfo{}) }
 
 // Match returns true if the URL is a Reddit user profile URL.
-func Match(urlStr string) bool {
-	lower := strings.ToLower(urlStr)
+func Match(url string) bool {
+	lower := strings.ToLower(url)
 	return strings.Contains(lower, "reddit.com/user/") ||
 		strings.Contains(lower, "reddit.com/u/")
 }
@@ -77,17 +111,17 @@ func New(ctx context.Context, opts ...Option) (*Client, error) {
 }
 
 // Fetch retrieves a Reddit profile.
-func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, error) {
-	username := extractUsername(urlStr)
-	if username == "" {
-		return nil, fmt.Errorf("could not extract username from: %s", urlStr)
+func (c *Client) Fetch(ctx context.Context, url string) (*profile.Profile, error) {
+	user := extractUsername(url)
+	if user == "" {
+		return nil, fmt.Errorf("could not extract username from: %s", url)
 	}
 
 	// Normalize to old.reddit.com for simpler HTML parsing
-	normalizedURL := fmt.Sprintf("https://old.reddit.com/user/%s", username)
-	c.logger.InfoContext(ctx, "fetching reddit profile", "url", normalizedURL, "username", username)
+	url = fmt.Sprintf("https://old.reddit.com/user/%s", user)
+	c.logger.InfoContext(ctx, "fetching reddit profile", "url", url, "username", user)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, normalizedURL, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -98,229 +132,163 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, err
 	}
 
-	return parseProfile(string(body), normalizedURL, username)
+	return parseProfile(string(body), url, user)
 }
 
-func parseProfile(html, url, username string) (*profile.Profile, error) {
-	prof := &profile.Profile{
+func parseProfile(html, url, user string) (*profile.Profile, error) {
+	p := &profile.Profile{
 		Platform: platform,
 		URL:      url,
-		Username: username,
+		Username: user,
 		Fields:   make(map[string]string),
 	}
 
 	// Extract name from title
-	prof.PageTitle = htmlutil.Title(html)
-	if prof.PageTitle != "" {
-		// Clean up "overview for username - Reddit" to get display name
-		displayName := strings.TrimPrefix(prof.PageTitle, "overview for ")
-		if idx := strings.Index(displayName, " - Reddit"); idx != -1 {
-			displayName = strings.TrimSpace(displayName[:idx])
+	p.PageTitle = htmlutil.Title(html)
+	if p.PageTitle != "" {
+		name := strings.TrimPrefix(p.PageTitle, "overview for ")
+		if idx := strings.Index(name, " - Reddit"); idx != -1 {
+			name = strings.TrimSpace(name[:idx])
 		}
-		prof.DisplayName = displayName
+		p.DisplayName = name
 	}
-	if prof.DisplayName == "" {
-		prof.DisplayName = username
+	if p.DisplayName == "" {
+		p.DisplayName = user
 	}
 
 	// Extract karma
-	karmaPattern := regexp.MustCompile(`(\d+(?:,\d+)?)\s*(?:post|link)\s*karma`)
-	if matches := karmaPattern.FindStringSubmatch(html); len(matches) > 1 {
-		prof.Fields["post_karma"] = strings.ReplaceAll(matches[1], ",", "")
+	if m := postKarmaRE.FindStringSubmatch(html); len(m) > 1 {
+		p.Fields["post_karma"] = strings.ReplaceAll(m[1], ",", "")
 	}
-
-	commentKarmaPattern := regexp.MustCompile(`(\d+(?:,\d+)?)\s*comment\s*karma`)
-	if matches := commentKarmaPattern.FindStringSubmatch(html); len(matches) > 1 {
-		prof.Fields["comment_karma"] = strings.ReplaceAll(matches[1], ",", "")
+	if m := commentKarmaRE.FindStringSubmatch(html); len(m) > 1 {
+		p.Fields["comment_karma"] = strings.ReplaceAll(m[1], ",", "")
 	}
 
 	// Extract cake day (account creation date)
-	cakeDayPattern := regexp.MustCompile(`(?i)redditor since.*?(\d{4})`)
-	if matches := cakeDayPattern.FindStringSubmatch(html); len(matches) > 1 {
-		prof.CreatedAt = matches[1] // Year only
+	if m := cakeDayRE.FindStringSubmatch(html); len(m) > 1 {
+		p.CreatedAt = m[1]
 	}
 
 	// Extract posts and comments with subreddit context
-	prof.Posts = extractPosts(html, 50)
+	p.Posts = extractPosts(html, 50)
 
 	// Extract unique subreddits from posts
-	subreddits := extractSubreddits(html)
-	if len(subreddits) > 0 {
-		prof.Fields["subreddits"] = strings.Join(subreddits, ", ")
+	if subs := extractSubreddits(html); len(subs) > 0 {
+		p.Fields["subreddits"] = strings.Join(subs, ", ")
 	}
 
-	// Extract social links
-	prof.SocialLinks = htmlutil.SocialLinks(html)
-
-	// Filter out Reddit's own links
-	var filtered []string
-	for _, link := range prof.SocialLinks {
+	// Extract social links, filtering out Reddit's own
+	for _, link := range htmlutil.SocialLinks(html) {
 		if !strings.Contains(link, "reddit.com") &&
 			!strings.Contains(link, "redd.it") &&
 			!strings.Contains(link, "redditblog.com") {
-			filtered = append(filtered, link)
+			p.SocialLinks = append(p.SocialLinks, link)
 		}
 	}
-	prof.SocialLinks = filtered
 
-	return prof, nil
+	return p, nil
 }
 
-func extractUsername(urlStr string) string {
-	// Remove protocol
-	urlStr = strings.TrimPrefix(urlStr, "https://")
-	urlStr = strings.TrimPrefix(urlStr, "http://")
-
-	// Extract reddit.com/user/username or reddit.com/u/username
-	re := regexp.MustCompile(`reddit\.com/(?:user|u)/([^/?#]+)`)
-	if matches := re.FindStringSubmatch(urlStr); len(matches) > 1 {
-		return matches[1]
+func extractUsername(url string) string {
+	if m := usernameRE.FindStringSubmatch(url); len(m) > 1 {
+		return m[1]
 	}
-
 	return ""
 }
 
 // extractSubreddits extracts subreddit names from Reddit profile HTML.
 func extractSubreddits(html string) []string {
-	// Extract from data-subreddit attributes in comment/post divs
-	pattern := regexp.MustCompile(`data-subreddit="([^"]+)"`)
-	matches := pattern.FindAllStringSubmatch(html, -1)
-
+	matches := subredditRE.FindAllStringSubmatch(html, -1)
 	seen := make(map[string]bool)
-	var subreddits []string
+	var subs []string
 
-	for _, match := range matches {
-		if len(match) > 1 {
-			sub := match[1]
-			// Skip user profiles (like u_username)
-			if strings.HasPrefix(sub, "u_") {
-				continue
-			}
-			// Skip generic/common subreddits
-			if isGenericSubreddit(sub) {
-				continue
-			}
-			if !seen[sub] {
-				seen[sub] = true
-				subreddits = append(subreddits, sub)
-			}
+	for _, m := range matches {
+		if len(m) <= 1 {
+			continue
 		}
+		sub := m[1]
+		if strings.HasPrefix(sub, "u_") || genericSubreddits[sub] || seen[sub] {
+			continue
+		}
+		seen[sub] = true
+		subs = append(subs, sub)
 	}
 
-	// Limit to top 10 most relevant subreddits
-	if len(subreddits) > 10 {
-		subreddits = subreddits[:10]
+	if len(subs) > 10 {
+		subs = subs[:10]
 	}
-
-	return subreddits
-}
-
-// isGenericSubreddit returns true for very common/generic subreddits that don't indicate interests.
-func isGenericSubreddit(sub string) bool {
-	generic := map[string]bool{
-		"AskReddit": true, "pics": true, "funny": true, "movies": true,
-		"gaming": true, "worldnews": true, "news": true, "todayilearned": true,
-		"nottheonion": true, "explainlikeimfive": true, "mildlyinteresting": true,
-		"DIY": true, "videos": true, "OldSchoolCool": true, "TwoXChromosomes": true,
-		"tifu": true, "Music": true, "books": true, "LifeProTips": true,
-		"dataisbeautiful": true, "aww": true, "science": true, "space": true,
-		"Showerthoughts": true, "askscience": true, "Jokes": true, "IAmA": true,
-		"Futurology": true, "sports": true, "UpliftingNews": true, "food": true,
-		"nosleep": true, "creepy": true, "history": true, "gifs": true,
-		"InternetIsBeautiful": true, "GetMotivated": true, "gadgets": true,
-		"announcements": true, "WritingPrompts": true, "philosophy": true,
-		"Documentaries": true, "EarthPorn": true, "photoshopbattles": true,
-		"listentothis": true, "blog": true, "all": true, "popular": true,
-		"reddit": true,
-	}
-	return generic[sub]
+	return subs
 }
 
 // extractPosts extracts posts and comments from Reddit profile HTML.
-// Posts have titles (submitted links/self-posts), comments have content text.
 func extractPosts(html string, limit int) []profile.Post {
 	var posts []profile.Post
 
-	// Pattern to match each "thing" div (post or comment) with its subreddit and content
-	// Posts: class contains "link" and have data-subreddit, with title in <a class="title">
-	// Comments: class contains "comment" and have data-subreddit, with content in <div class="md">
-
-	// Extract submitted posts (links/self-posts) - look for "thing ... link" divs
-	postRE := `(?s)<div[^>]+class="[^"]*\blink\b[^"]*"[^>]+data-subreddit="([^"]+)"[^>]*>` +
-		`.*?<a[^>]+class="[^"]*\btitle\b[^"]*"[^>]*>([^<]+)</a>`
-	postPattern := regexp.MustCompile(postRE)
-	postMatches := postPattern.FindAllStringSubmatch(html, -1)
-
-	for _, match := range postMatches {
-		if len(match) > 2 && len(posts) < limit {
-			subreddit := match[1]
-			title := strings.TrimSpace(stripHTML(match[2]))
-			if title == "" {
-				continue
-			}
-			posts = append(posts, profile.Post{
-				Type:     profile.PostTypePost,
-				Title:    title,
-				Category: subreddit,
-			})
-		}
-	}
-
-	// Extract comments - look for "thing ... comment" divs
-	// Use a more permissive pattern that captures the entire md content including links
-	commentRE := `(?s)<div[^>]+class="[^"]*\bcomment\b[^"]*"[^>]+data-subreddit="([^"]+)"[^>]*>` +
-		`.*?<div class="md"[^>]*>(.*?)</div>`
-	commentPattern := regexp.MustCompile(commentRE)
-	commentMatches := commentPattern.FindAllStringSubmatch(html, -1)
-
-	for _, match := range commentMatches {
-		if len(match) <= 2 || len(posts) >= limit {
+	// Extract submitted posts
+	for _, m := range postRE.FindAllStringSubmatch(html, -1) {
+		if len(m) <= 3 || len(posts) >= limit {
 			continue
 		}
+		title := strings.TrimSpace(stripHTML(m[3]))
+		if title == "" {
+			continue
+		}
+		posts = append(posts, profile.Post{
+			Type:     profile.PostTypePost,
+			Title:    title,
+			Category: m[1],
+			Date:     formatDate(m[2]),
+		})
+	}
 
-		subreddit := match[1]
-		// Strip HTML tags to get plain text (handles links, formatting, etc.)
-		text := strings.TrimSpace(stripHTML(match[2]))
-
-		// Skip very short comments
+	// Extract comments
+	for _, m := range commentRE.FindAllStringSubmatch(html, -1) {
+		if len(m) <= 3 || len(posts) >= limit {
+			continue
+		}
+		text := strings.TrimSpace(stripHTML(m[3]))
 		if len(text) < 20 {
 			continue
 		}
-
-		// Skip generic messages
-		if strings.Contains(text, "archived post") ||
-			strings.Contains(text, "automatically archived") {
+		if strings.Contains(text, "archived post") || strings.Contains(text, "automatically archived") {
 			continue
 		}
-
-		// Limit length
 		if len(text) > 200 {
 			text = text[:200] + "..."
 		}
-
 		posts = append(posts, profile.Post{
 			Type:     profile.PostTypeComment,
 			Content:  text,
-			Category: subreddit,
+			Category: m[1],
+			Date:     formatDate(m[2]),
 		})
 	}
 
 	return posts
 }
 
-// stripHTML removes HTML tags from a string (simple implementation).
-func stripHTML(s string) string {
-	// Remove HTML tags
-	tagPattern := regexp.MustCompile(`<[^>]*>`)
-	s = tagPattern.ReplaceAllString(s, "")
+// formatDate converts ISO 8601 datetime to YYYY-MM-DD.
+func formatDate(dt string) string {
+	if dt == "" {
+		return ""
+	}
+	t, err := time.Parse(time.RFC3339, dt)
+	if err != nil {
+		if t, err = time.Parse("2006-01-02T15:04:05", dt); err != nil {
+			return dt
+		}
+	}
+	return t.Format("2006-01-02")
+}
 
-	// Decode HTML entities
+// stripHTML removes HTML tags and decodes entities.
+func stripHTML(s string) string {
+	s = htmlTagRE.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, "&lt;", "<")
 	s = strings.ReplaceAll(s, "&gt;", ">")
 	s = strings.ReplaceAll(s, "&amp;", "&")
 	s = strings.ReplaceAll(s, "&quot;", "\"")
 	s = strings.ReplaceAll(s, "&#39;", "'")
 	s = strings.ReplaceAll(s, "&nbsp;", " ")
-
 	return s
 }
