@@ -105,6 +105,9 @@ func (b *BraveSearcher) Search(ctx context.Context, query string) ([]SearchResul
 		if err != nil {
 			return nil, err
 		}
+		if err := checkCachedError(data); err != nil {
+			return nil, err
+		}
 		return b.parseResults(data)
 	}
 
@@ -112,16 +115,31 @@ func (b *BraveSearcher) Search(ctx context.Context, query string) ([]SearchResul
 	if err != nil {
 		return nil, err
 	}
+	if err := checkCachedError(data); err != nil {
+		return nil, err
+	}
 	return b.parseResults(data)
 }
 
-// doSearch performs the actual API call.
+// checkCachedError checks if data contains a cached error marker.
+func checkCachedError(data []byte) error {
+	s := string(data)
+	if errCode, found := strings.CutPrefix(s, "ERROR:"); found {
+		return fmt.Errorf("brave API returned %s", errCode)
+	}
+	if errMsg, found := strings.CutPrefix(s, "NETERR:"); found {
+		return fmt.Errorf("network error: %s", errMsg)
+	}
+	return nil
+}
+
+// doSearch performs the actual API call, returning error markers for caching.
 func (b *BraveSearcher) doSearch(ctx context.Context, query string) ([]byte, error) {
 	endpoint := "https://api.search.brave.com/res/v1/web/search"
 
 	u, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("parse endpoint: %w", err)
+		return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
 	}
 
 	q := u.Query()
@@ -131,7 +149,7 @@ func (b *BraveSearcher) doSearch(ctx context.Context, query string) ([]byte, err
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
 	}
 
 	req.Header.Set("Accept", "application/json")
@@ -143,16 +161,12 @@ func (b *BraveSearcher) doSearch(ctx context.Context, query string) ([]byte, err
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("execute request: %w", err)
+		return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
 	}
 	defer resp.Body.Close() //nolint:errcheck // best effort cleanup
 
 	if resp.StatusCode != http.StatusOK {
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		if err != nil {
-			return nil, fmt.Errorf("brave API returned %d", resp.StatusCode)
-		}
-		return nil, fmt.Errorf("brave API returned %d: %s", resp.StatusCode, string(body))
+		return fmt.Appendf(nil, "ERROR:%d", resp.StatusCode), nil
 	}
 
 	return io.ReadAll(resp.Body)

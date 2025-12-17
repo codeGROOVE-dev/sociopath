@@ -233,11 +233,36 @@ func (*Client) toProfile(wp *weiboProfile, urlStr string) *profile.Profile {
 }
 
 func (c *Client) fetchXSRFToken(ctx context.Context, username string) error {
+	// Cache key includes username and auth cookies for specificity
+	cacheKey := "weibo:xsrf:" + httpcache.URLToKey(username+"|"+c.sub)
+
+	data, err := c.cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
+		return c.doFetchXSRFToken(ctx, username)
+	}, c.cache.TTL())
+	if err != nil {
+		return err
+	}
+
+	// Check for cached errors
+	s := string(data)
+	if errMsg, found := strings.CutPrefix(s, "NETERR:"); found {
+		return fmt.Errorf("network error: %s", errMsg)
+	}
+	if errMsg, found := strings.CutPrefix(s, "ERROR:"); found {
+		return errors.New(errMsg)
+	}
+
+	c.xsrfToken = s
+	return nil
+}
+
+// doFetchXSRFToken performs the actual HEAD request to get the XSRF token.
+func (c *Client) doFetchXSRFToken(ctx context.Context, username string) ([]byte, error) {
 	pageURL := fmt.Sprintf("https://weibo.com/%s", username)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, pageURL, http.NoBody)
 	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+		return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
 	}
 
 	setCommonHeaders(req)
@@ -245,20 +270,23 @@ func (c *Client) fetchXSRFToken(ctx context.Context, username string) error {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("fetching page: %w", err)
+		return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
 	}
 	defer resp.Body.Close() //nolint:errcheck // Best-effort close
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Appendf(nil, "ERROR:HTTP %d", resp.StatusCode), nil
+	}
 
 	// Extract XSRF-TOKEN from Set-Cookie header
 	for _, cookie := range resp.Cookies() {
 		if cookie.Name == "XSRF-TOKEN" {
-			c.xsrfToken = cookie.Value
-			c.logger.DebugContext(ctx, "got XSRF token", "token_length", len(c.xsrfToken))
-			return nil
+			c.logger.DebugContext(ctx, "got XSRF token", "token_length", len(cookie.Value))
+			return []byte(cookie.Value), nil
 		}
 	}
 
-	return errors.New("XSRF-TOKEN not found in response")
+	return []byte("ERROR:XSRF-TOKEN not found in response"), nil
 }
 
 func (c *Client) resolveUsername(ctx context.Context, username string) (string, error) {

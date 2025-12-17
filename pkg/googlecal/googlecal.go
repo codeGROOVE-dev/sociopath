@@ -3,6 +3,7 @@ package googlecal
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -91,29 +92,64 @@ func New(_ context.Context, opts ...Option) (*Client, error) {
 func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, error) {
 	c.logger.InfoContext(ctx, "fetching googlecal profile", "url", urlStr)
 
-	// Make direct request to follow redirects properly.
-	// Note: We don't set a User-Agent here because Google's short URL service
-	// (calendar.app.google) returns a JavaScript redirect for browser User-Agents
-	// but a proper 302 redirect for simple User-Agents like Go's default.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close() //nolint:errcheck // best-effort close
-
-	c.logger.DebugContext(ctx, "response received", "status", resp.StatusCode, "finalURL", resp.Request.URL.String())
-
-	body, err := io.ReadAll(resp.Body)
+	body, err := c.fetchWithCache(ctx, urlStr)
 	if err != nil {
 		return nil, err
 	}
 
 	return parseHTML(body, urlStr), nil
+}
+
+// fetchWithCache fetches the URL with caching, including error caching.
+func (c *Client) fetchWithCache(ctx context.Context, urlStr string) ([]byte, error) {
+	cacheKey := httpcache.URLToKey(urlStr)
+	data, err := c.cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
+		return c.doFetch(ctx, urlStr)
+	}, c.cache.TTL())
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for cached errors.
+	s := string(data)
+	if errCode, found := strings.CutPrefix(s, "ERROR:"); found {
+		return nil, fmt.Errorf("HTTP error: %s", errCode)
+	}
+	if errMsg, found := strings.CutPrefix(s, "NETERR:"); found {
+		return nil, fmt.Errorf("network error: %s", errMsg)
+	}
+
+	return data, nil
+}
+
+// doFetch performs the actual HTTP request, returning error markers for caching.
+func (c *Client) doFetch(ctx context.Context, urlStr string) ([]byte, error) {
+	// Note: We don't set a User-Agent here because Google's short URL service
+	// (calendar.app.google) returns a JavaScript redirect for browser User-Agents
+	// but a proper 302 redirect for simple User-Agents like Go's default.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
+	if err != nil {
+		return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
+	}
+	defer resp.Body.Close() //nolint:errcheck // best-effort close
+
+	c.logger.DebugContext(ctx, "response received", "status", resp.StatusCode, "finalURL", resp.Request.URL.String())
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Appendf(nil, "ERROR:%d", resp.StatusCode), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
+	}
+
+	return body, nil
 }
 
 func parseHTML(data []byte, urlStr string) *profile.Profile {

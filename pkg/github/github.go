@@ -676,22 +676,26 @@ func (c *Client) hasEmailScope(ctx context.Context) bool {
 
 	cacheKey := "github:scope:" + tokenHash(c.token)
 	data, err := c.cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
-		if c.checkTokenScopeHTTP(ctx) {
-			return []byte("1"), nil
-		}
-		return []byte("0"), nil
+		return c.checkTokenScopeHTTP(ctx)
 	}, scopeCacheTTL)
 	if err != nil {
 		return true // assume yes on error
 	}
-	return string(data) == "1"
+
+	// Check for cached errors - assume yes on error to fail gracefully later
+	s := string(data)
+	if strings.HasPrefix(s, "NETERR:") || strings.HasPrefix(s, "ERROR:") {
+		return true
+	}
+	return s == "1"
 }
 
 // checkTokenScopeHTTP makes the actual HTTP request to check token scopes.
-func (c *Client) checkTokenScopeHTTP(ctx context.Context) bool {
+// Returns "1" for has scope, "0" for no scope, or error markers for caching.
+func (c *Client) checkTokenScopeHTTP(ctx context.Context) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://api.github.com/user", http.NoBody)
 	if err != nil {
-		return true // assume yes on error, will fail gracefully
+		return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("User-Agent", "sociopath/1.0")
@@ -699,14 +703,21 @@ func (c *Client) checkTokenScopeHTTP(ctx context.Context) bool {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		c.logger.DebugContext(ctx, "scope check request failed", "error", err)
-		return true // assume yes on error
+		return fmt.Appendf(nil, "NETERR:%s", err.Error()), nil
 	}
 	defer resp.Body.Close() //nolint:errcheck // best effort close
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Appendf(nil, "ERROR:%d", resp.StatusCode), nil
+	}
 
 	scopes := resp.Header.Get("X-Oauth-Scopes")
 	hasScope := strings.Contains(scopes, "user:email") || strings.Contains(scopes, "read:user") || strings.Contains(scopes, "user")
 	c.logger.DebugContext(ctx, "checked token scopes", "scopes", scopes, "has_email_scope", hasScope)
-	return hasScope
+	if hasScope {
+		return []byte("1"), nil
+	}
+	return []byte("0"), nil
 }
 
 func (c *Client) fetchGraphQL(ctx context.Context, urlStr, username string) (*profile.Profile, error) {
@@ -1029,7 +1040,8 @@ func (c *Client) doAPIRequest(ctx context.Context, req *http.Request) ([]byte, e
 			if errors.As(fetchErr, &apiErr) {
 				return fmt.Appendf(nil, "ERROR:%d", apiErr.StatusCode), nil
 			}
-			return nil, fetchErr
+			// Cache network errors too (timeouts, DNS failures, connection refused).
+			return fmt.Appendf(nil, "NETERR:%s", fetchErr.Error()), nil
 		}
 		return body, nil
 	})
@@ -1038,9 +1050,13 @@ func (c *Client) doAPIRequest(ctx context.Context, req *http.Request) ([]byte, e
 	}
 
 	// Check if this is a cached error.
-	if s := string(data); strings.HasPrefix(s, "ERROR:") {
-		code, _ := strconv.Atoi(strings.TrimPrefix(s, "ERROR:")) //nolint:errcheck // 0 is acceptable default
+	s := string(data)
+	if errCode, found := strings.CutPrefix(s, "ERROR:"); found {
+		code, _ := strconv.Atoi(errCode) //nolint:errcheck // 0 is acceptable default
 		return nil, &APIError{StatusCode: code, Message: "cached error"}
+	}
+	if errMsg, found := strings.CutPrefix(s, "NETERR:"); found {
+		return nil, fmt.Errorf("cached network error: %s", errMsg)
 	}
 
 	return data, nil

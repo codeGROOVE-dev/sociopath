@@ -194,14 +194,25 @@ func parseHTML(data []byte, urlStr string) *profile.Profile {
 	return p
 }
 
-// isContactPage returns true if the URL is likely a contact or about page.
+// isContactPage returns true if the URL is likely a contact or about page,
+// or a homepage of a personal domain (where all social links belong to the owner).
 func isContactPage(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
-	return strings.Contains(lower, "/contact") ||
+	if strings.Contains(lower, "/contact") ||
 		strings.Contains(lower, "/about") ||
 		strings.Contains(lower, "/links") ||
 		strings.Contains(lower, "/connect") ||
-		strings.Contains(lower, "/socials")
+		strings.Contains(lower, "/socials") {
+		return true
+	}
+
+	// Root pages of personal domains are effectively "about" pages
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		return false
+	}
+	path := strings.TrimSuffix(parsed.Path, "/")
+	return path == ""
 }
 
 // blogPost represents a blog post with optional date for sorting.
