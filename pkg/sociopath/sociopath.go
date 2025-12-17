@@ -34,7 +34,9 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/arstechnica"
 	"github.com/codeGROOVE-dev/sociopath/pkg/avatar"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bilibili"
+	"github.com/codeGROOVE-dev/sociopath/pkg/blogger"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bluesky"
+	"github.com/codeGROOVE-dev/sociopath/pkg/boardgamegeek"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bugcrowd"
 	"github.com/codeGROOVE-dev/sociopath/pkg/calcom"
 	"github.com/codeGROOVE-dev/sociopath/pkg/calendly"
@@ -46,6 +48,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/disqus"
 	"github.com/codeGROOVE-dev/sociopath/pkg/dockerhub"
 	"github.com/codeGROOVE-dev/sociopath/pkg/douban"
+	"github.com/codeGROOVE-dev/sociopath/pkg/duolingo"
 	"github.com/codeGROOVE-dev/sociopath/pkg/generic"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gitee"
 	"github.com/codeGROOVE-dev/sociopath/pkg/github"
@@ -58,6 +61,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/habr"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hackernews"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hackerone"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hackerrank"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hashnode"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hexpm"
 	"github.com/codeGROOVE-dev/sociopath/pkg/holopin"
@@ -67,6 +71,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/intensedebate"
 	"github.com/codeGROOVE-dev/sociopath/pkg/juejin"
 	"github.com/codeGROOVE-dev/sociopath/pkg/keybase"
+	"github.com/codeGROOVE-dev/sociopath/pkg/launchpad"
 	"github.com/codeGROOVE-dev/sociopath/pkg/leetcode"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linkedin"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linktree"
@@ -75,6 +80,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/mastodon"
 	"github.com/codeGROOVE-dev/sociopath/pkg/medium"
 	"github.com/codeGROOVE-dev/sociopath/pkg/microblog"
+	"github.com/codeGROOVE-dev/sociopath/pkg/observablehq"
 	"github.com/codeGROOVE-dev/sociopath/pkg/orcid"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 	"github.com/codeGROOVE-dev/sociopath/pkg/pypi"
@@ -84,6 +90,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/rubygems"
 	"github.com/codeGROOVE-dev/sociopath/pkg/scratch"
 	"github.com/codeGROOVE-dev/sociopath/pkg/sessionize"
+	"github.com/codeGROOVE-dev/sociopath/pkg/slashdot"
 	"github.com/codeGROOVE-dev/sociopath/pkg/slideshare"
 	"github.com/codeGROOVE-dev/sociopath/pkg/stackoverflow"
 	"github.com/codeGROOVE-dev/sociopath/pkg/steam"
@@ -91,7 +98,9 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/substack"
 	"github.com/codeGROOVE-dev/sociopath/pkg/telegram"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tiktok"
+	"github.com/codeGROOVE-dev/sociopath/pkg/tradingview"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tryhackme"
+	"github.com/codeGROOVE-dev/sociopath/pkg/tumblr"
 	"github.com/codeGROOVE-dev/sociopath/pkg/twitch"
 	"github.com/codeGROOVE-dev/sociopath/pkg/twitter"
 	"github.com/codeGROOVE-dev/sociopath/pkg/v2ex"
@@ -174,7 +183,7 @@ func WithMaxCandidatesPerPlatform(n int) Option {
 // Fetch retrieves a profile from the given URL.
 // The platform is automatically detected from the URL.
 //
-//nolint:maintidx // complexity is inherent to supporting 55+ platforms
+//nolint:maintidx,revive // complexity is inherent to supporting 60+ platforms
 func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, error) {
 	cfg := &config{logger: slog.Default()}
 	for _, opt := range opts {
@@ -249,6 +258,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case keybase.Match(url):
 		platform = "keybase"
 		p, err = fetchKeybase(ctx, url, cfg)
+	case launchpad.Match(url):
+		platform = "launchpad"
+		p, err = fetchLaunchpad(ctx, url, cfg)
 	case crates.Match(url):
 		platform = "crates"
 		p, err = fetchCrates(ctx, url, cfg)
@@ -315,6 +327,30 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case strava.Match(url):
 		platform = "strava"
 		p, err = fetchStrava(ctx, url, cfg)
+	case slashdot.Match(url):
+		platform = "slashdot"
+		p, err = fetchSlashdot(ctx, url, cfg)
+	case tumblr.Match(url):
+		platform = "tumblr"
+		p, err = fetchTumblr(ctx, url, cfg)
+	case observablehq.Match(url):
+		platform = "observablehq"
+		p, err = fetchObservableHQ(ctx, url, cfg)
+	case blogger.Match(url):
+		platform = "blogger"
+		p, err = fetchBlogger(ctx, url, cfg)
+	case boardgamegeek.Match(url):
+		platform = "boardgamegeek"
+		p, err = fetchBoardGameGeek(ctx, url, cfg)
+	case duolingo.Match(url):
+		platform = "duolingo"
+		p, err = fetchDuolingo(ctx, url, cfg)
+	case hackerrank.Match(url):
+		platform = "hackerrank"
+		p, err = fetchHackerRank(ctx, url, cfg)
+	case tradingview.Match(url):
+		platform = "tradingview"
+		p, err = fetchTradingView(ctx, url, cfg)
 	case douban.Match(url):
 		platform = "douban"
 		p, err = fetchDouban(ctx, url, cfg)
@@ -588,6 +624,22 @@ func fetchKeybase(ctx context.Context, url string, cfg *config) (*profile.Profil
 	}
 
 	client, err := keybase.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchLaunchpad(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []launchpad.Option
+	if cfg.cache != nil {
+		opts = append(opts, launchpad.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, launchpad.WithLogger(cfg.logger))
+	}
+
+	client, err := launchpad.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2273,6 +2325,134 @@ func fetchScratch(ctx context.Context, url string, cfg *config) (*profile.Profil
 	}
 
 	client, err := scratch.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchSlashdot(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []slashdot.Option
+	if cfg.cache != nil {
+		opts = append(opts, slashdot.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, slashdot.WithLogger(cfg.logger))
+	}
+
+	client, err := slashdot.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchTumblr(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []tumblr.Option
+	if cfg.cache != nil {
+		opts = append(opts, tumblr.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, tumblr.WithLogger(cfg.logger))
+	}
+
+	client, err := tumblr.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchObservableHQ(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []observablehq.Option
+	if cfg.cache != nil {
+		opts = append(opts, observablehq.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, observablehq.WithLogger(cfg.logger))
+	}
+
+	client, err := observablehq.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchBlogger(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []blogger.Option
+	if cfg.cache != nil {
+		opts = append(opts, blogger.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, blogger.WithLogger(cfg.logger))
+	}
+
+	client, err := blogger.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchBoardGameGeek(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []boardgamegeek.Option
+	if cfg.cache != nil {
+		opts = append(opts, boardgamegeek.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, boardgamegeek.WithLogger(cfg.logger))
+	}
+
+	client, err := boardgamegeek.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchDuolingo(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []duolingo.Option
+	if cfg.cache != nil {
+		opts = append(opts, duolingo.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, duolingo.WithLogger(cfg.logger))
+	}
+
+	client, err := duolingo.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHackerRank(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hackerrank.Option
+	if cfg.cache != nil {
+		opts = append(opts, hackerrank.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hackerrank.WithLogger(cfg.logger))
+	}
+
+	client, err := hackerrank.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchTradingView(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []tradingview.Option
+	if cfg.cache != nil {
+		opts = append(opts, tradingview.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, tradingview.WithLogger(cfg.logger))
+	}
+
+	client, err := tradingview.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

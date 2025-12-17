@@ -155,7 +155,7 @@ func parseHTML(body []byte, athleteID, url string) (*profile.Profile, error) {
 					if strings.Contains(content, " and get inspired") {
 						if idx := strings.Index(content, " and get inspired"); idx > 0 {
 							joinPrefix := "Join "
-							if strings.HasPrefix(content, joinPrefix) { //nolint:revive // nested conditionals for HTML parsing
+							if strings.HasPrefix(content, joinPrefix) { //nolint:revive // max-control-nesting for HTML parsing
 								extractedName := content[len(joinPrefix):idx]
 								if p.DisplayName == "" {
 									p.DisplayName = extractedName

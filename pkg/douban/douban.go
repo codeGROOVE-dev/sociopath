@@ -160,7 +160,7 @@ func parseHTML(body []byte, username, url string) (*profile.Profile, error) {
 						parts := strings.Split(text, "常居")
 						if len(parts) > 1 {
 							loc := strings.TrimSpace(parts[1])
-							if idx := strings.Index(loc, "\n"); idx > 0 { //nolint:revive // nested conditionals for HTML parsing
+							if idx := strings.Index(loc, "\n"); idx > 0 { //nolint:revive // max-control-nesting for HTML parsing
 								loc = loc[:idx]
 							}
 							p.Location = strings.TrimSpace(loc)
