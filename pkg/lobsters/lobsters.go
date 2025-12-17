@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,6 +92,7 @@ type apiUser struct {
 	InvitedByUser    string `json:"invited_by_user"`
 	GitHubUsername   string `json:"github_username"`
 	MastodonUsername string `json:"mastodon_username"`
+	Karma            int    `json:"karma"`
 	IsAdmin          bool   `json:"is_admin"`
 	IsModerator      bool   `json:"is_moderator"`
 }
@@ -142,15 +144,18 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	p := parseProfile(&user, urlStr)
 
-	// Fetch recent stories
-	stories := c.fetchRecentStories(ctx, username, 15)
+	// Fetch recent stories and get total count
+	stories, totalStories := c.fetchRecentStories(ctx, username, 15)
 	p.Posts = stories
+	if totalStories > 0 {
+		p.Fields["stories"] = strconv.Itoa(totalStories)
+	}
 
 	return p, nil
 }
 
 func parseProfile(data *apiUser, url string) *profile.Profile {
-	p := &profile.Profile{
+	prof := &profile.Profile{
 		Platform:    platform,
 		URL:         url,
 		Username:    data.Username,
@@ -161,7 +166,7 @@ func parseProfile(data *apiUser, url string) *profile.Profile {
 	// Parse creation date
 	if data.CreatedAt != "" {
 		if t, err := time.Parse(time.RFC3339, data.CreatedAt); err == nil {
-			p.CreatedAt = t.Format("2006-01-02")
+			prof.CreatedAt = t.Format("2006-01-02")
 		}
 	}
 
@@ -171,24 +176,29 @@ func parseProfile(data *apiUser, url string) *profile.Profile {
 		if strings.HasPrefix(avatarURL, "/") {
 			avatarURL = "https://lobste.rs" + avatarURL
 		}
-		p.AvatarURL = avatarURL
+		prof.AvatarURL = avatarURL
 	}
 
 	// GitHub username - valuable for identity correlation
 	if data.GitHubUsername != "" {
 		githubURL := "https://github.com/" + data.GitHubUsername
-		p.Fields["github"] = githubURL
-		p.SocialLinks = append(p.SocialLinks, githubURL)
+		prof.Fields["github"] = githubURL
+		prof.SocialLinks = append(prof.SocialLinks, githubURL)
 	}
 
 	// Mastodon username
 	if data.MastodonUsername != "" {
-		p.Fields["mastodon"] = data.MastodonUsername
+		prof.Fields["mastodon"] = data.MastodonUsername
 	}
 
 	// Invited by (shows community connection)
 	if data.InvitedByUser != "" {
-		p.Fields["invited_by"] = data.InvitedByUser
+		prof.Fields["invited_by"] = data.InvitedByUser
+	}
+
+	// Karma
+	if data.Karma > 0 {
+		prof.Fields["karma"] = strconv.Itoa(data.Karma)
 	}
 
 	// Parse about section (HTML)
@@ -198,27 +208,34 @@ func parseProfile(data *apiUser, url string) *profile.Profile {
 		bio = stripHTMLTags(bio)
 		bio = strings.TrimSpace(bio)
 		if bio != "" {
-			p.Bio = bio
+			prof.Bio = bio
 		}
 
 		// Extract additional links from about section
 		aboutLinks := htmlutil.SocialLinks(data.About)
+		seen := make(map[string]bool)
 		for _, link := range aboutLinks {
-			// Skip GitHub links we already captured
+			// Clean up any trailing HTML artifacts
+			link = strings.TrimRight(link, "<>\"'")
+			// Skip duplicates and GitHub links we already captured
+			if seen[link] {
+				continue
+			}
+			seen[link] = true
 			if data.GitHubUsername != "" && strings.Contains(link, "github.com/"+data.GitHubUsername) {
 				continue
 			}
-			p.SocialLinks = append(p.SocialLinks, link)
+			prof.SocialLinks = append(prof.SocialLinks, link)
 		}
 
 		// Extract email if present
 		emails := htmlutil.EmailAddresses(data.About)
 		if len(emails) > 0 {
-			p.Fields["email"] = emails[0]
+			prof.Fields["email"] = emails[0]
 		}
 	}
 
-	return p
+	return prof
 }
 
 func extractUsername(urlStr string) string {
@@ -236,13 +253,14 @@ func stripHTMLTags(s string) string {
 }
 
 // fetchRecentStories fetches up to maxItems recent stories from a user.
-func (c *Client) fetchRecentStories(ctx context.Context, username string, maxItems int) []profile.Post {
+// Returns the posts and total story count.
+func (c *Client) fetchRecentStories(ctx context.Context, username string, maxItems int) (posts []profile.Post, totalCount int) {
 	storiesURL := fmt.Sprintf("https://lobste.rs/~%s/stories.json", username)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, storiesURL, http.NoBody)
 	if err != nil {
 		c.logger.DebugContext(ctx, "failed to create stories request", "error", err)
-		return nil
+		return nil, 0
 	}
 	req.Header.Set("User-Agent", "sociopath/1.0 (social profile aggregator)")
 	req.Header.Set("Accept", "application/json")
@@ -250,20 +268,21 @@ func (c *Client) fetchRecentStories(ctx context.Context, username string, maxIte
 	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
 		c.logger.DebugContext(ctx, "failed to fetch stories", "error", err)
-		return nil
+		return nil, 0
 	}
 
 	var stories []apiStory
 	if err := json.Unmarshal(body, &stories); err != nil {
 		c.logger.DebugContext(ctx, "failed to parse stories response", "error", err)
-		return nil
+		return nil, 0
 	}
+
+	totalCount = len(stories)
 
 	if len(stories) > maxItems {
 		stories = stories[:maxItems]
 	}
 
-	var posts []profile.Post
 	for _, story := range stories {
 		post := profile.Post{
 			Type:  profile.PostTypePost,
@@ -276,5 +295,5 @@ func (c *Client) fetchRecentStories(ctx context.Context, username string, maxIte
 		posts = append(posts, post)
 	}
 
-	return posts
+	return posts, totalCount
 }

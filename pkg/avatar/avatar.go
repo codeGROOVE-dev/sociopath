@@ -112,14 +112,21 @@ func Score(a, b uint64) float64 {
 }
 
 // isDefaultAvatar returns true for URLs that are likely default/generated avatars.
+// Note: Gravatar's d= parameter (e.g., d=identicon) is just a FALLBACK option -
+// if the user has a real avatar, Gravatar returns it regardless of the d= param.
+// We only filter URLs where the path itself indicates a default/placeholder image.
 func isDefaultAvatar(url string) bool {
 	lower := strings.ToLower(url)
-	return strings.Contains(lower, "identicon") ||
-		strings.Contains(lower, "default") ||
-		strings.Contains(lower, "avatar_default") ||
-		strings.Contains(lower, "d=identicon") ||
-		strings.Contains(lower, "d=retro") ||
-		strings.Contains(lower, "d=monsterid") ||
-		strings.Contains(lower, "d=wavatar") ||
-		strings.Contains(lower, "d=robohash")
+
+	// Only filter if "default" or "identicon" appears in the path, not query params
+	// Split on ? to separate path from query string
+	path := lower
+	if idx := strings.Index(lower, "?"); idx != -1 {
+		path = lower[:idx]
+	}
+
+	return strings.Contains(path, "identicon") ||
+		strings.Contains(path, "default") ||
+		strings.Contains(path, "avatar_default") ||
+		strings.Contains(path, "placeholder")
 }

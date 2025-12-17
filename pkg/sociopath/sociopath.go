@@ -109,6 +109,32 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/weibo"
 	"github.com/codeGROOVE-dev/sociopath/pkg/youtube"
 	"github.com/codeGROOVE-dev/sociopath/pkg/zenn"
+
+	// New WMN-derived packages.
+	"github.com/codeGROOVE-dev/sociopath/pkg/asciinema"
+	"github.com/codeGROOVE-dev/sociopath/pkg/atcoder"
+	"github.com/codeGROOVE-dev/sociopath/pkg/cloudflare"
+	"github.com/codeGROOVE-dev/sociopath/pkg/codechef"
+	"github.com/codeGROOVE-dev/sociopath/pkg/codeforces"
+	"github.com/codeGROOVE-dev/sociopath/pkg/devrant"
+	"github.com/codeGROOVE-dev/sociopath/pkg/figma"
+	"github.com/codeGROOVE-dev/sociopath/pkg/geeksforgeeks"
+	"github.com/codeGROOVE-dev/sociopath/pkg/gitea"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hackaday"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hackerearth"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hackernoon"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hackster"
+	"github.com/codeGROOVE-dev/sociopath/pkg/intigriti"
+	"github.com/codeGROOVE-dev/sociopath/pkg/jsfiddle"
+	"github.com/codeGROOVE-dev/sociopath/pkg/monkeytype"
+	"github.com/codeGROOVE-dev/sociopath/pkg/notabug"
+	"github.com/codeGROOVE-dev/sociopath/pkg/pastebin"
+	"github.com/codeGROOVE-dev/sociopath/pkg/sourceforge"
+	"github.com/codeGROOVE-dev/sociopath/pkg/spoj"
+	"github.com/codeGROOVE-dev/sociopath/pkg/stackshare"
+	"github.com/codeGROOVE-dev/sociopath/pkg/topcoder"
+	"github.com/codeGROOVE-dev/sociopath/pkg/wakatime"
+	"github.com/codeGROOVE-dev/sociopath/pkg/yeswehack"
 )
 
 type (
@@ -420,6 +446,79 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case scratch.Match(url):
 		platform = "scratch"
 		p, err = fetchScratch(ctx, url, cfg)
+	// New WMN-derived platforms
+	case codeforces.Match(url):
+		platform = "codeforces"
+		p, err = fetchCodeforces(ctx, url, cfg)
+	case atcoder.Match(url):
+		platform = "atcoder"
+		p, err = fetchAtCoder(ctx, url, cfg)
+	case codechef.Match(url):
+		platform = "codechef"
+		p, err = fetchCodeChef(ctx, url, cfg)
+	case topcoder.Match(url):
+		platform = "topcoder"
+		p, err = fetchTopcoder(ctx, url, cfg)
+	case spoj.Match(url):
+		platform = "spoj"
+		p, err = fetchSPOJ(ctx, url, cfg)
+	case wakatime.Match(url):
+		platform = "wakatime"
+		p, err = fetchWakatime(ctx, url, cfg)
+	case asciinema.Match(url):
+		platform = "asciinema"
+		p, err = fetchAsciinema(ctx, url, cfg)
+	case jsfiddle.Match(url):
+		platform = "jsfiddle"
+		p, err = fetchJSFiddle(ctx, url, cfg)
+	case monkeytype.Match(url):
+		platform = "monkeytype"
+		p, err = fetchMonkeytype(ctx, url, cfg)
+	case gitea.Match(url):
+		platform = "gitea"
+		p, err = fetchGitea(ctx, url, cfg)
+	case sourceforge.Match(url):
+		platform = "sourceforge"
+		p, err = fetchSourceforge(ctx, url, cfg)
+	case pastebin.Match(url):
+		platform = "pastebin"
+		p, err = fetchPastebin(ctx, url, cfg)
+	case geeksforgeeks.Match(url):
+		platform = "geeksforgeeks"
+		p, err = fetchGeeksForGeeks(ctx, url, cfg)
+	case hackerearth.Match(url):
+		platform = "hackerearth"
+		p, err = fetchHackerEarth(ctx, url, cfg)
+	case hackster.Match(url):
+		platform = "hackster"
+		p, err = fetchHackster(ctx, url, cfg)
+	case devrant.Match(url):
+		platform = "devrant"
+		p, err = fetchDevRant(ctx, url, cfg)
+	case hackernoon.Match(url):
+		platform = "hackernoon"
+		p, err = fetchHackernoon(ctx, url, cfg)
+	case hackaday.Match(url):
+		platform = "hackaday"
+		p, err = fetchHackaday(ctx, url, cfg)
+	case intigriti.Match(url):
+		platform = "intigriti"
+		p, err = fetchIntigriti(ctx, url, cfg)
+	case yeswehack.Match(url):
+		platform = "yeswehack"
+		p, err = fetchYesWeHack(ctx, url, cfg)
+	case figma.Match(url):
+		platform = "figma"
+		p, err = fetchFigma(ctx, url, cfg)
+	case cloudflare.Match(url):
+		platform = "cloudflare"
+		p, err = fetchCloudflare(ctx, url, cfg)
+	case stackshare.Match(url):
+		platform = "stackshare"
+		p, err = fetchStackShare(ctx, url, cfg)
+	case notabug.Match(url):
+		platform = "notabug"
+		p, err = fetchNotABug(ctx, url, cfg)
 	default:
 		platform = "generic"
 		p, err = fetchGeneric(ctx, url, cfg)
@@ -2453,6 +2552,368 @@ func fetchTradingView(ctx context.Context, url string, cfg *config) (*profile.Pr
 	}
 
 	client, err := tradingview.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+// New WMN-derived fetch functions.
+
+func fetchCodeforces(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []codeforces.Option
+	if cfg.cache != nil {
+		opts = append(opts, codeforces.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, codeforces.WithLogger(cfg.logger))
+	}
+	client, err := codeforces.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchAtCoder(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []atcoder.Option
+	if cfg.cache != nil {
+		opts = append(opts, atcoder.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, atcoder.WithLogger(cfg.logger))
+	}
+	client, err := atcoder.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCodeChef(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []codechef.Option
+	if cfg.cache != nil {
+		opts = append(opts, codechef.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, codechef.WithLogger(cfg.logger))
+	}
+	client, err := codechef.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchTopcoder(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []topcoder.Option
+	if cfg.cache != nil {
+		opts = append(opts, topcoder.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, topcoder.WithLogger(cfg.logger))
+	}
+	client, err := topcoder.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchSPOJ(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []spoj.Option
+	if cfg.cache != nil {
+		opts = append(opts, spoj.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, spoj.WithLogger(cfg.logger))
+	}
+	client, err := spoj.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchWakatime(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []wakatime.Option
+	if cfg.cache != nil {
+		opts = append(opts, wakatime.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, wakatime.WithLogger(cfg.logger))
+	}
+	client, err := wakatime.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchAsciinema(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []asciinema.Option
+	if cfg.cache != nil {
+		opts = append(opts, asciinema.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, asciinema.WithLogger(cfg.logger))
+	}
+	client, err := asciinema.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchJSFiddle(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []jsfiddle.Option
+	if cfg.cache != nil {
+		opts = append(opts, jsfiddle.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, jsfiddle.WithLogger(cfg.logger))
+	}
+	client, err := jsfiddle.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchMonkeytype(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []monkeytype.Option
+	if cfg.cache != nil {
+		opts = append(opts, monkeytype.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, monkeytype.WithLogger(cfg.logger))
+	}
+	client, err := monkeytype.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGitea(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []gitea.Option
+	if cfg.cache != nil {
+		opts = append(opts, gitea.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, gitea.WithLogger(cfg.logger))
+	}
+	client, err := gitea.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchSourceforge(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []sourceforge.Option
+	if cfg.cache != nil {
+		opts = append(opts, sourceforge.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, sourceforge.WithLogger(cfg.logger))
+	}
+	client, err := sourceforge.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchPastebin(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []pastebin.Option
+	if cfg.cache != nil {
+		opts = append(opts, pastebin.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, pastebin.WithLogger(cfg.logger))
+	}
+	client, err := pastebin.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGeeksForGeeks(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []geeksforgeeks.Option
+	if cfg.cache != nil {
+		opts = append(opts, geeksforgeeks.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, geeksforgeeks.WithLogger(cfg.logger))
+	}
+	client, err := geeksforgeeks.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHackerEarth(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hackerearth.Option
+	if cfg.cache != nil {
+		opts = append(opts, hackerearth.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hackerearth.WithLogger(cfg.logger))
+	}
+	client, err := hackerearth.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHackster(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hackster.Option
+	if cfg.cache != nil {
+		opts = append(opts, hackster.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hackster.WithLogger(cfg.logger))
+	}
+	client, err := hackster.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchDevRant(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []devrant.Option
+	if cfg.cache != nil {
+		opts = append(opts, devrant.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, devrant.WithLogger(cfg.logger))
+	}
+	client, err := devrant.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHackernoon(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hackernoon.Option
+	if cfg.cache != nil {
+		opts = append(opts, hackernoon.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hackernoon.WithLogger(cfg.logger))
+	}
+	client, err := hackernoon.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHackaday(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hackaday.Option
+	if cfg.cache != nil {
+		opts = append(opts, hackaday.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hackaday.WithLogger(cfg.logger))
+	}
+	client, err := hackaday.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchIntigriti(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []intigriti.Option
+	if cfg.cache != nil {
+		opts = append(opts, intigriti.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, intigriti.WithLogger(cfg.logger))
+	}
+	client, err := intigriti.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchYesWeHack(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []yeswehack.Option
+	if cfg.cache != nil {
+		opts = append(opts, yeswehack.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, yeswehack.WithLogger(cfg.logger))
+	}
+	client, err := yeswehack.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchFigma(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []figma.Option
+	if cfg.cache != nil {
+		opts = append(opts, figma.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, figma.WithLogger(cfg.logger))
+	}
+	client, err := figma.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCloudflare(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []cloudflare.Option
+	if cfg.cache != nil {
+		opts = append(opts, cloudflare.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, cloudflare.WithLogger(cfg.logger))
+	}
+	client, err := cloudflare.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchStackShare(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []stackshare.Option
+	if cfg.cache != nil {
+		opts = append(opts, stackshare.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, stackshare.WithLogger(cfg.logger))
+	}
+	client, err := stackshare.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchNotABug(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []notabug.Option
+	if cfg.cache != nil {
+		opts = append(opts, notabug.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, notabug.WithLogger(cfg.logger))
+	}
+	client, err := notabug.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

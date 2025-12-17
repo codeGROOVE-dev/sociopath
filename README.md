@@ -5,7 +5,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/codeGROOVE-dev/sociopath.svg)](https://pkg.go.dev/github.com/codeGROOVE-dev/sociopath)
 [![Go Report Card](https://goreportcard.com/badge/github.com/codeGROOVE-dev/sociopath)](https://goreportcard.com/report/github.com/codeGROOVE-dev/sociopath)
 
-Go library and CLI for fetching social media profiles across 65+ platforms.
+Go library and CLI for fetching social media profiles across 100+ platforms.
 
 ## Install
 
@@ -35,13 +35,27 @@ sociopath --email user@example.com            # Look up by email (Gravatar, etc.
 
 ## Platforms
 
-**Developer:** GitHub, GitLab, Codeberg, Sourcehut, Gitee, StackOverflow, HackerNews, Lobsters, Dev.to, Hashnode, Qiita, Zenn, Velog, CSDN, Juejin, V2EX, Crates.io, DockerHub, HexPM, npm, PyPI, RubyGems, LeetCode, Exercism, Kaggle, CodePen, FreeCodeCamp, Replit, HackerOne, Bugcrowd, TryHackMe, ORCID, HuggingFace, Keybase, Sessionize, SlideShare
+**Code Hosting:** GitHub, GitLab, Codeberg, Sourcehut, Gitea, Gitee, NotABug, SourceForge, Launchpad
 
-**Social:** Twitter/X*, LinkedIn*, Instagram*, TikTok*, Mastodon, BlueSky, Reddit, VKontakte, Weibo, Micro.blog, Telegram
+**Developer Communities:** StackOverflow, HackerNews, Lobsters, Slashdot, Dev.to, Hashnode, Qiita, Zenn, Velog, CSDN, Juejin, V2EX, HackerNoon, GeeksForGeeks, Hackaday, Hackster, DevRant
 
-**Content:** YouTube, Twitch, Bilibili, Medium, Substack, Habr
+**Package Registries:** Crates.io, DockerHub, HexPM, npm, PyPI, RubyGems
 
-**Other:** Linktree, Gravatar, Google, Steam, Strava, Goodreads, Douban, Dribbble, Holopin, IntenseDebate, Disqus, ArsTechnica, Mail.ru
+**Competitive Programming:** LeetCode, Exercism, CodeWars, AtCoder, Codeforces, CodeChef, TopCoder, HackerRank, HackerEarth, SPOJ, Monkeytype
+
+**Code Playgrounds:** Kaggle, CodePen, JSFiddle, FreeCodeCamp, Replit, Scratch, ObservableHQ, Asciinema
+
+**Security:** HackerOne, Bugcrowd, Intigriti, YesWeHack, TryHackMe
+
+**Professional:** ORCID, HuggingFace, Keybase, Sessionize, SlideShare, Cloudflare, StackShare, Figma, WakaTime, TradingView
+
+**Social:** Twitter/X*, LinkedIn*, Instagram*, TikTok*, Mastodon, BlueSky, Reddit, VKontakte, Weibo, Micro.blog, Telegram, Discord*, Skype, Tumblr
+
+**Content:** YouTube, Twitch, Bilibili, Medium, Substack, Habr, Blogger, Pastebin
+
+**Leisure:** Steam, Strava, Goodreads, Douban, Dribbble, Duolingo, BoardGameGeek
+
+**Other:** Linktree, Gravatar, Google, GoogleCal, Cal.com, Calendly, Holopin, IntenseDebate, Disqus, ArsTechnica, Mail.ru
 
 *\* Requires `--browser` flag for authentication*
 

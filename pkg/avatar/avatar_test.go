@@ -72,11 +72,19 @@ func TestIsDefaultAvatar(t *testing.T) {
 		url  string
 		want bool
 	}{
-		{"https://gravatar.com/avatar/abc?d=identicon", true},
+		// Gravatar d= param is a FALLBACK, not an indicator - actual avatar may be returned
+		{"https://gravatar.com/avatar/abc?d=identicon", false},
+		{"https://gravatar.com/avatar/abc?d=retro", false},
+		{"https://gravatar.com/avatar/abc?d=blank", false},
+		// Path contains identicon/default - this IS a default avatar URL
 		{"https://example.com/identicon/abc.png", true},
 		{"https://github.com/avatar_default_image.png", true},
+		{"https://example.com/images/default/avatar.png", true},
+		{"https://example.com/placeholder/user.png", true},
+		// Real avatar URLs
 		{"https://example.com/user/photo.jpg", false},
 		{"https://pbs.twimg.com/profile_images/123.jpg", false},
+		{"https://secure.gravatar.com/avatar/abc123?s=80&d=identicon", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.url, func(t *testing.T) {

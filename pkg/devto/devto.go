@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,18 +92,20 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	c.logger.InfoContext(ctx, "fetching devto profile", "url", urlStr, "username", username)
 
+	// Start with API data (more reliable)
+	p, err := c.fetchUserAPI(ctx, username, urlStr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch HTML for additional fields not in API
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		req.Header.Set("User-Agent", "sociopath/1.0")
+		if body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger); err == nil {
+			enrichFromHTML(p, body)
+		}
 	}
-	req.Header.Set("User-Agent", "sociopath/1.0")
-
-	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
-	if err != nil {
-		return nil, err
-	}
-
-	p := parseHTML(body, urlStr, username)
 
 	// Fetch recent articles via API
 	posts, lastActive := c.fetchArticles(ctx, username, 50)
@@ -114,58 +117,79 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	return p, nil
 }
 
-func parseHTML(data []byte, urlStr, username string) *profile.Profile {
-	content := string(data)
+// fetchUserAPI retrieves user data from Dev.to API.
+func (c *Client) fetchUserAPI(ctx context.Context, username, urlStr string) (*profile.Profile, error) {
+	apiURL := fmt.Sprintf("https://dev.to/api/users/by_username?url=%s", username)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "sociopath/1.0")
 
-	p := &profile.Profile{ //nolint:varnamelen // p for profile is idiomatic
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		return nil, err
+	}
 
+	var user struct {
+		Username        string `json:"username"`
+		Name            string `json:"name"`
+		TwitterUsername string `json:"twitter_username"`
+		GitHubUsername  string `json:"github_username"`
+		Summary         string `json:"summary"`
+		Location        string `json:"location"`
+		WebsiteURL      string `json:"website_url"`
+		JoinedAt        string `json:"joined_at"`
+		ProfileImage    string `json:"profile_image"`
+		ID              int    `json:"id"`
+	}
+
+	if err := json.Unmarshal(body, &user); err != nil {
+		return nil, profile.ErrProfileNotFound
+	}
+
+	// Check if we got valid user data (ID > 0 means user exists)
+	if user.ID == 0 {
+		return nil, profile.ErrProfileNotFound
+	}
+
+	p := &profile.Profile{
 		Platform:      platform,
 		URL:           urlStr,
 		Authenticated: false,
 		Username:      username,
+		DisplayName:   user.Name,
+		Bio:           user.Summary,
+		Location:      user.Location,
+		Website:       user.WebsiteURL,
+		AvatarURL:     user.ProfileImage,
 		Fields:        make(map[string]string),
 	}
 
-	// Extract name from crayons-title h1
-	namePattern := regexp.MustCompile(`<h1[^>]*class="[^"]*crayons-title[^"]*"[^>]*>\s*([^<]+)\s*</h1>`)
-	if m := namePattern.FindStringSubmatch(content); len(m) > 1 {
-		p.DisplayName = strings.TrimSpace(html.UnescapeString(m[1]))
+	if user.JoinedAt != "" {
+		p.CreatedAt = user.JoinedAt
 	}
 
-	// Extract avatar URL from profile image
-	avatarPattern := regexp.MustCompile(`<img[^>]+class="[^"]*crayons-avatar[^"]*"[^>]+src="([^"]+)"`)
-	if m := avatarPattern.FindStringSubmatch(content); len(m) > 1 {
-		p.AvatarURL = m[1]
+	if user.TwitterUsername != "" {
+		p.Fields["twitter"] = fmt.Sprintf("https://twitter.com/%s", user.TwitterUsername)
+	}
+	if user.GitHubUsername != "" {
+		p.Fields["github"] = fmt.Sprintf("https://github.com/%s", user.GitHubUsername)
+	}
+	if user.ID > 0 {
+		p.Fields["devto_id"] = strconv.Itoa(user.ID)
 	}
 
-	// Fallback to og:title
-	if p.DisplayName == "" {
-		title := htmlutil.Title(content)
-		if idx := strings.Index(title, " - DEV"); idx > 0 {
-			p.DisplayName = strings.TrimSpace(title[:idx])
-		}
-	}
+	return p, nil
+}
 
-	// Extract bio from meta description
-	p.Bio = htmlutil.Description(content)
+// enrichFromHTML adds additional data from HTML that isn't in the API.
+func enrichFromHTML(p *profile.Profile, data []byte) {
+	content := string(data)
 
-	// Extract location - look for <title>Location</title> followed by <span>location</span>
-	locPattern := regexp.MustCompile(`(?s)<title[^>]*>Location</title>.*?</svg>\s*<span>\s*([^<]+?)\s*</span>`)
-	if m := locPattern.FindStringSubmatch(content); len(m) > 1 {
-		loc := strings.TrimSpace(html.UnescapeString(m[1]))
-		if loc != "" && !strings.Contains(strings.ToLower(loc), "joined") {
-			p.Location = loc
-		}
-	}
-
-	// Extract joined date
-	joinedPattern := regexp.MustCompile(`<time\s+datetime="([^"]+)"[^>]*>([^<]+)</time>`)
-	if m := joinedPattern.FindStringSubmatch(content); len(m) > 2 {
-		p.CreatedAt = m[1] // ISO datetime format
-	}
-
-	// Extract work/employment - look for <p>Work</p> followed by value
-	workPattern := regexp.MustCompile(`<strong[^>]*>\s*<p>Work</p>\s*</strong>\s*<p[^>]*>\s*<p>([^<]+)</p>`)
+	// Extract work/employment - look for Work section
+	workPattern := regexp.MustCompile(`(?s)<p[^>]*>\s*Work\s*</p>\s*</[^>]+>\s*<p[^>]*>\s*<p>([^<]+)</p>`)
 	if m := workPattern.FindStringSubmatch(content); len(m) > 1 {
 		work := strings.TrimSpace(html.UnescapeString(m[1]))
 		if work != "" {
@@ -173,34 +197,21 @@ func parseHTML(data []byte, urlStr, username string) *profile.Profile {
 		}
 	}
 
-	// Extract website - look for profile-header__meta__item link
-	websitePattern := regexp.MustCompile(`<a\s+href=["'](https?://[^"']+)["'][^>]*class="[^"]*profile-header__meta__item[^"]*"`)
-	if m := websitePattern.FindStringSubmatch(content); len(m) > 1 {
-		website := m[1]
-		// Filter out social media URLs
-		if !strings.Contains(website, "twitter.com") &&
-			!strings.Contains(website, "x.com") &&
-			!strings.Contains(website, "github.com") &&
-			!strings.Contains(website, "linkedin.com") {
-			p.Website = website
+	// Alternate work pattern
+	if p.Fields["work"] == "" {
+		workPattern2 := regexp.MustCompile(`(?s)Work</p>\s*</strong>\s*<p[^>]*>\s*<p>([^<]+)</p>`)
+		if m := workPattern2.FindStringSubmatch(content); len(m) > 1 {
+			work := strings.TrimSpace(html.UnescapeString(m[1]))
+			if work != "" {
+				p.Fields["work"] = work
+			}
 		}
 	}
 
-	// Extract Twitter
-	twitterPattern := regexp.MustCompile(`<a[^>]+href=["'](https?://(?:twitter\.com|x\.com)/[^"']+)["']`)
-	if m := twitterPattern.FindStringSubmatch(content); len(m) > 1 {
-		p.Fields["twitter"] = m[1]
+	// Add social links from HTML
+	if len(p.SocialLinks) == 0 {
+		p.SocialLinks = htmlutil.SocialLinks(content)
 	}
-
-	// Extract GitHub
-	githubPattern := regexp.MustCompile(`<a[^>]+href=["'](https?://github\.com/[^"']+)["']`)
-	if m := githubPattern.FindStringSubmatch(content); len(m) > 1 {
-		p.Fields["github"] = m[1]
-	}
-
-	p.SocialLinks = htmlutil.SocialLinks(content)
-
-	return p
 }
 
 func (c *Client) fetchArticles(ctx context.Context, username string, limit int) (posts []profile.Post, lastActive string) {

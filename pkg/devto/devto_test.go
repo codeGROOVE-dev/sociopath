@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -68,6 +69,20 @@ func TestNew(t *testing.T) {
 }
 
 func TestFetch(t *testing.T) {
+	mockUserAPI := `{
+		"type_of": "user",
+		"id": 1,
+		"username": "ben",
+		"name": "Ben Halpern",
+		"twitter_username": "bendhalpern",
+		"github_username": "benhalpern",
+		"summary": "Founder of DEV. Working on better software for developers.",
+		"location": "Brooklyn, NY",
+		"website_url": "https://benhalpern.com",
+		"joined_at": "Jan 15, 2016",
+		"profile_image": "https://example.com/avatar.jpg"
+	}`
+
 	mockHTML := `<!DOCTYPE html>
 <html>
 <head>
@@ -83,9 +98,20 @@ func TestFetch(t *testing.T) {
 </body>
 </html>`
 
+	mockArticlesAPI := `[]`
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/api/users/") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(mockUserAPI)) //nolint:errcheck // test helper
+			return
+		}
+		if strings.Contains(r.URL.Path, "/api/articles") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(mockArticlesAPI)) //nolint:errcheck // test helper
+			return
+		}
 		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(mockHTML)) //nolint:errcheck // test helper
 	}))
 	defer server.Close()
@@ -95,12 +121,10 @@ func TestFetch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	// Use mockTransport to redirect requests to our test server
 	client.httpClient = &http.Client{
 		Transport: &mockTransport{mockURL: server.URL},
 	}
 
-	// Use a URL that contains "dev.to" so extractUsername works
 	profile, err := client.Fetch(ctx, "https://dev.to/ben")
 	if err != nil {
 		t.Fatalf("Fetch() error = %v", err)
@@ -114,6 +138,12 @@ func TestFetch(t *testing.T) {
 	}
 	if profile.DisplayName != "Ben Halpern" {
 		t.Errorf("Name = %q, want %q", profile.DisplayName, "Ben Halpern")
+	}
+	if profile.AvatarURL != "https://example.com/avatar.jpg" {
+		t.Errorf("AvatarURL = %q, want %q", profile.AvatarURL, "https://example.com/avatar.jpg")
+	}
+	if profile.Location != "Brooklyn, NY" {
+		t.Errorf("Location = %q, want %q", profile.Location, "Brooklyn, NY")
 	}
 }
 
@@ -156,63 +186,6 @@ func TestFetch_InvalidUsername(t *testing.T) {
 	_, err = client.Fetch(ctx, "https://example.com/nodevto")
 	if err == nil {
 		t.Error("Fetch() expected error for invalid URL, got nil")
-	}
-}
-
-func TestParseHTML(t *testing.T) {
-	tests := []struct {
-		name         string
-		html         string
-		username     string
-		wantName     string
-		wantBio      string
-		wantLocation string
-	}{
-		{
-			name: "full profile",
-			html: `<html><head>
-				<title>Jane Doe - DEV Community</title>
-				<meta name="description" content="Software Engineer. Open source enthusiast.">
-			</head><body>
-				<h1 class="crayons-title">Jane Doe</h1>
-				<title>Location</title></svg><span>San Francisco, CA</span>
-				<time datetime="2020-03-15">Mar 15, 2020</time>
-			</body></html>`,
-			username:     "janedoe",
-			wantName:     "Jane Doe",
-			wantBio:      "Software Engineer. Open source enthusiast.",
-			wantLocation: "San Francisco, CA",
-		},
-		{
-			name: "fallback to og:title",
-			html: `<html><head>
-				<title>John Smith - DEV Community</title>
-			</head><body></body></html>`,
-			username: "johnsmith",
-			wantName: "John Smith",
-		},
-		{
-			name:     "minimal profile",
-			html:     `<html><head><title>DEV Community</title></head><body></body></html>`,
-			username: "minuser",
-			wantName: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			profile := parseHTML([]byte(tt.html), "https://dev.to/"+tt.username, tt.username)
-
-			if profile.DisplayName != tt.wantName {
-				t.Errorf("Name = %q, want %q", profile.DisplayName, tt.wantName)
-			}
-			if tt.wantBio != "" && profile.Bio != tt.wantBio {
-				t.Errorf("Bio = %q, want %q", profile.Bio, tt.wantBio)
-			}
-			if tt.wantLocation != "" && profile.Location != tt.wantLocation {
-				t.Errorf("Location = %q, want %q", profile.Location, tt.wantLocation)
-			}
-		})
 	}
 }
 

@@ -1324,6 +1324,10 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 		}
 	}
 
+	// Track if we have an exact username match and if it was penalized (short username)
+	hasExactUsername := slices.Contains(matches, "username:exact")
+	isShortUsername := len(targetUsername) <= 4 && !containsDigit(targetUsername)
+
 	// Track best signals (don't accumulate across profiles)
 	var hasLink bool
 	var bestNameScore, bestLocScore, bestBioScore, bestAvatarScore float64
@@ -1520,6 +1524,25 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 				"guessed", guessed.Platform,
 				"score", bestAvatarScore,
 				"bonus", bonus)
+		}
+	}
+
+	// Combo bonuses: short username + strong corroborating signals
+	// Short usernames (3-4 chars without digits) get only +0.1 base score, but when combined with
+	// strong signals like exact name match or org match, they deserve higher confidence.
+	// This compensates for the short username penalty when there's corroborating evidence.
+	if hasExactUsername && isShortUsername {
+		// Exact username + high name match (>= 0.8) - very strong combo
+		// E.g., GitLab "aanm" with name "André Martins" matching GitHub
+		if bestNameScore >= 0.8 {
+			score += 0.15
+			matches = append(matches, "combo:username+name")
+		}
+		// Exact username + organization match - strong combo
+		// E.g., DockerHub "aanm" with repos mentioning "cilium" matching GitHub org
+		if hasOrgMatch {
+			score += 0.15
+			matches = append(matches, "combo:username+org")
 		}
 	}
 
