@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
@@ -438,6 +439,108 @@ func extractInterests(p *profile.Profile) map[string]bool {
 	return interests
 }
 
+// extractProperNouns extracts capitalized words that are likely proper nouns.
+// These include game names (DayZ, EVE), product names, and other specific identifiers.
+// Returns lowercase versions for case-insensitive matching.
+func extractProperNouns(text string) []string {
+	if text == "" {
+		return nil
+	}
+
+	// Common words that are often capitalized but shouldn't be treated as proper nouns
+	skipWords := map[string]bool{
+		// Sentence starters and common capitalized words
+		"I": true, "A": true, "The": true, "An": true, "And": true, "Or": true, "But": true,
+		"In": true, "On": true, "At": true, "To": true, "For": true, "Of": true, "With": true,
+		"By": true, "From": true, "As": true, "Is": true, "Was": true, "Are": true, "Were": true,
+		"Be": true, "Been": true, "Being": true, "Have": true, "Has": true, "Had": true,
+		"Do": true, "Does": true, "Did": true, "Will": true, "Would": true, "Could": true,
+		"Should": true, "May": true, "Might": true, "Must": true, "Can": true,
+		"My": true, "We": true, "Our": true, "You": true, "Your": true, "He": true, "She": true,
+		"It": true, "They": true, "Them": true, "Their": true, "This": true, "That": true,
+		"These": true, "Those": true, "Here": true, "There": true, "Where": true, "When": true,
+		"What": true, "Who": true, "Why": true, "How": true, "Which": true,
+		"Just": true, "Also": true, "Very": true, "Really": true, "Actually": true,
+		"Good": true, "Great": true, "New": true, "Old": true, "First": true, "Last": true,
+		"Other": true, "More": true, "Most": true, "Some": true, "Any": true, "All": true,
+		"Well": true, "So": true, "If": true, "Then": true, "Now": true, "Only": true,
+		// Common sentence-starting words that aren't meaningful proper nouns
+		"Yes": true, "No": true, "Not": true, "Got": true, "Made": true, "Make": true,
+		"Let": true, "See": true, "Try": true, "Use": true, "Get": true, "Go": true,
+		"Come": true, "Take": true, "Give": true, "Find": true, "Keep": true,
+		"Thanks": true, "Thank": true, "Please": true, "Sorry": true, "Hello": true, "Hi": true,
+	}
+
+	var nouns []string
+	seen := make(map[string]bool)
+
+	// Split into words and find capitalized ones
+	words := strings.Fields(text)
+	for i, word := range words {
+		// Clean punctuation from edges
+		cleaned := strings.Trim(word, ".,!?;:\"'()[]{}|/\\@#$%^&*+=<>~`")
+		if len(cleaned) < 2 {
+			continue
+		}
+
+		// Check if word starts with uppercase
+		firstRune, _ := utf8.DecodeRuneInString(cleaned)
+		if firstRune < 'A' || firstRune > 'Z' {
+			continue
+		}
+
+		// Skip common words
+		if skipWords[cleaned] {
+			continue
+		}
+
+		// Skip if it's the first word of a sentence (likely just capitalized for grammar)
+		// But keep ALL-CAPS words and MixedCase words like "DayZ"
+		if i > 0 {
+			prevWord := words[i-1]
+			prevEndsWithPeriod := strings.HasSuffix(prevWord, ".") ||
+				strings.HasSuffix(prevWord, "!") ||
+				strings.HasSuffix(prevWord, "?")
+			// If previous word ended a sentence and this word is Title Case (not special), skip
+			if prevEndsWithPeriod && isTitleCase(cleaned) {
+				continue
+			}
+		} else if isTitleCase(cleaned) {
+			// First word of text and it's just title case - skip
+			continue
+		}
+
+		// Good candidate: ALL-CAPS, MixedCase (like DayZ), or mid-sentence capitalized
+		lowerWord := strings.ToLower(cleaned)
+		if !seen[lowerWord] {
+			seen[lowerWord] = true
+			nouns = append(nouns, cleaned)
+		}
+	}
+
+	return nouns
+}
+
+// isTitleCase returns true if word is just Title Case (first letter upper, rest lower).
+// Returns false for ALL-CAPS, MixedCase (DayZ), or camelCase.
+func isTitleCase(word string) bool {
+	if len(word) < 2 {
+		return false
+	}
+	runes := []rune(word)
+	// First must be upper
+	if runes[0] < 'A' || runes[0] > 'Z' {
+		return false
+	}
+	// Rest must all be lower
+	for _, r := range runes[1:] {
+		if r >= 'A' && r <= 'Z' {
+			return false // Has another uppercase letter
+		}
+	}
+	return true
+}
+
 // extractInterestKeywords extracts technology/interest keywords from text.
 // These are specific enough to be meaningful signals when matched across profiles.
 func extractInterestKeywords(text string) map[string]bool {
@@ -469,6 +572,18 @@ func extractInterestKeywords(text string) map[string]bool {
 		"ios", "android", "flutter", "reactnative",
 		// Other tech
 		"git", "github", "gitlab", "opensource",
+		// Gaming content creation
+		"streaming", "twitch", "obs", "streamlabs",
+		// Creative/3D
+		"blender", "unity", "unreal", "godot", "photoshop", "illustrator", "figma",
+	}
+
+	// Extract capitalized proper nouns (game names, product names, etc.)
+	// These are more specific than common words and make strong signals
+	// Examples: "DayZ", "EVE", "Minecraft", "Fortnite"
+	properNouns := extractProperNouns(text)
+	for _, noun := range properNouns {
+		interests[strings.ToLower(noun)] = true
 	}
 
 	for _, kw := range techKeywords {
@@ -588,6 +703,78 @@ func effectivePlatformType(platform string) profile.PlatformType {
 		return profile.PlatformTypeCode
 	}
 	return pType
+}
+
+// scorePlatformMention checks if a profile's content mentions platforms we know the user is on.
+// E.g., Reddit comment "I'm moving off GitHub pages" -> if we have a GitHub profile, this is a strong signal.
+// Returns true if any known platform is mentioned.
+func scorePlatformMention(guessed *profile.Profile, known []*profile.Profile) bool {
+	// Collect all known platform names (case-insensitive)
+	knownPlatforms := make(map[string]bool)
+	for _, kp := range known {
+		if kp.Platform != "" {
+			knownPlatforms[strings.ToLower(kp.Platform)] = true
+		}
+	}
+
+	if len(knownPlatforms) == 0 {
+		return false
+	}
+
+	// Platform name variations to check (lowercase for matching)
+	platformVariants := map[string][]string{
+		"github":    {"github", "gh pages", "github pages"},
+		"gitlab":    {"gitlab"},
+		"youtube":   {"youtube", "yt"},
+		"twitter":   {"twitter", "x.com"},
+		"reddit":    {"reddit"},
+		"steam":     {"steam", "steamcommunity"},
+		"twitch":    {"twitch"},
+		"instagram": {"instagram", "insta"},
+		"tiktok":    {"tiktok", "tik tok"},
+		"linkedin":  {"linkedin"},
+		"mastodon":  {"mastodon", "fediverse"},
+		"bluesky":   {"bluesky", "bsky"},
+	}
+
+	// Build search text from guessed profile content
+	var searchParts []string
+	if guessed.Bio != "" {
+		searchParts = append(searchParts, guessed.Bio)
+	}
+	if guessed.Content != "" {
+		searchParts = append(searchParts, guessed.Content)
+	}
+	for _, post := range guessed.Posts {
+		if post.Title != "" {
+			searchParts = append(searchParts, post.Title)
+		}
+		if post.Content != "" {
+			searchParts = append(searchParts, post.Content)
+		}
+	}
+
+	if len(searchParts) == 0 {
+		return false
+	}
+
+	searchText := strings.ToLower(strings.Join(searchParts, " "))
+
+	// Check if any known platform is mentioned
+	for platform := range knownPlatforms {
+		variants, ok := platformVariants[platform]
+		if !ok {
+			// Default: just check the platform name itself
+			variants = []string{platform}
+		}
+		for _, variant := range variants {
+			if strings.Contains(searchText, variant) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // isSystemPage returns true if the URL is a system/info page on a recognized platform.

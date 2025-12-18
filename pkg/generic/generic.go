@@ -108,6 +108,11 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, errors.New("bot protection page detected")
 	}
 
+	// Detect empty SPA shell pages (site returns 200 but page/user doesn't exist)
+	if isEmptySPAPage(string(body)) {
+		return nil, errors.New("profile not found")
+	}
+
 	p := parseHTML(body, urlStr)
 
 	// Run identity discovery for the domain
@@ -585,6 +590,21 @@ func isBotProtectionPage(body []byte) bool {
 
 	// DataDome and similar
 	if strings.Contains(content, "datadome") && strings.Contains(content, "captcha") {
+		return true
+	}
+
+	return false
+}
+
+// isEmptySPAPage detects Single Page Application shell pages that contain no actual content.
+// Some sites return 200 OK with just a JavaScript shell for non-existent pages.
+func isEmptySPAPage(content string) bool {
+	lower := strings.ToLower(content)
+
+	// StreamElements: returns just <div id="root"></div> with generic "streamelements" title
+	// for non-existent tip pages
+	if strings.Contains(lower, "streamelements") &&
+		strings.Contains(lower, `<div id="root"></div>`) {
 		return true
 	}
 

@@ -1331,7 +1331,7 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 	// Track best signals (don't accumulate across profiles)
 	var hasLink bool
 	var bestNameScore, bestLocScore, bestBioScore, bestAvatarScore, bestAvatarSourceConf float64
-	var hasWebsiteMatch, hasEmployerMatch, hasOrgMatch, hasInterestMatch bool
+	var hasWebsiteMatch, hasEmployerMatch, hasOrgMatch, hasInterestMatch, hasPlatformMention bool
 
 	// Check against each known profile for additional signals
 	for _, kp := range known {
@@ -1467,6 +1467,14 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 			}
 		}
 
+		// Check platform mention (e.g., Reddit comment mentions "GitHub" when we have a GitHub profile)
+		if !hasPlatformMention {
+			if scorePlatformMention(guessed, known) {
+				hasPlatformMention = true
+				matches = append(matches, "platform-mention")
+			}
+		}
+
 		// Check avatar similarity (high signal - same photo across platforms)
 		// Skip when both are on the same platform - matching platform logos (e.g., WhatsApp logo)
 		// don't indicate same person, only cross-platform avatar matches are meaningful
@@ -1524,6 +1532,10 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 	if hasInterestMatch {
 		// Interest match (e.g., Reddit subreddit "vim" matches GitHub bio "Vim plugin artist")
 		score += 0.25
+	}
+	if hasPlatformMention {
+		// Profile mentions a platform we know they use (e.g., Reddit mentions "GitHub")
+		score += 0.20
 	}
 	if bestAvatarScore > 0 {
 		// Avatar match bonus scales with both perceptual match quality and source profile confidence.
