@@ -626,12 +626,15 @@ func isGenericLinkedInSnippet(snippet string) bool {
 }
 
 // containsAnySearchTerm checks if text contains any of the search terms.
+// Also tries matching with spaces removed to handle "defenseunicorns" vs "defense unicorns".
 func containsAnySearchTerm(textLower, searchTerms string) bool {
 	if searchTerms == "" {
 		return false
 	}
+	// Also check text with spaces removed for compound matches
+	textNoSpaces := strings.ReplaceAll(textLower, " ", "")
 	for term := range strings.FieldsSeq(searchTerms) {
-		if strings.Contains(textLower, term) {
+		if strings.Contains(textLower, term) || strings.Contains(textNoSpaces, term) {
 			return true
 		}
 	}

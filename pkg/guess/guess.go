@@ -1586,6 +1586,37 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 		score = 1.0
 	}
 
+	// LinkedIn-specific confidence rules:
+	// LinkedIn profiles are high-value for employer/location info but also prone to false positives
+	// from common names. Apply strict confidence thresholds based on verification signals.
+	if guessed.Platform == "linkedin" {
+		switch {
+		case hasEmployerMatch || hasOrgMatch:
+			// Employer/org match is strong verification - ensure at least 90% for any match type
+			if score < 0.9 {
+				score = 0.9
+				matches = append(matches, "linkedin:employer-verified")
+			}
+		case matchType == "linked":
+			// Linked from a verified profile but no employer match - use natural score
+			// (inherits from scoring signals like avatar match, name match, etc.)
+			// Don't cap linked profiles - they have verified association
+		case bestBioScore > 0:
+			// Guessed without employer match but has bio overlap - cap at 0.6
+			if score > 0.6 {
+				score = 0.6
+				matches = append(matches, "linkedin:bio-cap")
+			}
+		default:
+			// Guessed without employer match, no bio overlap - cap at 0.5
+			// Name matches alone are unreliable for LinkedIn due to common names
+			if score > 0.5 {
+				score = 0.5
+				matches = append(matches, "linkedin:unverified-cap")
+			}
+		}
+	}
+
 	// For LinkedIn name-based matches without strong signals (employer, location, link),
 	// require a tech-related job title to avoid false positives from common names.
 	// A "Career Coach" or "Partner at Law Firm" with the same name is unlikely to be the same person.

@@ -269,7 +269,8 @@ func TestScoreMatchIntegration(t *testing.T) {
 				username:  "daveworth",
 				matchType: "username",
 			},
-			wantMin:     0.75,
+			// LinkedIn with employer match gets boosted to at least 0.9 (already high from other signals)
+			wantMin:     0.9,
 			wantMax:     1.0,
 			wantMatches: []string{"username:exact", "name:github", "location:github", "employer:github"},
 		},
@@ -295,10 +296,10 @@ func TestScoreMatchIntegration(t *testing.T) {
 				matchType:  "name",
 				sourceName: "David E Worth",
 			},
-			// Complex slug (3 parts) = 0.15 base + 0.15 name + 0.35 employer = 0.65
-			wantMin:     0.60,
-			wantMax:     0.75,
-			wantMatches: []string{"name:slug-complex", "name:github", "employer:github"},
+			// LinkedIn with employer match gets boosted to 0.9 minimum
+			wantMin:     0.90,
+			wantMax:     1.0,
+			wantMatches: []string{"name:slug-complex", "name:github", "employer:github", "linkedin:employer-verified"},
 		},
 		{
 			name: "medium confidence - username and name match only",
