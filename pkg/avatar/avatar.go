@@ -4,7 +4,6 @@ package avatar
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"image"
 	_ "image/gif"  // GIF support
 	_ "image/jpeg" // JPEG support
@@ -22,25 +21,11 @@ import (
 
 // Hash fetches an avatar image and computes its perceptual hash.
 // Returns 0 on any error (network, decode, unsupported format).
-// Uses the provided cache for both HTTP responses and computed hashes.
+// Uses the provided cache for HTTP responses (raw image bytes are cached).
 func Hash(ctx context.Context, cache httpcache.Cacher, avatarURL string, logger *slog.Logger) uint64 {
 	if avatarURL == "" || isDefaultAvatar(avatarURL) {
 		return 0
 	}
-
-	// Check hash cache first
-	hashKey := "avhash:" + httpcache.URLToKey(avatarURL)
-	if cache != nil {
-		if data, err := cache.GetSet(ctx, hashKey, func(ctx context.Context) ([]byte, error) {
-			h := computeHash(ctx, cache, avatarURL, logger)
-			buf := make([]byte, 8)
-			binary.LittleEndian.PutUint64(buf, h)
-			return buf, nil
-		}, cache.TTL()); err == nil && len(data) == 8 {
-			return binary.LittleEndian.Uint64(data)
-		}
-	}
-
 	return computeHash(ctx, cache, avatarURL, logger)
 }
 

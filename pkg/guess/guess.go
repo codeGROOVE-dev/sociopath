@@ -1330,16 +1330,21 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 
 	// Track best signals (don't accumulate across profiles)
 	var hasLink bool
-	var bestNameScore, bestLocScore, bestBioScore, bestAvatarScore float64
+	var bestNameScore, bestLocScore, bestBioScore, bestAvatarScore, bestAvatarSourceConf float64
 	var hasWebsiteMatch, hasEmployerMatch, hasOrgMatch, hasInterestMatch bool
 
 	// Check against each known profile for additional signals
 	for _, kp := range known {
 		// Check for links between profiles (highest signal)
-		if hasLinkTo(guessed, kp) || hasLinkTo(kp, guessed) {
-			if !hasLink {
-				hasLink = true
-				matches = append(matches, "linked:"+kp.Platform)
+		// Skip for profiles discovered via links - we already know there's a link,
+		// and counting it again creates circular boosting (profile A links to B,
+		// B gets credit for being linked, then A gets credit for linking to B)
+		if matchType != "linked" {
+			if hasLinkTo(guessed, kp) || hasLinkTo(kp, guessed) {
+				if !hasLink {
+					hasLink = true
+					matches = append(matches, "linked:"+kp.Platform)
+				}
 			}
 		}
 
@@ -1463,11 +1468,17 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 		}
 
 		// Check avatar similarity (high signal - same photo across platforms)
+		// Skip when both are on the same platform - matching platform logos (e.g., WhatsApp logo)
+		// don't indicate same person, only cross-platform avatar matches are meaningful
+		if guessed.Platform == kp.Platform {
+			continue
+		}
 		if avatarScore := avatar.Score(guessed.AvatarHash, kp.AvatarHash); avatarScore > bestAvatarScore {
 			if bestAvatarScore == 0 && avatarScore > 0 {
 				matches = append(matches, "avatar:"+kp.Platform)
 			}
 			bestAvatarScore = avatarScore
+			bestAvatarSourceConf = kp.Confidence
 		}
 	}
 
@@ -1515,14 +1526,16 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 		score += 0.25
 	}
 	if bestAvatarScore > 0 {
-		// Avatar match is a strong signal - same photo across platforms is unlikely to be coincidence
-		// Scale: 0.4 for identical (score=1.0), down to 0 for threshold match (score~0.1)
-		bonus := bestAvatarScore * 0.4
+		// Avatar match bonus scales with both perceptual match quality and source profile confidence.
+		// E.g., perfect match (1.0) against verified GitHub (conf=1.0) gives +1.0 bonus.
+		// Perfect match against guessed LinkedIn (conf=0.5) gives +0.5 bonus.
+		bonus := bestAvatarScore * bestAvatarSourceConf
 		score += bonus
 		if logger != nil {
 			logger.Info("avatar perceptual match bonus",
 				"guessed", guessed.Platform,
 				"score", bestAvatarScore,
+				"source_confidence", bestAvatarSourceConf,
 				"bonus", bonus)
 		}
 	}

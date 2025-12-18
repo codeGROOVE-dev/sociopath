@@ -63,7 +63,7 @@ func fetchProfile(ctx context.Context, url string, cfg *profile.FetcherConfig) (
 	return client.Fetch(ctx, url)
 }
 
-const scopeCacheTTL = 24 * time.Hour
+const scopeCacheTTL = 90 * 24 * time.Hour
 
 // getCachedGhToken returns the gh auth token, using the cache.
 func getCachedGhToken(ctx context.Context, cache httpcache.Cacher) string {
@@ -518,7 +518,7 @@ const graphQLUserFieldsWithEmail = `
 		totalCount
 	}
 
-	repositories(first: 1, ownerAffiliations: OWNER) {
+	repositories(first: 1, ownerAffiliations: OWNER, privacy: PUBLIC) {
 		totalCount
 	}
 
@@ -621,7 +621,7 @@ const graphQLUserFieldsWithoutEmail = `
 		totalCount
 	}
 
-	repositories(first: 1, ownerAffiliations: OWNER) {
+	repositories(first: 1, ownerAffiliations: OWNER, privacy: PUBLIC) {
 		totalCount
 	}
 
@@ -668,7 +668,7 @@ func tokenHash(token string) string {
 }
 
 // hasEmailScope checks if the token has user:email scope via a cheap HEAD request.
-// The result is cached per-token for 24 hours.
+// The result is cached per-token for 90 days.
 func (c *Client) hasEmailScope(ctx context.Context) bool {
 	if c.token == "" {
 		return false
@@ -683,15 +683,15 @@ func (c *Client) hasEmailScope(ctx context.Context) bool {
 	}
 
 	// Check for cached errors - assume yes on error to fail gracefully later
-	s := string(data)
-	if strings.HasPrefix(s, "NETERR:") || strings.HasPrefix(s, "ERROR:") {
+	scopes := string(data)
+	if strings.HasPrefix(scopes, "NETERR:") || strings.HasPrefix(scopes, "ERROR:") {
 		return true
 	}
-	return s == "1"
+	return strings.Contains(scopes, "user:email") || strings.Contains(scopes, "read:user") || strings.Contains(scopes, "user")
 }
 
 // checkTokenScopeHTTP makes the actual HTTP request to check token scopes.
-// Returns "1" for has scope, "0" for no scope, or error markers for caching.
+// Returns the raw X-Oauth-Scopes header value, or error markers for caching.
 func (c *Client) checkTokenScopeHTTP(ctx context.Context) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://api.github.com/user", http.NoBody)
 	if err != nil {
@@ -712,12 +712,8 @@ func (c *Client) checkTokenScopeHTTP(ctx context.Context) ([]byte, error) {
 	}
 
 	scopes := resp.Header.Get("X-Oauth-Scopes")
-	hasScope := strings.Contains(scopes, "user:email") || strings.Contains(scopes, "read:user") || strings.Contains(scopes, "user")
-	c.logger.DebugContext(ctx, "checked token scopes", "scopes", scopes, "has_email_scope", hasScope)
-	if hasScope {
-		return []byte("1"), nil
-	}
-	return []byte("0"), nil
+	c.logger.DebugContext(ctx, "checked token scopes", "scopes", scopes)
+	return []byte(scopes), nil
 }
 
 func (c *Client) fetchGraphQL(ctx context.Context, urlStr, username string) (*profile.Profile, error) {
@@ -732,11 +728,11 @@ func (c *Client) fetchGraphQL(ctx context.Context, urlStr, username string) (*pr
 		// Check if error is due to missing email scope (fallback for fine-grained PATs)
 		if strings.Contains(err.Error(), "email") || strings.Contains(err.Error(), "scope") {
 			c.logger.DebugContext(ctx, "GraphQL email field failed, retrying without email", "error", err)
-			// Update cache to remember this token doesn't have email scope
+			// Update cache to remember this token doesn't have email scope (empty scopes string)
 			cacheKey := "github:scope:" + tokenHash(c.token)
 			//nolint:errcheck,gosec // best effort cache update
 			c.cache.GetSet(ctx, cacheKey, func(context.Context) ([]byte, error) {
-				return []byte("0"), nil
+				return []byte(""), nil
 			}, scopeCacheTTL)
 			return c.executeGraphQL(ctx, urlStr, username, graphQLUserFieldsWithoutEmail)
 		}

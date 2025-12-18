@@ -107,6 +107,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/velog"
 	"github.com/codeGROOVE-dev/sociopath/pkg/vkontakte"
 	"github.com/codeGROOVE-dev/sociopath/pkg/weibo"
+	"github.com/codeGROOVE-dev/sociopath/pkg/whatsapp"
 	"github.com/codeGROOVE-dev/sociopath/pkg/youtube"
 	"github.com/codeGROOVE-dev/sociopath/pkg/zenn"
 
@@ -413,6 +414,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case telegram.Match(url):
 		platform = "telegram"
 		p, err = fetchTelegram(ctx, url, cfg)
+	case whatsapp.Match(url):
+		platform = "whatsapp"
+		p, err = fetchWhatsApp(ctx, url, cfg)
 	case tryhackme.Match(url):
 		platform = "tryhackme"
 		p, err = fetchTryHackMe(ctx, url, cfg)
@@ -1480,6 +1484,22 @@ func fetchTelegram(ctx context.Context, url string, cfg *config) (*profile.Profi
 	return client.Fetch(ctx, url)
 }
 
+func fetchWhatsApp(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []whatsapp.Option
+	if cfg.cache != nil {
+		opts = append(opts, whatsapp.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, whatsapp.WithLogger(cfg.logger))
+	}
+
+	client, err := whatsapp.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 func fetchTryHackMe(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []tryhackme.Option
 	if cfg.cache != nil {
@@ -1994,6 +2014,7 @@ func isSocialPlatform(url string) bool {
 		instagram.Match(url) ||
 		tiktok.Match(url) ||
 		telegram.Match(url) ||
+		whatsapp.Match(url) ||
 		tryhackme.Match(url) ||
 		vkontakte.Match(url) ||
 		keybase.Match(url) ||
@@ -2172,7 +2193,370 @@ func FetchRecursiveWithGuess(ctx context.Context, url string, opts ...Option) ([
 	// Append guessed profiles to result
 	profiles = append(profiles, guessed...)
 
+	// Last resort: search for LinkedIn by name if we don't have location
+	profiles = tryLinkedInSearchByName(ctx, profiles, cfg)
+
 	return profiles, nil
+}
+
+// isJokeLocation returns true if the location looks like a joke or placeholder
+// that geeks commonly use instead of a real location.
+func isJokeLocation(loc string) bool {
+	if loc == "" {
+		return true
+	}
+
+	// Too short to be a real location
+	if len(loc) <= 3 {
+		return true
+	}
+
+	lower := strings.ToLower(loc)
+
+	// Substring matches - if location contains any of these, it's likely a joke
+	jokeSubstrings := []string{
+		"internet", "tubes", "cyberspace", "metaverse", "matrix",
+		"basement", "void", "null", "undefined", "localhost",
+		"127.0.0.1", "0.0.0.0", "anarchist", "jurisdiction",
+		"/dev/", "milky way", "universe", "interwebs",
+		"cloud", "virtual", "online", "worldwide", "global",
+		"remote", "distributed", "nowhere", "somewhere",
+		"everywhere", "anywhere", "behind you", "not found",
+		"world", "home", "planet", "earth", "space", "terra",
+		"here", "there", "nan", "nil", "404",
+	}
+
+	for _, substr := range jokeSubstrings {
+		if strings.Contains(lower, substr) {
+			return true
+		}
+	}
+
+	// Check for emoji-only locations (no letters)
+	hasLetter := false
+	for _, r := range loc {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			hasLetter = true
+			break
+		}
+	}
+
+	return !hasLetter
+}
+
+// buildLinkedInSearchTerm builds search terms for LinkedIn from multiple sources.
+// Priority: company (if set, use directly) > fallbacks (orgs + email domain + bio keywords, deduped).
+func buildLinkedInSearchTerm(company string, orgs []string, email, bio string, logger *slog.Logger) string {
+	// If company is set, use it directly - no need for fallbacks
+	if company != "" {
+		if logger != nil {
+			logger.Debug("linkedin search: using company", "company", company)
+		}
+		return company
+	}
+
+	// Build fallback terms from multiple sources (deduped)
+	seen := make(map[string]bool)
+	var terms []string
+
+	addTerm := func(term, source string) {
+		normalized := normalizeSearchTerm(term)
+		if normalized != "" && !seen[normalized] {
+			seen[normalized] = true
+			terms = append(terms, normalized)
+			if logger != nil {
+				logger.Debug("linkedin search: added term", "term", normalized, "source", source)
+			}
+		}
+	}
+
+	// Add first 3 orgs (normalized)
+	for i, org := range orgs {
+		if i >= 3 {
+			break
+		}
+		addTerm(org, "org")
+	}
+
+	// Add email domain (normalized)
+	if email != "" {
+		if idx := strings.LastIndex(email, "@"); idx >= 0 {
+			domain := email[idx+1:]
+			// Strip TLD for normalization (chainguard.dev -> chainguard)
+			if dotIdx := strings.LastIndex(domain, "."); dotIdx > 0 {
+				domain = domain[:dotIdx]
+			}
+			addTerm(domain, "email")
+		}
+	}
+
+	// Extract company keywords from bio
+	bioTerms := extractCompanyFromBio(bio)
+	for _, term := range bioTerms {
+		addTerm(term, "bio")
+	}
+
+	if len(terms) == 0 {
+		return ""
+	}
+
+	// Join terms for search (Brave will match any of them)
+	result := strings.Join(terms, " ")
+	if logger != nil {
+		logger.Debug("linkedin search: built search term", "result", result, "term_count", len(terms))
+	}
+	return result
+}
+
+// normalizeSearchTerm normalizes a company/org name for search.
+// Strips common suffixes like -dev, -inc, -io, etc.
+func normalizeSearchTerm(s string) string {
+	if s == "" {
+		return ""
+	}
+	s = strings.ToLower(strings.TrimSpace(s))
+
+	// Strip common GitHub org suffixes.
+	for _, suf := range []string{"-dev", "-inc", "-io", "-hq", "-oss", "-labs", "-team", ".io", ".dev", ".com"} {
+		s = strings.TrimSuffix(s, suf)
+	}
+
+	// Skip generic terms.
+	switch s {
+	case "the", "inc", "llc", "corp", "company", "org", "foundation":
+		return ""
+	}
+	return s
+}
+
+// extractCompanyFromBio extracts potential company names from a bio.
+// Looks for patterns like "X engineer", "engineer at X", "@X", etc.
+func extractCompanyFromBio(bio string) []string {
+	if bio == "" {
+		return nil
+	}
+
+	var companies []string
+	lower := strings.ToLower(bio)
+
+	// Pattern: "at X" or "@ X" where X is a company
+	for _, pat := range []string{" at ", " @ ", "@"} {
+		if idx := strings.Index(lower, pat); idx >= 0 {
+			rest := strings.TrimSpace(bio[idx+len(pat):])
+			if fields := strings.Fields(rest); len(fields) > 0 {
+				word := strings.Trim(fields[0], ".,;:!?()[]{}\"'")
+				if len(word) >= 3 {
+					companies = append(companies, word)
+				}
+			}
+		}
+	}
+
+	// Pattern: "X engineer/developer/security" - company before job title
+	jobTitles := []string{"engineer", "developer", "security", "architect", "lead", "manager", "director"}
+	for _, title := range jobTitles {
+		if idx := strings.Index(lower, title); idx > 0 {
+			// Look at word before the title
+			before := strings.TrimSpace(bio[:idx])
+			words := strings.Fields(before)
+			if len(words) > 0 {
+				lastWord := words[len(words)-1]
+				// Skip common adjectives
+				adjectives := map[string]bool{
+					"senior": true, "junior": true, "staff": true, "principal": true,
+					"software": true, "platform": true, "site": true, "reliability": true,
+					"devops": true, "cloud": true, "data": true, "ml": true, "ai": true,
+				}
+				if !adjectives[strings.ToLower(lastWord)] && len(lastWord) >= 3 {
+					companies = append(companies, lastWord)
+				}
+			}
+		}
+	}
+
+	return companies
+}
+
+// tryLinkedInSearchByName searches for LinkedIn profile by name+company as a last resort
+// when we don't have location from any high-confidence profile.
+//
+//nolint:gocognit,maintidx // linear orchestration with early returns
+func tryLinkedInSearchByName(ctx context.Context, profiles []*profile.Profile, cfg *config) []*profile.Profile {
+	// Check if we already have location from a high-confidence profile
+	var hasLocation, hasLinkedIn bool
+	var locationSource, linkedInSource string
+	var name, company, email, bio string
+	var orgs []string
+
+	for _, p := range profiles {
+		// Check for high-confidence location (ignore joke locations)
+		if p.Location != "" {
+			isJoke := isJokeLocation(p.Location)
+			isHighConf := !p.IsGuess || p.Confidence > 0.6
+			if cfg.logger != nil {
+				cfg.logger.Debug("linkedin search: evaluating location",
+					"platform", p.Platform,
+					"location", p.Location,
+					"is_joke", isJoke,
+					"is_guess", p.IsGuess,
+					"confidence", p.Confidence,
+					"is_high_conf", isHighConf)
+			}
+			if !isJoke && isHighConf {
+				hasLocation = true
+				locationSource = fmt.Sprintf("%s (conf=%.2f)", p.Platform, p.Confidence)
+			}
+		}
+
+		// Check for existing LinkedIn profile
+		if p.Platform == "linkedin" && (!p.IsGuess || p.Confidence > 0.5) {
+			hasLinkedIn = true
+			linkedInSource = fmt.Sprintf("conf=%.2f, guess=%v", p.Confidence, p.IsGuess)
+		}
+
+		// Extract name, company, orgs, email, bio from GitHub profile
+		if p.Platform == "github" && !p.IsGuess {
+			if name == "" && p.DisplayName != "" {
+				name = p.DisplayName
+			}
+			if company == "" {
+				if c, ok := p.Fields["company"]; ok && c != "" {
+					company = c
+				}
+			}
+			if len(orgs) == 0 && len(p.Groups) > 0 {
+				orgs = p.Groups
+			}
+			if email == "" {
+				if e, ok := p.Fields["email"]; ok && e != "" {
+					email = e
+				}
+			}
+			if bio == "" && p.Bio != "" {
+				bio = p.Bio
+			}
+		}
+	}
+
+	// Skip if we already have location or LinkedIn
+	if hasLocation {
+		if cfg.logger != nil {
+			cfg.logger.Info("linkedin search: skipping - already have high-confidence location",
+				"location_source", locationSource)
+		}
+		return profiles
+	}
+	if hasLinkedIn {
+		if cfg.logger != nil {
+			cfg.logger.Info("linkedin search: skipping - already have linkedin profile",
+				"linkedin_source", linkedInSource)
+		}
+		return profiles
+	}
+
+	// Skip if we don't have name
+	if name == "" {
+		if cfg.logger != nil {
+			cfg.logger.Info("linkedin search: skipping - no display name available")
+		}
+		return profiles
+	}
+
+	// Build search terms from multiple sources
+	searchTerm := buildLinkedInSearchTerm(company, orgs, email, bio, cfg.logger)
+	if searchTerm == "" {
+		if cfg.logger != nil {
+			cfg.logger.Info("linkedin search: skipping - no search terms available",
+				"name", name, "company", company, "orgs", orgs, "email", email)
+		}
+		return profiles
+	}
+
+	// Check for Brave API key
+	apiKey := linkedin.LoadBraveAPIKey()
+	if apiKey == "" {
+		if cfg.logger != nil {
+			cfg.logger.Info("linkedin search: skipping - no BRAVE_API_KEY configured",
+				"name", name, "search_term", searchTerm)
+		}
+		return profiles
+	}
+
+	if cfg.logger != nil {
+		cfg.logger.Info("linkedin search: proceeding with brave search",
+			"name", name, "search_term", searchTerm)
+	}
+
+	// Create Brave searcher
+	var braveOpts []linkedin.BraveOption
+	if cfg.cache != nil {
+		braveOpts = append(braveOpts, linkedin.WithBraveCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		braveOpts = append(braveOpts, linkedin.WithBraveLogger(cfg.logger))
+	}
+	searcher := linkedin.NewBraveSearcher(apiKey, braveOpts...)
+
+	// Search for LinkedIn profile
+	result, err := searcher.SearchByName(ctx, name, searchTerm, "")
+	if err != nil {
+		if cfg.logger != nil {
+			cfg.logger.WarnContext(ctx, "linkedin search by name failed", "error", err)
+		}
+		return profiles
+	}
+
+	// Add result as a guessed LinkedIn profile if we found a profile URL
+	if result != nil && result.ProfileURL != "" {
+		if cfg.logger != nil {
+			cfg.logger.InfoContext(ctx, "linkedin search by name found profile",
+				"name", name, "search_term", searchTerm, "location", result.Location,
+				"profile_url", result.ProfileURL, "confidence", result.Confidence)
+		}
+
+		linkedInProfile := &profile.Profile{
+			Platform:   "linkedin",
+			URL:        result.ProfileURL,
+			Location:   result.Location,
+			IsGuess:    true,
+			Confidence: result.Confidence,
+			GuessMatch: []string{"brave_search"},
+			Fields:     make(map[string]string),
+		}
+
+		// Set display name if found
+		if result.Name != "" {
+			linkedInProfile.DisplayName = result.Name
+		}
+
+		// Set bio to headline (most descriptive)
+		if result.Headline != "" {
+			linkedInProfile.Bio = result.Headline
+		} else if result.Bio != "" {
+			linkedInProfile.Bio = result.Bio
+		}
+
+		// Store all available fields
+		if result.Company != "" {
+			linkedInProfile.Fields["company"] = result.Company
+		}
+		if result.JobTitle != "" {
+			linkedInProfile.Fields["job_title"] = result.JobTitle
+		}
+		if result.Headline != "" {
+			linkedInProfile.Fields["headline"] = result.Headline
+		}
+		if result.Education != "" {
+			linkedInProfile.Fields["education"] = result.Education
+		}
+		if result.Connections != "" {
+			linkedInProfile.Fields["connections"] = result.Connections
+		}
+
+		profiles = append(profiles, linkedInProfile)
+	}
+
+	return profiles
 }
 
 // GuessFromUsername guesses profiles across platforms based on a username.

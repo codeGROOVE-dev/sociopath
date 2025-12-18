@@ -39,8 +39,8 @@ func main() {
 	debug := flag.Bool("debug", false, "enable debug logging")
 	verbose := flag.Bool("v", false, "verbose logging (same as -debug)")
 	useBrowser := flag.Bool("browser", false, "enable reading cookies from browser stores (disabled by default)")
-	noCache := flag.Bool("no-cache", false, "disable HTTP caching (enabled by default with 75-day TTL)")
-	cacheTTL := flag.Duration("cache-ttl", 75*24*time.Hour, "cache time-to-live (default: 75 days, use 24h for testing)")
+	noCache := flag.Bool("no-cache", false, "disable HTTP caching (enabled by default with 90-day TTL)")
+	cacheTTL := flag.Duration("cache-ttl", 90*24*time.Hour, "cache time-to-live (default: 90 days, use 24h for testing)")
 	recursive := flag.Bool("r", false, "recursively fetch social media profiles from discovered links")
 	guessMode := flag.Bool("guess", false, "guess related profiles based on discovered usernames (implies -r)")
 	maxPerPlatform := flag.Int("max-per-platform", 0, "max guess candidates per platform (default: 2)")
@@ -251,6 +251,7 @@ func printPretty(profiles []*profile.Profile) {
 	}
 }
 
+//nolint:gocognit,maintidx // display logic with many optional fields
 func printProfile(prof *profile.Profile) {
 	// Header: platform name with status indicators
 	platformColor := blue
