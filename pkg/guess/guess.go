@@ -997,6 +997,16 @@ func extractUsernamesWithLogger(profiles []*profile.Profile, logger *slog.Logger
 				continue
 			}
 
+			// Skip WhatsApp phone numbers - they're not usernames for other platforms
+			// e.g., "996999697000" from wa.me/+996999697000 won't match on GitHub, Twitter, etc.
+			if p.Platform == "whatsapp" && isPhoneNumber(u) {
+				if logger != nil {
+					logger.Debug("skipping whatsapp phone number",
+						"phone", u, "source_url", p.URL)
+				}
+				continue
+			}
+
 			// Strip .bsky.social suffix from Bluesky handles for guessing on other platforms
 			// e.g., "developerguy.bsky.social" -> "developerguy"
 			// Custom domains (e.g., "developerguy.com") are left intact
@@ -1075,6 +1085,23 @@ func isYouTubeChannelID(s string) bool {
 	// Rest should be base64-like characters (alphanumeric, _, -).
 	for _, c := range s[2:] {
 		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '_' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// isPhoneNumber checks if a string is a phone number (all digits, 7-15 chars).
+// Phone numbers aren't usernames and won't match across platforms.
+// e.g., "996999697000" from WhatsApp wa.me/+996999697000.
+func isPhoneNumber(s string) bool {
+	// Phone numbers are 7-15 digits
+	if len(s) < 7 || len(s) > 15 {
+		return false
+	}
+	// Check if all digits
+	for _, c := range s {
+		if c < '0' || c > '9' {
 			return false
 		}
 	}

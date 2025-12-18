@@ -26,6 +26,8 @@ var (
 	durationPattern  = regexp.MustCompile(`\s*\d+\s*(?:minutes?|seconds?|hours?).*$`)
 	countryPattern   = regexp.MustCompile(`"country":"([^"]+)"`)
 	extLinkPattern   = regexp.MustCompile(`"channelExternalLinkViewModel":\{"title":\{"content":"([^"]+)"\},"link":\{"content":"([^"]+)"`)
+	viewCountPattern = regexp.MustCompile(`"viewCountText":\{"simpleText":"([^"]+)"`)
+	publishedPattern = regexp.MustCompile(`"publishedTimeText":\{"simpleText":"([^"]+)"`)
 	usernamePatterns = []*regexp.Regexp{
 		regexp.MustCompile(`youtube\.com/@([^/?#]+)`),
 		regexp.MustCompile(`youtube\.com/c/([^/?#]+)`),
@@ -223,10 +225,14 @@ func extractVideoTitles(html string, limit int) []profile.Post {
 	var posts []profile.Post
 	seen := make(map[string]bool)
 
+	// Extract all view counts and publish times first
+	viewCounts := viewCountPattern.FindAllStringSubmatch(html, -1)
+	publishTimes := publishedPattern.FindAllStringSubmatch(html, -1)
+
 	// Extract from accessibility labels - these contain actual video titles with duration
 	matches := accessPattern.FindAllStringSubmatch(html, -1)
 
-	for _, match := range matches {
+	for i, match := range matches {
 		if len(match) <= 1 || len(posts) >= limit {
 			continue
 		}
@@ -241,10 +247,23 @@ func extractVideoTitles(html string, limit int) []profile.Post {
 			continue
 		}
 		seen[title] = true
-		posts = append(posts, profile.Post{
+
+		post := profile.Post{
 			Type:  profile.PostTypeVideo,
 			Title: title,
-		})
+		}
+
+		// Add view count if available
+		if i < len(viewCounts) && len(viewCounts[i]) > 1 {
+			post.Content = viewCounts[i][1]
+		}
+
+		// Add publish time if available
+		if i < len(publishTimes) && len(publishTimes[i]) > 1 {
+			post.Date = publishTimes[i][1]
+		}
+
+		posts = append(posts, post)
 	}
 
 	return posts

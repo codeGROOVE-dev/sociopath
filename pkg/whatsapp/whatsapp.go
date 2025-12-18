@@ -26,8 +26,8 @@ func init() { profile.Register(platformInfo{}) }
 
 // URL patterns for WhatsApp links.
 var (
-	waMePattern     = regexp.MustCompile(`(?i)wa\.me/(\d{7,15})`)
-	phoneQueryParam = regexp.MustCompile(`phone=(\d{7,15})`)
+	waMePattern     = regexp.MustCompile(`(?i)wa\.me/\+?(\d{7,15})`)
+	phoneQueryParam = regexp.MustCompile(`phone=\+?(\d{7,15})`)
 )
 
 // Match returns true if the URL is a WhatsApp link with a phone number.

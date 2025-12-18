@@ -763,6 +763,9 @@ var socialPatterns = []*regexp.Regexp{
 	// Telegram
 	regexp.MustCompile(`https?://t\.me/[\w-]+`),
 	regexp.MustCompile(`https?://(?:www\.)?telegram\.me/[\w-]+`),
+	// WhatsApp
+	regexp.MustCompile(`https?://wa\.me/\+?\d{7,15}`),
+	regexp.MustCompile(`https?://api\.whatsapp\.com/send\?phone=\d{7,15}`),
 	// Scheduling/Calendar
 	regexp.MustCompile(`https?://(?:www\.)?cal\.com/[\w-]+(?:/[\w-]+)?`),
 	regexp.MustCompile(`https?://(?:www\.)?calendly\.com/[\w-]+(?:/[\w-]+)?`),

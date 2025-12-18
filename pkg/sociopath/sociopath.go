@@ -49,6 +49,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/dockerhub"
 	"github.com/codeGROOVE-dev/sociopath/pkg/douban"
 	"github.com/codeGROOVE-dev/sociopath/pkg/duolingo"
+	emailpkg "github.com/codeGROOVE-dev/sociopath/pkg/email"
 	"github.com/codeGROOVE-dev/sociopath/pkg/facebook"
 	"github.com/codeGROOVE-dev/sociopath/pkg/generic"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gitee"
@@ -304,6 +305,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case dockerhub.Match(url):
 		platform = "dockerhub"
 		p, err = fetchDockerHub(ctx, url, cfg)
+	case emailpkg.Match(url):
+		platform = "email"
+		p, err = fetchEmail(ctx, url, cfg)
 	case gitlab.Match(url):
 		platform = "gitlab"
 		p, err = fetchGitLab(ctx, url, cfg)
@@ -827,6 +831,22 @@ func fetchDockerHub(ctx context.Context, url string, cfg *config) (*profile.Prof
 	}
 
 	client, err := dockerhub.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchEmail(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []emailpkg.Option
+	if cfg.cache != nil {
+		opts = append(opts, emailpkg.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, emailpkg.WithLogger(cfg.logger))
+	}
+
+	client, err := emailpkg.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

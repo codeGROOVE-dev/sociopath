@@ -177,6 +177,14 @@ func parseHTML(data []byte, urlStr string) *profile.Profile {
 				p.Fields[fmt.Sprintf("email_%d", i+2)] = cleanEmail(email)
 			}
 		}
+
+		// Add email addresses from major providers to SocialLinks for profile discovery
+		// This allows extracting usernames for guessing on other platforms
+		for _, email := range emails {
+			if isMajorEmailProvider(email) {
+				p.SocialLinks = append(p.SocialLinks, "mailto:"+email)
+			}
+		}
 	}
 
 	// Extract phone numbers
@@ -541,6 +549,32 @@ func cleanEmail(email string) string {
 		return email[:idx] + email[idx+6:]
 	}
 	return email
+}
+
+// isMajorEmailProvider checks if an email is from a major provider.
+// Major providers are useful for username extraction and cross-platform guessing.
+func isMajorEmailProvider(email string) bool {
+	lower := strings.ToLower(email)
+	majorProviders := []string{
+		"@gmail.com",
+		"@outlook.com", "@hotmail.com", "@live.com", "@msn.com", // Microsoft
+		"@proton.me", "@protonmail.com", "@pm.me", // ProtonMail
+		"@yahoo.com", "@ymail.com", "@rocketmail.com", // Yahoo
+		"@icloud.com", "@me.com", "@mac.com", // Apple
+		"@aol.com",                   // AOL
+		"@zoho.com", "@zohomail.com", // Zoho
+		"@gmx.com", "@gmx.net", // GMX
+		"@mail.com",                     // Mail.com
+		"@fastmail.com", "@fastmail.fm", // FastMail
+		"@tutanota.com", "@tutanota.de", "@tuta.io", // Tutanota
+	}
+
+	for _, provider := range majorProviders {
+		if strings.HasSuffix(lower, provider) {
+			return true
+		}
+	}
+	return false
 }
 
 func dedupeLinks(links []string) []string {
