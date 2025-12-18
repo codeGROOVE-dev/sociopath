@@ -395,6 +395,11 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		extractHTMLProfileData(prof, htmlContent)
 	}
 
+	// Check for GitHub Pages site
+	if pagesURL := c.checkGitHubPages(ctx, username); pagesURL != "" {
+		prof.SocialLinks = append(prof.SocialLinks, pagesURL)
+	}
+
 	// Deduplicate and filter out same-platform links (GitHub to GitHub)
 	prof.SocialLinks = dedupeLinks(prof.SocialLinks)
 	prof.SocialLinks = filterSamePlatformLinks(prof.SocialLinks)
@@ -1708,6 +1713,65 @@ func (c *Client) extractKeybaseFromGists(ctx context.Context, gists []gistNode, 
 		}
 	}
 	return ""
+}
+
+// checkGitHubPages probes for a GitHub Pages site at username.github.io.
+// Returns the URL if the site exists and responds with 200 OK.
+// Results (including errors) are cached for the configured TTL.
+func (c *Client) checkGitHubPages(ctx context.Context, username string) string {
+	pagesURL := fmt.Sprintf("https://%s.github.io", strings.ToLower(username))
+	cacheKey := "ghpages:" + strings.ToLower(username)
+
+	// Use cache if available
+	if c.cache != nil {
+		data, err := c.cache.GetSet(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
+			c.logger.InfoContext(ctx, "CACHE MISS", "url", pagesURL)
+			return c.probeGitHubPages(ctx, pagesURL)
+		}, c.cache.TTL())
+		if err != nil {
+			c.logger.DebugContext(ctx, "github pages cache error", "url", pagesURL, "error", err)
+			return ""
+		}
+		if string(data) == "OK" {
+			c.logger.InfoContext(ctx, "found github pages site", "url", pagesURL)
+			return pagesURL
+		}
+		c.logger.DebugContext(ctx, "github pages not found (cached)", "url", pagesURL)
+		return ""
+	}
+
+	// No cache - probe directly
+	data, _ := c.probeGitHubPages(ctx, pagesURL) //nolint:errcheck // probeGitHubPages never returns error
+	if string(data) == "OK" {
+		c.logger.InfoContext(ctx, "found github pages site", "url", pagesURL)
+		return pagesURL
+	}
+	return ""
+}
+
+// probeGitHubPages makes a HEAD request to check if a GitHub Pages site exists.
+// Returns "OK" if the site exists, "NOTFOUND" otherwise.
+func (c *Client) probeGitHubPages(ctx context.Context, pagesURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, pagesURL, http.NoBody)
+	if err != nil {
+		c.logger.DebugContext(ctx, "failed to create github pages request", "url", pagesURL, "error", err)
+		return []byte("ERROR"), nil // Cache the error
+	}
+	req.Header.Set("User-Agent", httpcache.UserAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.logger.DebugContext(ctx, "github pages check failed", "url", pagesURL, "error", err)
+		return []byte("NETERR"), nil // Cache network errors
+	}
+	defer resp.Body.Close() //nolint:errcheck // best effort close
+
+	if resp.StatusCode == http.StatusOK {
+		return []byte("OK"), nil
+	}
+
+	c.logger.DebugContext(ctx, "github pages not found", "url", pagesURL, "status", resp.StatusCode)
+	return []byte("NOTFOUND"), nil
 }
 
 // archiveSnapshot represents a snapshot from the Internet Archive CDX API.
