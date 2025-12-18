@@ -113,6 +113,19 @@ type apiProject struct {
 	ForksCount  int    `json:"forks_count"`
 }
 
+type apiEvent struct {
+	ActionName  string `json:"action_name"`
+	TargetType  string `json:"target_type"`
+	TargetTitle string `json:"target_title"`
+	CreatedAt   string `json:"created_at"`
+	TargetIID   int    `json:"target_iid"`
+	ProjectID   int    `json:"project_id"`
+}
+
+type apiProjectInfo struct {
+	PathWithNamespace string `json:"path_with_namespace"`
+}
+
 // Fetch retrieves a GitLab profile.
 func (c *Client) Fetch(ctx context.Context, url string) (*profile.Profile, error) {
 	m := usernamePattern.FindStringSubmatch(url)
@@ -183,11 +196,112 @@ func (c *Client) Fetch(ctx context.Context, url string) (*profile.Profile, error
 		}
 	}
 
+	// Fetch user's activity (issues, MRs, comments)
+	c.fetchEvents(ctx, user, p)
+
 	return p, nil
 }
 
+// fetchEvents fetches user events and adds them as posts.
+func (c *Client) fetchEvents(ctx context.Context, user string, prof *profile.Profile) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://gitlab.com/api/v4/users/"+user+"/events?per_page=20", http.NoBody)
+	if err != nil {
+		return
+	}
+	req.Header.Set("User-Agent", httpcache.UserAgent)
+	req.Header.Set("Accept", "application/json")
+
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		return
+	}
+
+	var events []apiEvent
+	if err := json.Unmarshal(body, &events); err != nil {
+		return
+	}
+
+	// Cache for project paths (to build URLs)
+	projectPaths := make(map[int]string)
+
+	for _, ev := range events {
+		// Skip events without meaningful content
+		if ev.TargetTitle == "" || ev.TargetType == "" {
+			continue
+		}
+
+		// Only include issues and merge requests
+		if ev.TargetType != "Issue" && ev.TargetType != "MergeRequest" {
+			continue
+		}
+
+		// Get project path for URL construction
+		projectPath := projectPaths[ev.ProjectID]
+		if projectPath == "" {
+			projectPath = c.fetchProjectPath(ctx, ev.ProjectID)
+			if projectPath != "" {
+				projectPaths[ev.ProjectID] = projectPath
+			}
+		}
+
+		post := profile.Post{
+			Title: ev.TargetTitle,
+			Type:  profile.PostTypePost,
+		}
+
+		// Build URL if we have the project path
+		if projectPath != "" {
+			switch ev.TargetType {
+			case "Issue":
+				post.URL = fmt.Sprintf("https://gitlab.com/%s/-/issues/%d", projectPath, ev.TargetIID)
+			case "MergeRequest":
+				post.URL = fmt.Sprintf("https://gitlab.com/%s/-/merge_requests/%d", projectPath, ev.TargetIID)
+			default:
+				// No URL for other event types
+			}
+		}
+
+		// Parse date
+		if ev.CreatedAt != "" {
+			if t, err := time.Parse(time.RFC3339, ev.CreatedAt); err == nil {
+				post.Date = t.Format("2006-01-02")
+			}
+		}
+
+		// Add action context to title
+		if ev.ActionName != "" {
+			post.Title = fmt.Sprintf("%s: %s", ev.ActionName, ev.TargetTitle)
+		}
+
+		prof.Posts = append(prof.Posts, post)
+	}
+}
+
+// fetchProjectPath fetches the path_with_namespace for a project ID.
+func (c *Client) fetchProjectPath(ctx context.Context, projectID int) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		fmt.Sprintf("https://gitlab.com/api/v4/projects/%d?simple=true", projectID), http.NoBody)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", httpcache.UserAgent)
+	req.Header.Set("Accept", "application/json")
+
+	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
+	if err != nil {
+		return ""
+	}
+
+	var proj apiProjectInfo
+	if err := json.Unmarshal(body, &proj); err != nil {
+		return ""
+	}
+	return proj.PathWithNamespace
+}
+
 func buildProfile(u *apiUser, url string) *profile.Profile {
-	p := &profile.Profile{
+	prof := &profile.Profile{
 		Platform:    platform,
 		URL:         url,
 		Username:    u.Username,
@@ -195,46 +309,46 @@ func buildProfile(u *apiUser, url string) *profile.Profile {
 		AvatarURL:   u.AvatarURL,
 		Fields:      make(map[string]string),
 	}
-	if p.DisplayName == "" {
-		p.DisplayName = p.Username
+	if prof.DisplayName == "" {
+		prof.DisplayName = prof.Username
 	}
-	return p
+	return prof
 }
 
-func parseHTMLProfile(html string, p *profile.Profile) {
+func parseHTMLProfile(html string, prof *profile.Profile) {
 	if m := memberSincePattern.FindStringSubmatch(html); len(m) > 1 {
 		if t, err := time.Parse("January 2, 2006", m[1]); err == nil {
-			p.CreatedAt = t.Format("2006-01-02")
+			prof.CreatedAt = t.Format("2006-01-02")
 		}
 	}
 	if m := bioPattern.FindStringSubmatch(html); len(m) > 1 {
 		if s := strings.TrimSpace(m[1]); s != "" {
-			p.Bio = s
+			prof.Bio = s
 		}
 	}
 	if m := locationPattern.FindStringSubmatch(html); len(m) > 1 {
 		if s := strings.TrimSpace(m[1]); s != "" {
-			p.Location = s
+			prof.Location = s
 		}
 	}
 	if m := jobTitlePattern.FindStringSubmatch(html); len(m) > 1 {
 		if s := strings.TrimSpace(m[1]); s != "" {
-			p.Fields["title"] = s
+			prof.Fields["title"] = s
 		}
 	}
 	if m := websitePattern.FindStringSubmatch(html); len(m) > 1 {
-		p.Website = m[1]
-		p.SocialLinks = append(p.SocialLinks, m[1])
+		prof.Website = m[1]
+		prof.SocialLinks = append(prof.SocialLinks, m[1])
 	}
 	if m := twitterPattern.FindStringSubmatch(html); len(m) > 1 {
 		url := "https://twitter.com/" + m[1]
-		p.Fields["twitter"] = url
-		p.SocialLinks = append(p.SocialLinks, url)
+		prof.Fields["twitter"] = url
+		prof.SocialLinks = append(prof.SocialLinks, url)
 	}
 	if m := utcOffsetPattern.FindStringSubmatch(html); len(m) > 1 {
 		if sec, err := strconv.Atoi(m[1]); err == nil {
 			hrs := float64(sec) / 3600.0
-			p.UTCOffset = &hrs
+			prof.UTCOffset = &hrs
 		}
 	}
 }
