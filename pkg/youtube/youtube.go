@@ -24,6 +24,8 @@ var (
 	videoCountPat    = regexp.MustCompile(`([\d,]+)\s*(?:videos|Videos)`)
 	accessPattern    = regexp.MustCompile(`"accessibilityData":\{"label":"([^"]+)\s+\d+\s*(?:minutes?|seconds?|hours?)`)
 	durationPattern  = regexp.MustCompile(`\s*\d+\s*(?:minutes?|seconds?|hours?).*$`)
+	countryPattern   = regexp.MustCompile(`"country":"([^"]+)"`)
+	extLinkPattern   = regexp.MustCompile(`"channelExternalLinkViewModel":\{"title":\{"content":"([^"]+)"\},"link":\{"content":"([^"]+)"`)
 	usernamePatterns = []*regexp.Regexp{
 		regexp.MustCompile(`youtube\.com/@([^/?#]+)`),
 		regexp.MustCompile(`youtube\.com/c/([^/?#]+)`),
@@ -116,7 +118,28 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, err
 	}
 
+	// Also fetch the /about page which has country and social links
+	aboutURL := buildAboutURL(normalizedURL)
+	aboutReq, err := http.NewRequestWithContext(ctx, http.MethodGet, aboutURL, http.NoBody)
+	if err == nil {
+		aboutReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
+		aboutReq.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		if aboutBody, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, aboutReq, c.logger); err == nil {
+			// Concatenate the two HTML pages for parsing
+			body = append(body, aboutBody...)
+		}
+	}
+
 	return parseProfile(string(body), normalizedURL)
+}
+
+// buildAboutURL constructs the /about URL for a YouTube channel.
+func buildAboutURL(channelURL string) string {
+	// Remove trailing slash if present
+	channelURL = strings.TrimSuffix(channelURL, "/")
+	// Remove any existing /about suffix
+	channelURL = strings.TrimSuffix(channelURL, "/about")
+	return channelURL + "/about"
 }
 
 func parseProfile(html, url string) (*profile.Profile, error) {
@@ -160,19 +183,23 @@ func parseProfile(html, url string) (*profile.Profile, error) {
 	// Extract video titles from accessibility labels
 	prof.Posts = extractVideoTitles(html, 50)
 
-	// Extract social links
-	prof.SocialLinks = htmlutil.SocialLinks(html)
+	// Extract country/location
+	if matches := countryPattern.FindStringSubmatch(html); len(matches) > 1 {
+		prof.Location = matches[1]
+	}
 
-	// Filter out YouTube's own links
-	var filtered []string
-	for _, link := range prof.SocialLinks {
+	// Extract social links from YouTube's channel external links JSON
+	prof.SocialLinks = extractExternalLinks(html)
+
+	// Also try htmlutil.SocialLinks as a fallback and merge results
+	for _, link := range htmlutil.SocialLinks(html) {
 		if !strings.Contains(link, "youtube.com") &&
 			!strings.Contains(link, "youtu.be") &&
-			!strings.Contains(link, "google.com") {
-			filtered = append(filtered, link)
+			!strings.Contains(link, "google.com") &&
+			!slices.Contains(prof.SocialLinks, link) {
+			prof.SocialLinks = append(prof.SocialLinks, link)
 		}
 	}
-	prof.SocialLinks = filtered
 
 	if prof.DisplayName == "" {
 		prof.DisplayName = prof.Username
@@ -234,4 +261,43 @@ func extractUsername(s string) string {
 		}
 	}
 	return ""
+}
+
+// extractExternalLinks extracts social/external links from YouTube's channelExternalLinkViewModel JSON.
+func extractExternalLinks(html string) []string {
+	var links []string
+	seen := make(map[string]bool)
+
+	matches := extLinkPattern.FindAllStringSubmatch(html, -1)
+	for _, match := range matches {
+		if len(match) < 3 {
+			continue
+		}
+		// match[1] is title (e.g., "Twitter", "Twitch")
+		// match[2] is the link (e.g., "twitter.com/sidarthus89")
+		link := strings.TrimSpace(match[2])
+		if link == "" {
+			continue
+		}
+
+		// YouTube stores links without protocol - add https://
+		if !strings.HasPrefix(link, "http://") && !strings.HasPrefix(link, "https://") {
+			link = "https://" + link
+		}
+
+		// Skip YouTube's own links and duplicates
+		lower := strings.ToLower(link)
+		if strings.Contains(lower, "youtube.com") ||
+			strings.Contains(lower, "youtu.be") ||
+			strings.Contains(lower, "google.com") {
+			continue
+		}
+
+		if !seen[link] {
+			seen[link] = true
+			links = append(links, link)
+		}
+	}
+
+	return links
 }

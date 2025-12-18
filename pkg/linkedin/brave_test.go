@@ -182,3 +182,59 @@ func TestLoadBraveAPIKey(t *testing.T) {
 		}
 	})
 }
+
+func TestContainsAnySearchTerm(t *testing.T) {
+	tests := []struct {
+		name        string
+		text        string
+		searchTerms string
+		want        bool
+	}{
+		{
+			name:        "exact match",
+			text:        "works at defenseunicorns",
+			searchTerms: "defenseunicorns",
+			want:        true,
+		},
+		{
+			name:        "match with spaces in text",
+			text:        "works at defense unicorns",
+			searchTerms: "defenseunicorns",
+			want:        true,
+		},
+		{
+			name:        "no match",
+			text:        "works at google",
+			searchTerms: "defenseunicorns",
+			want:        false,
+		},
+		{
+			name:        "multiple search terms - first matches",
+			text:        "defense unicorns is great",
+			searchTerms: "defense unicorns",
+			want:        true,
+		},
+		{
+			name:        "already lowercase",
+			text:        "defense unicorns",
+			searchTerms: "defenseunicorns",
+			want:        true,
+		},
+		{
+			name:        "empty search terms",
+			text:        "anything",
+			searchTerms: "",
+			want:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := containsAnySearchTerm(tt.text, tt.searchTerms)
+			if got != tt.want {
+				t.Errorf("containsAnySearchTerm(%q, %q) = %v, want %v",
+					tt.text, tt.searchTerms, got, tt.want)
+			}
+		})
+	}
+}

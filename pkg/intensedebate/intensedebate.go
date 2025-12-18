@@ -119,8 +119,8 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	content := string(body)
 
-	// Check for invalid user
-	if strings.Contains(content, "Invalid user name") {
+	// Check for invalid user (IntenseDebate shows "Invalid username" for non-existent profiles).
+	if strings.Contains(content, "Invalid username") || strings.Contains(content, "Invalid user name") {
 		return nil, profile.ErrProfileNotFound
 	}
 

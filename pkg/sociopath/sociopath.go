@@ -49,6 +49,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/dockerhub"
 	"github.com/codeGROOVE-dev/sociopath/pkg/douban"
 	"github.com/codeGROOVE-dev/sociopath/pkg/duolingo"
+	"github.com/codeGROOVE-dev/sociopath/pkg/facebook"
 	"github.com/codeGROOVE-dev/sociopath/pkg/generic"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gitee"
 	"github.com/codeGROOVE-dev/sociopath/pkg/github"
@@ -273,6 +274,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case devto.Match(url):
 		platform = "devto"
 		p, err = fetchDevTo(ctx, url, cfg)
+	case facebook.Match(url):
+		platform = "facebook"
+		p, err = fetchFacebook(ctx, url, cfg)
 	case stackoverflow.Match(url):
 		platform = "stackoverflow"
 		p, err = fetchStackOverflow(ctx, url, cfg)
@@ -663,6 +667,22 @@ func fetchDevTo(ctx context.Context, url string, cfg *config) (*profile.Profile,
 	}
 
 	client, err := devto.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchFacebook(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []facebook.Option
+	if cfg.cache != nil {
+		opts = append(opts, facebook.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, facebook.WithLogger(cfg.logger))
+	}
+
+	client, err := facebook.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
