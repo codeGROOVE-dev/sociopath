@@ -29,12 +29,13 @@ func (platformInfo) AuthRequired() bool         { return AuthRequired() }
 
 func init() { profile.Register(platformInfo{}) }
 
-var usernamePattern = regexp.MustCompile(`(?i)leetcode\.com/(?:u/)?([a-zA-Z0-9_-]+)`)
+var usernamePattern = regexp.MustCompile(`(?i)leetcode\.(?:com|cn)/(?:u/)?([a-zA-Z0-9_-]+)`)
 
 // Match returns true if the URL is a LeetCode profile URL.
 func Match(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
-	if !strings.Contains(lower, "leetcode.com/") {
+	// Support both leetcode.com and leetcode.cn
+	if !strings.Contains(lower, "leetcode.com/") && !strings.Contains(lower, "leetcode.cn/") {
 		return false
 	}
 	// Exclude non-profile paths
@@ -150,7 +151,13 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, fmt.Errorf("could not extract username from URL: %s", urlStr)
 	}
 
-	c.logger.InfoContext(ctx, "fetching leetcode profile", "url", urlStr, "username", username)
+	// Determine the API endpoint based on domain
+	apiEndpoint := "https://leetcode.com/graphql"
+	if strings.Contains(strings.ToLower(urlStr), "leetcode.cn") {
+		apiEndpoint = "https://leetcode.cn/graphql"
+	}
+
+	c.logger.InfoContext(ctx, "fetching leetcode profile", "url", urlStr, "username", username, "endpoint", apiEndpoint)
 
 	reqBody := graphQLRequest{
 		Query: graphQLQuery,
@@ -164,7 +171,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://leetcode.com/graphql", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiEndpoint, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +181,12 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
+		// LeetCode.cn GraphQL endpoint appears to not be publicly accessible
+		// Return ErrProfileNotFound to avoid false positives
+		if strings.Contains(strings.ToLower(urlStr), "leetcode.cn") {
+			c.logger.DebugContext(ctx, "leetcode.cn graphql error, treating as not found", "error", err)
+			return nil, profile.ErrProfileNotFound
+		}
 		return nil, err
 	}
 

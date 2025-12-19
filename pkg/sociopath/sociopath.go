@@ -39,7 +39,6 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/awwwards"
 	"github.com/codeGROOVE-dev/sociopath/pkg/backloggd"
 	"github.com/codeGROOVE-dev/sociopath/pkg/barnamenevis"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/barnamenevis"
 	"github.com/codeGROOVE-dev/sociopath/pkg/behance"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bilibili"
 	"github.com/codeGROOVE-dev/sociopath/pkg/blogger"
@@ -54,14 +53,14 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/codewars"
 	"github.com/codeGROOVE-dev/sociopath/pkg/crackmes"
 	"github.com/codeGROOVE-dev/sociopath/pkg/crates"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/cristalab"
+	"github.com/codeGROOVE-dev/sociopath/pkg/cristalab"
 	"github.com/codeGROOVE-dev/sociopath/pkg/cryptohack"
 	"github.com/codeGROOVE-dev/sociopath/pkg/csdn"
 	"github.com/codeGROOVE-dev/sociopath/pkg/cssdesignawards"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/ctf247"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/cyberdefenders"
+	"github.com/codeGROOVE-dev/sociopath/pkg/ctf247"
+	"github.com/codeGROOVE-dev/sociopath/pkg/cyberdefenders"
 	"github.com/codeGROOVE-dev/sociopath/pkg/dailydev"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/desarrolloweb"
+	"github.com/codeGROOVE-dev/sociopath/pkg/desarrolloweb"
 	"github.com/codeGROOVE-dev/sociopath/pkg/detectify"
 	"github.com/codeGROOVE-dev/sociopath/pkg/devto"
 	"github.com/codeGROOVE-dev/sociopath/pkg/dicoding"
@@ -75,8 +74,8 @@ import (
 	emailpkg "github.com/codeGROOVE-dev/sociopath/pkg/email"
 	"github.com/codeGROOVE-dev/sociopath/pkg/facebook"
 	"github.com/codeGROOVE-dev/sociopath/pkg/fdroid"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/flashback"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/forosdelweb"
+	"github.com/codeGROOVE-dev/sociopath/pkg/flashback"
+	"github.com/codeGROOVE-dev/sociopath/pkg/forosdelweb"
 	"github.com/codeGROOVE-dev/sociopath/pkg/frontendmentor"
 	"github.com/codeGROOVE-dev/sociopath/pkg/generic"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gentoo"
@@ -96,12 +95,12 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/hackernews"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hackerone"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hackerrank"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/hackthissite"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hackthissite"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hashicorpdiscuss"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hashnode"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hexpm"
 	"github.com/codeGROOVE-dev/sociopath/pkg/holopin"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/htbacademy"
+	"github.com/codeGROOVE-dev/sociopath/pkg/htbacademy"
 	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/huggingface"
 	"github.com/codeGROOVE-dev/sociopath/pkg/imasters"
@@ -115,7 +114,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/keybase"
 	"github.com/codeGROOVE-dev/sociopath/pkg/kubernetesdiscuss"
 	"github.com/codeGROOVE-dev/sociopath/pkg/launchpad"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/lawebdelprogramador"
+	"github.com/codeGROOVE-dev/sociopath/pkg/lawebdelprogramador"
 	"github.com/codeGROOVE-dev/sociopath/pkg/leetcode"
 	"github.com/codeGROOVE-dev/sociopath/pkg/lichess"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linkedin"
@@ -129,12 +128,12 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/medium"
 	"github.com/codeGROOVE-dev/sociopath/pkg/microblog"
 	"github.com/codeGROOVE-dev/sociopath/pkg/mstechcommunity"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/naverblog"
+	"github.com/codeGROOVE-dev/sociopath/pkg/naverblog"
 	"github.com/codeGROOVE-dev/sociopath/pkg/nexusmods"
 	"github.com/codeGROOVE-dev/sociopath/pkg/notist"
 	"github.com/codeGROOVE-dev/sociopath/pkg/nuget"
 	"github.com/codeGROOVE-dev/sociopath/pkg/observablehq"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/okky"
+	"github.com/codeGROOVE-dev/sociopath/pkg/okky"
 	"github.com/codeGROOVE-dev/sociopath/pkg/openbugbounty"
 	"github.com/codeGROOVE-dev/sociopath/pkg/openhub"
 	"github.com/codeGROOVE-dev/sociopath/pkg/orcid"
@@ -143,18 +142,18 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/petanikode"
 	"github.com/codeGROOVE-dev/sociopath/pkg/phoronix"
 	"github.com/codeGROOVE-dev/sociopath/pkg/picoctf"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/portswigger"
+	"github.com/codeGROOVE-dev/sociopath/pkg/portswigger"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/programmers"
+	"github.com/codeGROOVE-dev/sociopath/pkg/programmers"
 	"github.com/codeGROOVE-dev/sociopath/pkg/pulumi"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/pwncollege"
+	"github.com/codeGROOVE-dev/sociopath/pkg/pwncollege"
 	"github.com/codeGROOVE-dev/sociopath/pkg/pypi"
 	"github.com/codeGROOVE-dev/sociopath/pkg/qiita"
 	"github.com/codeGROOVE-dev/sociopath/pkg/quay"
 	"github.com/codeGROOVE-dev/sociopath/pkg/quera"
 	"github.com/codeGROOVE-dev/sociopath/pkg/reddit"
 	"github.com/codeGROOVE-dev/sociopath/pkg/replit"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/ringzer0"
+	"github.com/codeGROOVE-dev/sociopath/pkg/ringzer0"
 	"github.com/codeGROOVE-dev/sociopath/pkg/rubygems"
 	"github.com/codeGROOVE-dev/sociopath/pkg/scratch"
 	"github.com/codeGROOVE-dev/sociopath/pkg/sessionize"
@@ -171,7 +170,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/threads"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tiktok"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tipidpc"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/tistory"
+	"github.com/codeGROOVE-dev/sociopath/pkg/tistory"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tradingview"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tryhackme"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tumblr"
@@ -183,7 +182,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/virgool"
 	"github.com/codeGROOVE-dev/sociopath/pkg/vivaolinux"
 	"github.com/codeGROOVE-dev/sociopath/pkg/vkontakte"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/w3challs"
+	"github.com/codeGROOVE-dev/sociopath/pkg/w3challs"
 	"github.com/codeGROOVE-dev/sociopath/pkg/weibo"
 	"github.com/codeGROOVE-dev/sociopath/pkg/whatsapp"
 	"github.com/codeGROOVE-dev/sociopath/pkg/wykop"
@@ -350,6 +349,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case replit.Match(url):
 		platform = "replit"
 		p, err = fetchReplit(ctx, url, cfg)
+	case ringzer0.Match(url):
+		platform = "ringzer0"
+		p, err = fetchRingZer0(ctx, url, cfg)
 	case youtube.Match(url):
 		platform = "youtube"
 		p, err = fetchYouTube(ctx, url, cfg)
@@ -419,6 +421,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case launchpad.Match(url):
 		platform = "launchpad"
 		p, err = fetchLaunchpad(ctx, url, cfg)
+	case lawebdelprogramador.Match(url):
+		platform = "lawebdelprogramador"
+		p, err = fetchLaWebDelProgramador(ctx, url, cfg)
 	case crates.Match(url):
 		platform = "crates"
 		p, err = fetchCrates(ctx, url, cfg)
@@ -452,9 +457,15 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case tiktok.Match(url):
 		platform = "tiktok"
 		p, err = fetchTikTok(ctx, url, cfg)
+	case tistory.Match(url):
+		platform = "tistory"
+		p, err = fetchTistory(ctx, url, cfg)
 	case vkontakte.Match(url):
 		platform = "vkontakte"
 		p, err = fetchVKontakte(ctx, url, cfg)
+	case w3challs.Match(url):
+		platform = "w3challs"
+		p, err = fetchW3Challs(ctx, url, cfg)
 	case weibo.Match(url):
 		platform = "weibo"
 		p, err = fetchWeibo(ctx, url, cfg)
@@ -509,6 +520,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case observablehq.Match(url):
 		platform = "observablehq"
 		p, err = fetchObservableHQ(ctx, url, cfg)
+	case okky.Match(url):
+		platform = "okky"
+		p, err = fetchOkky(ctx, url, cfg)
 	case openhub.Match(url):
 		platform = "openhub"
 		p, err = fetchOpenHub(ctx, url, cfg)
@@ -524,6 +538,12 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case hackerrank.Match(url):
 		platform = "hackerrank"
 		p, err = fetchHackerRank(ctx, url, cfg)
+	case hackthissite.Match(url):
+		platform = "hackthissite"
+		p, err = fetchHackThisSite(ctx, url, cfg)
+	case htbacademy.Match(url):
+		platform = "htbacademy"
+		p, err = fetchHTBAcademy(ctx, url, cfg)
 	case tradingview.Match(url):
 		platform = "tradingview"
 		p, err = fetchTradingView(ctx, url, cfg)
@@ -608,6 +628,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case mastodon.Match(url):
 		platform = "mastodon"
 		p, err = fetchMastodon(ctx, url, cfg)
+	case naverblog.Match(url):
+		platform = "naverblog"
+		p, err = fetchNaverBlog(ctx, url, cfg)
 	case pypi.Match(url):
 		platform = "pypi"
 		p, err = fetchPyPI(ctx, url, cfg)
@@ -726,9 +749,15 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case hashicorpdiscuss.Match(url):
 		platform = "hashicorpdiscuss"
 		p, err = fetchHashicorpDiscuss(ctx, url, cfg)
+	case portswigger.Match(url):
+		platform = "portswigger"
+		p, err = fetchPortSwigger(ctx, url, cfg)
 	case pulumi.Match(url):
 		platform = "pulumi"
 		p, err = fetchPulumi(ctx, url, cfg)
+	case pwncollege.Match(url):
+		platform = "pwncollege"
+		p, err = fetchPwnCollege(ctx, url, cfg)
 	case grafanacommunity.Match(url):
 		platform = "grafanacommunity"
 		p, err = fetchGrafanaCommunity(ctx, url, cfg)
@@ -762,18 +791,36 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case crackmes.Match(url):
 		platform = "crackmes"
 		p, err = fetchCrackmes(ctx, url, cfg)
+	case cristalab.Match(url):
+		platform = "cristalab"
+		p, err = fetchCristalab(ctx, url, cfg)
 	case cryptohack.Match(url):
 		platform = "cryptohack"
 		p, err = fetchCryptoHack(ctx, url, cfg)
 	case cssdesignawards.Match(url):
 		platform = "cssdesignawards"
 		p, err = fetchCSSDesignAwards(ctx, url, cfg)
+	case ctf247.Match(url):
+		platform = "ctf247"
+		p, err = fetchCTF247(ctx, url, cfg)
+	case cyberdefenders.Match(url):
+		platform = "cyberdefenders"
+		p, err = fetchCyberDefenders(ctx, url, cfg)
 	case dailydev.Match(url):
 		platform = "dailydev"
 		p, err = fetchDailyDev(ctx, url, cfg)
+	case desarrolloweb.Match(url):
+		platform = "desarrolloweb"
+		p, err = fetchDesarrolloWeb(ctx, url, cfg)
 	case detectify.Match(url):
 		platform = "detectify"
 		p, err = fetchDetectify(ctx, url, cfg)
+	case flashback.Match(url):
+		platform = "flashback"
+		p, err = fetchFlashback(ctx, url, cfg)
+	case forosdelweb.Match(url):
+		platform = "forosdelweb"
+		p, err = fetchForosDelWeb(ctx, url, cfg)
 	case frontendmentor.Match(url):
 		platform = "frontendmentor"
 		p, err = fetchFrontendMentor(ctx, url, cfg)
@@ -792,6 +839,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case peerlist.Match(url):
 		platform = "peerlist"
 		p, err = fetchPeerlist(ctx, url, cfg)
+	case programmers.Match(url):
+		platform = "programmers"
+		p, err = fetchProgrammers(ctx, url, cfg)
 	case picoctf.Match(url):
 		platform = "picoctf"
 		p, err = fetchPicoCTF(ctx, url, cfg)
@@ -824,6 +874,18 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	// Compute avatar hash for cross-platform matching
 	if err == nil && p != nil && p.AvatarURL != "" {
 		p.AvatarHash = avatar.Hash(ctx, cfg.cache, p.AvatarURL, cfg.logger)
+	}
+
+	// For explicitly linked profiles that don't exist, return a profile with nonexistent status
+	// This provides a strong signal that the user linked to a profile that returned 404
+	if errors.Is(err, profile.ErrProfileNotFound) {
+		p = &profile.Profile{
+			Platform:     platform,
+			URL:          url,
+			AccountState: profile.AccountStateNonexistent,
+			Fields:       make(map[string]string),
+		}
+		err = nil
 	}
 
 	return p, err
@@ -2467,7 +2529,7 @@ func isOfficialPlatformAccount(urlStr string) bool {
 		"hackerrank": true, "leetcode": true, "exercism": true,
 		"freecodecamp": true, "codewars": true, "topcoder": true,
 		"atcoder": true, "spoj": true, "codeforces": true,
-		        "behance": true, "codesandbox": true,		"stackblitz": true, "bitbucket": true, "huggingface": true,
+		"behance": true, "codesandbox": true, "stackblitz": true, "bitbucket": true, "huggingface": true,
 		"awwwards": true, "cssdesignawards": true,
 	}
 
@@ -4373,6 +4435,261 @@ func fetchCryptoHack(ctx context.Context, url string, cfg *config) (*profile.Pro
 		opts = append(opts, cryptohack.WithLogger(cfg.logger))
 	}
 	client, err := cryptohack.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCTF247(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []ctf247.Option
+	if cfg.cache != nil {
+		opts = append(opts, ctf247.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, ctf247.WithLogger(cfg.logger))
+	}
+	client, err := ctf247.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCyberDefenders(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []cyberdefenders.Option
+	if cfg.cache != nil {
+		opts = append(opts, cyberdefenders.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, cyberdefenders.WithLogger(cfg.logger))
+	}
+	client, err := cyberdefenders.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHackThisSite(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hackthissite.Option
+	if cfg.cache != nil {
+		opts = append(opts, hackthissite.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hackthissite.WithLogger(cfg.logger))
+	}
+	client, err := hackthissite.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHTBAcademy(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []htbacademy.Option
+	if cfg.cache != nil {
+		opts = append(opts, htbacademy.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, htbacademy.WithLogger(cfg.logger))
+	}
+	client, err := htbacademy.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchPortSwigger(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []portswigger.Option
+	if cfg.cache != nil {
+		opts = append(opts, portswigger.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, portswigger.WithLogger(cfg.logger))
+	}
+	client, err := portswigger.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchPwnCollege(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []pwncollege.Option
+	if cfg.cache != nil {
+		opts = append(opts, pwncollege.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, pwncollege.WithLogger(cfg.logger))
+	}
+	client, err := pwncollege.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchRingZer0(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []ringzer0.Option
+	if cfg.cache != nil {
+		opts = append(opts, ringzer0.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, ringzer0.WithLogger(cfg.logger))
+	}
+	client, err := ringzer0.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchW3Challs(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []w3challs.Option
+	if cfg.cache != nil {
+		opts = append(opts, w3challs.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, w3challs.WithLogger(cfg.logger))
+	}
+	client, err := w3challs.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCristalab(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []cristalab.Option
+	if cfg.cache != nil {
+		opts = append(opts, cristalab.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, cristalab.WithLogger(cfg.logger))
+	}
+	client, err := cristalab.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchDesarrolloWeb(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []desarrolloweb.Option
+	if cfg.cache != nil {
+		opts = append(opts, desarrolloweb.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, desarrolloweb.WithLogger(cfg.logger))
+	}
+	client, err := desarrolloweb.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchFlashback(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []flashback.Option
+	if cfg.cache != nil {
+		opts = append(opts, flashback.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, flashback.WithLogger(cfg.logger))
+	}
+	client, err := flashback.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchForosDelWeb(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []forosdelweb.Option
+	if cfg.cache != nil {
+		opts = append(opts, forosdelweb.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, forosdelweb.WithLogger(cfg.logger))
+	}
+	client, err := forosdelweb.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchLaWebDelProgramador(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []lawebdelprogramador.Option
+	if cfg.cache != nil {
+		opts = append(opts, lawebdelprogramador.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, lawebdelprogramador.WithLogger(cfg.logger))
+	}
+	client, err := lawebdelprogramador.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchNaverBlog(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []naverblog.Option
+	if cfg.cache != nil {
+		opts = append(opts, naverblog.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, naverblog.WithLogger(cfg.logger))
+	}
+	client, err := naverblog.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchOkky(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []okky.Option
+	if cfg.cache != nil {
+		opts = append(opts, okky.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, okky.WithLogger(cfg.logger))
+	}
+	client, err := okky.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchProgrammers(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []programmers.Option
+	if cfg.cache != nil {
+		opts = append(opts, programmers.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, programmers.WithLogger(cfg.logger))
+	}
+	client, err := programmers.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchTistory(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []tistory.Option
+	if cfg.cache != nil {
+		opts = append(opts, tistory.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, tistory.WithLogger(cfg.logger))
+	}
+	client, err := tistory.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

@@ -33,10 +33,11 @@ type AccountState string
 
 // Account state constants.
 const (
-	AccountStateActive     AccountState = ""           // Account is active (default, omitted from JSON)
-	AccountStateRenamed    AccountState = "renamed"    // Account was renamed to a new username
-	AccountStateDeleted    AccountState = "deleted"    // Account was deleted but historical data recovered
-	AccountStateUnverified AccountState = "unverified" // Profile exists but ownership could not be verified
+	AccountStateActive      AccountState = ""            // Account is active (default, omitted from JSON)
+	AccountStateRenamed     AccountState = "renamed"     // Account was renamed to a new username
+	AccountStateDeleted     AccountState = "deleted"     // Account was deleted but historical data recovered
+	AccountStateUnverified  AccountState = "unverified"  // Profile exists but ownership could not be verified
+	AccountStateNonexistent AccountState = "nonexistent" // Profile URL was checked but account doesn't exist (404)
 )
 
 // PlatformType categorizes what kind of content a platform primarily hosts.
