@@ -4,12 +4,14 @@ package codechef
 import (
 	"context"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
 	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
@@ -87,6 +89,9 @@ var (
 	institutionPattern = regexp.MustCompile(`(?i)<span[^>]*>([^<]*University[^<]*|[^<]*Institute[^<]*|[^<]*College[^<]*)</span>`)
 	globalRankPattern  = regexp.MustCompile(`(?i)Global Rank[^<]*<[^>]*>[^<]*<strong>(\d+)</strong>`)
 	countryRankPattern = regexp.MustCompile(`(?i)Country Rank[^<]*<[^>]*>[^<]*<strong>(\d+)</strong>`)
+	bioPattern         = regexp.MustCompile(`(?i)<div[^>]*class="[^"]*user.*details.*bio[^"]*"[^>]*>([^<]+)</div>`)
+	websitePattern     = regexp.MustCompile(`(?i)(?:Website|Homepage):\s*<a[^>]+href="(https?://[^"]+)"`)
+	problemsPattern    = regexp.MustCompile(`(?i)>(\w+)\s+Problems\s+Solved<[^>]*>[^<]*<b>(\d+)</b>`)
 )
 
 // Fetch retrieves a CodeChef profile.
@@ -104,7 +109,11 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	req.Header.Set("Referer", "https://www.codechef.com/")
+	req.Header.Set("DNT", "1")
 
 	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
@@ -114,32 +123,40 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	content := string(body)
 
 	// Check if profile exists
-	if strings.Contains(content, "User not found") || strings.Contains(content, "page not found") {
+	if htmlutil.IsNotFound(content) {
 		return nil, profile.ErrProfileNotFound
 	}
 
-	return parseProfile(content, username, urlStr), nil
+	return parseProfile(content, username, urlStr)
 }
 
-func parseProfile(html, username, url string) *profile.Profile {
+func parseProfile(htmlContent, username, url string) (*profile.Profile, error) {
 	p := &profile.Profile{
-		Platform:    platform,
-		URL:         url,
-		Username:    username,
-		DisplayName: username,
-		Fields:      make(map[string]string),
+		Platform: platform,
+		URL:      url,
+		Username: username,
+		Fields:   make(map[string]string),
 	}
 
 	// Extract display name
-	if m := displayNamePattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := displayNamePattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		name := strings.TrimSpace(m[1])
-		if name != "" && name != username {
+		if name != "" && name != username && !strings.Contains(name, "CodeChef") {
 			p.DisplayName = name
 		}
 	}
 
+	// If no display name found, it might be a generic page
+	if p.DisplayName == "" {
+		// Verify if this is actually a user profile by looking for other indicators
+		if !strings.Contains(htmlContent, "Rating:") && !strings.Contains(htmlContent, "Global Rank") {
+			return nil, profile.ErrProfileNotFound
+		}
+		p.DisplayName = username
+	}
+
 	// Extract avatar
-	if m := avatarPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := avatarPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		avatarURL := m[1]
 		if !strings.Contains(avatarURL, "default") {
 			p.AvatarURL = avatarURL
@@ -147,17 +164,17 @@ func parseProfile(html, username, url string) *profile.Profile {
 	}
 
 	// Extract country
-	if m := countryPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := countryPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		p.Location = strings.TrimSpace(m[1])
 	}
 
 	// Extract rating
-	if m := ratingPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := ratingPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		p.Fields["rating"] = m[1]
 	}
 
 	// Extract star rating
-	if m := starsPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := starsPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		stars := strings.TrimSpace(m[1])
 		if stars != "" {
 			p.Fields["stars"] = stars
@@ -165,7 +182,7 @@ func parseProfile(html, username, url string) *profile.Profile {
 	}
 
 	// Extract institution
-	if m := institutionPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := institutionPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		inst := strings.TrimSpace(m[1])
 		if inst != "" {
 			p.Groups = append(p.Groups, inst)
@@ -174,16 +191,50 @@ func parseProfile(html, username, url string) *profile.Profile {
 	}
 
 	// Extract global rank
-	if m := globalRankPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := globalRankPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		p.Fields["global_rank"] = m[1]
 	}
 
 	// Extract country rank
-	if m := countryRankPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := countryRankPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		p.Fields["country_rank"] = m[1]
 	}
 
-	return p
+	// Extract bio/description
+	if m := bioPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
+		bioText := strings.TrimSpace(html.UnescapeString(m[1]))
+		if bioText != "" {
+			p.Bio = bioText
+		}
+	}
+
+	// Extract website
+	if m := websitePattern.FindStringSubmatch(htmlContent); len(m) > 1 {
+		website := strings.TrimSpace(m[1])
+		if website != "" {
+			p.Website = website
+		}
+	}
+
+	// Extract problems solved stats
+	matches := problemsPattern.FindAllStringSubmatch(htmlContent, -1)
+	for _, m := range matches {
+		if len(m) > 2 {
+			difficulty := strings.ToLower(strings.TrimSpace(m[1]))
+			count := strings.TrimSpace(m[2])
+			if difficulty != "" && count != "0" {
+				p.Fields[difficulty+"_problems"] = count
+			}
+		}
+	}
+
+	// Extract social media links
+	socialLinks := htmlutil.SocialLinks(htmlContent)
+	if len(socialLinks) > 0 {
+		p.SocialLinks = socialLinks
+	}
+
+	return p, nil
 }
 
 func extractUsername(urlStr string) string {

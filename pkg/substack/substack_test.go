@@ -15,6 +15,8 @@ func TestMatch(t *testing.T) {
 	}{
 		{"standard", "https://username.substack.com", true},
 		{"with path", "https://username.substack.com/about", true},
+		{"at format", "https://substack.com/@username", true},
+		{"at format with path", "https://substack.com/@username/posts", true},
 		{"no protocol", "username.substack.com", true},
 		{"uppercase", "HTTPS://USERNAME.SUBSTACK.COM", true},
 		{"custom domain", "https://newsletter.com", false},
@@ -43,6 +45,8 @@ func TestExtractUsername(t *testing.T) {
 		want string
 	}{
 		{"standard", "https://newsletter.substack.com", "newsletter"},
+		{"at format", "https://substack.com/@johndoe", "johndoe"},
+		{"at format with query", "https://substack.com/@johndoe?utm_source=copy", "johndoe"},
 		{"with path", "https://johndoe.substack.com/p/post", "johndoe"},
 		{"no protocol", "username.substack.com", "username"},
 		{"about page", "https://author.substack.com/about", "author"},
@@ -75,6 +79,7 @@ func TestFetch(t *testing.T) {
 <head>
 <title>About - The Sample Newsletter</title>
 <meta name="description" content="Weekly insights on technology and startups.">
+<meta property="og:image" content="https://substackcdn.com/image/fetch/avatar.jpg">
 </head>
 <body>
 <span>10,234 subscribers</span>
@@ -113,6 +118,9 @@ func TestFetch(t *testing.T) {
 	}
 	if profile.DisplayName != "The Sample Newsletter" {
 		t.Errorf("Name = %q, want %q", profile.DisplayName, "The Sample Newsletter")
+	}
+	if profile.AvatarURL != "https://substackcdn.com/image/fetch/avatar.jpg" {
+		t.Errorf("AvatarURL = %q, want %q", profile.AvatarURL, "https://substackcdn.com/image/fetch/avatar.jpg")
 	}
 }
 
@@ -167,6 +175,7 @@ func TestParseProfile(t *testing.T) {
 		username        string
 		wantName        string
 		wantBio         string
+		wantAvatar      string
 		wantSubscribers string
 	}{
 		{
@@ -174,6 +183,7 @@ func TestParseProfile(t *testing.T) {
 			html: `<html><head>
 				<title>About - Tech Insights</title>
 				<meta name="description" content="Deep dives into technology trends.">
+				<meta property="og:image" content="https://substackcdn.com/image/fetch/profile.jpg">
 			</head><body>
 				<span>5,000 subscribers</span>
 				<a href="https://twitter.com/techinsights">Twitter</a>
@@ -181,7 +191,24 @@ func TestParseProfile(t *testing.T) {
 			username:        "techinsights",
 			wantName:        "Tech Insights",
 			wantBio:         "Deep dives into technology trends.",
+			wantAvatar:      "https://substackcdn.com/image/fetch/profile.jpg",
 			wantSubscribers: "5000",
+		},
+		{
+			name: "JSON-LD profile",
+			html: `<html><head>
+				<script type="application/ld+json">
+				{
+					"@context": "https://schema.org",
+					"@type": "Person",
+					"name": "T Stromberg",
+					"image": "https://substackcdn.com/image/fetch/avatar.jpg"
+				}
+				</script>
+			</head><body></body></html>`,
+			username:   "tstromberg",
+			wantName:   "T Stromberg",
+			wantAvatar: "https://substackcdn.com/image/fetch/avatar.jpg",
 		},
 		{
 			name: "no about prefix",
@@ -213,6 +240,9 @@ func TestParseProfile(t *testing.T) {
 			}
 			if tt.wantBio != "" && profile.Bio != tt.wantBio {
 				t.Errorf("Bio = %q, want %q", profile.Bio, tt.wantBio)
+			}
+			if tt.wantAvatar != "" && profile.AvatarURL != tt.wantAvatar {
+				t.Errorf("AvatarURL = %q, want %q", profile.AvatarURL, tt.wantAvatar)
 			}
 			if tt.wantSubscribers != "" && profile.Fields["subscribers"] != tt.wantSubscribers {
 				t.Errorf("subscribers = %q, want %q", profile.Fields["subscribers"], tt.wantSubscribers)

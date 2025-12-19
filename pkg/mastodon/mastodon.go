@@ -267,11 +267,24 @@ func (c *Client) fetchViaHTML(ctx context.Context, urlStr, username string) (*pr
 		return nil, err
 	}
 
-	return c.parseHTML(body, urlStr, username), nil
+	if htmlutil.IsNotFound(string(body)) {
+		return nil, profile.ErrProfileNotFound
+	}
+
+	return c.parseHTML(body, urlStr, username)
 }
 
-func (*Client) parseHTML(data []byte, urlStr, username string) *profile.Profile {
+func (*Client) parseHTML(data []byte, urlStr, username string) (*profile.Profile, error) {
 	content := string(data)
+
+	// Check for generic landing pages that aren't user profiles
+	if strings.Contains(content, "This is a Mastodon instance") ||
+		strings.Contains(content, "Sign up to follow") {
+		// If it has "Sign up to follow" but no specific user info, it might be a 404 landing page
+		if !strings.Contains(content, "@"+username) {
+			return nil, profile.ErrProfileNotFound
+		}
+	}
 
 	p := &profile.Profile{
 		Platform:      platform,
@@ -282,14 +295,34 @@ func (*Client) parseHTML(data []byte, urlStr, username string) *profile.Profile 
 	}
 
 	// Extract bio from meta description
-	p.Bio = htmlutil.Description(content)
+	if bio := htmlutil.Description(content); bio != "" {
+		if !htmlutil.IsGenericBio(bio) {
+			p.Bio = bio
+		}
+	}
 	p.PageTitle = htmlutil.Title(content)
+
+	// Verify if this is actually a user profile by looking at the title
+	if htmlutil.IsGenericTitle(p.PageTitle) {
+		return nil, profile.ErrProfileNotFound
+	}
+
+	// If title contains the instance name but not the username, it's likely a landing page
+	if strings.Contains(p.PageTitle, "@") && !strings.Contains(p.PageTitle, "@"+username) {
+		return nil, profile.ErrProfileNotFound
+	}
+
 	p.SocialLinks = htmlutil.SocialLinks(content)
+
+	// If it's a guess and we found NOTHING unique (no bio, no unique title, no social links, no posts), reject it
+	if p.Bio == "" && !strings.Contains(p.PageTitle, "@") && len(p.SocialLinks) == 0 && len(p.Posts) == 0 {
+		return nil, profile.ErrProfileNotFound
+	}
 
 	// Filter out same-server Mastodon links
 	p.SocialLinks = filterSameServerLinks(p.SocialLinks, urlStr)
 
-	return p
+	return p, nil
 }
 
 func (c *Client) fetchStatuses(ctx context.Context, host, accountID string, limit int) (posts []profile.Post, lastActive string) {

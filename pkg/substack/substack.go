@@ -43,7 +43,7 @@ func init() {
 // Match returns true if the URL is a Substack profile URL.
 func Match(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
-	return strings.Contains(lower, ".substack.com")
+	return strings.Contains(lower, ".substack.com") || (strings.Contains(lower, "substack.com/") && strings.Contains(lower, "/@"))
 }
 
 // AuthRequired returns false because Substack profiles are public.
@@ -95,11 +95,15 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, fmt.Errorf("could not extract username from: %s", urlStr)
 	}
 
-	// Normalize URL to /about page for author info
-	normalizedURL := fmt.Sprintf("https://%s.substack.com/about", username)
-	c.logger.InfoContext(ctx, "fetching substack profile", "url", normalizedURL, "username", username)
+	// Use original URL if it's already a profile page, otherwise use /about
+	fetchURL := urlStr
+	if strings.Contains(urlStr, ".substack.com") && !strings.HasSuffix(urlStr, "/about") {
+		fetchURL = fmt.Sprintf("https://%s.substack.com/about", username)
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, normalizedURL, http.NoBody)
+	c.logger.InfoContext(ctx, "fetching substack profile", "url", fetchURL, "username", username)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fetchURL, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -127,38 +131,57 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 		Fields:   make(map[string]string),
 	}
 
-	// Extract author name from meta author tag (most reliable)
-	if matches := metaAuthorPattern.FindStringSubmatch(html); len(matches) > 1 {
-		prof.DisplayName = strings.TrimSpace(matches[1])
+	// Try to extract from JSON-LD
+	if ld := htmlutil.ExtractJSONLD(html); ld != "" {
+		if name := extractFromJSONLD(ld, "name"); name != "" && name != "Substack" {
+			prof.DisplayName = name
+		}
+		if image := extractFromJSONLD(ld, "image"); image != "" && !strings.Contains(image, "default") {
+			prof.AvatarURL = image
+		}
 	}
 
-	// Fallback: extract from title format "Publication Name | Author Name | Substack"
+	// Extract author name from meta author tag if still empty
+	if prof.DisplayName == "" {
+		if matches := metaAuthorPattern.FindStringSubmatch(html); len(matches) > 1 {
+			author := strings.TrimSpace(matches[1])
+			if author != "Substack" {
+				prof.DisplayName = author
+			}
+		}
+	}
+
+	// Extract from og:title or title
 	if prof.DisplayName == "" {
 		title := htmlutil.Title(html)
 		if title != "" {
+			// Strip "About - " prefix
+			title = strings.TrimPrefix(title, "About - ")
+
 			parts := strings.Split(title, " | ")
 			if len(parts) >= 2 {
-				// Second part is usually the author name
-				author := strings.TrimSpace(parts[1])
+				author := strings.TrimSpace(parts[0])
 				if author != "Substack" && author != "" {
 					prof.DisplayName = author
 				}
 			}
-			// Clean up "About - Newsletter Name" format
-			if prof.DisplayName == "" {
-				if idx := strings.Index(title, "About - "); idx != -1 {
-					prof.DisplayName = strings.TrimSpace(title[idx+8:])
-				}
-			}
-			// Use title directly if no special format detected
-			if prof.DisplayName == "" && title != "Substack" {
+			if prof.DisplayName == "" && !strings.EqualFold(title, "Substack") {
 				prof.DisplayName = strings.TrimSpace(title)
 			}
 		}
 	}
 
+	// Extract avatar from og:image if still empty
+	if prof.AvatarURL == "" {
+		if avatar := htmlutil.OGImage(html); avatar != "" && !strings.Contains(avatar, "substack-logo") {
+			prof.AvatarURL = avatar
+		}
+	}
+
 	// Extract bio/description
-	prof.Bio = htmlutil.Description(html)
+	if bio := htmlutil.Description(html); bio != "" && !htmlutil.IsGenericBio(bio) {
+		prof.Bio = bio
+	}
 
 	// Try to extract subscriber count
 	if matches := subscriberPattern.FindStringSubmatch(html); len(matches) > 1 {
@@ -177,14 +200,32 @@ func parseProfile(html, url, username string) (*profile.Profile, error) {
 	}
 	prof.SocialLinks = filtered
 
-	if prof.DisplayName == "" {
+	if prof.DisplayName == "" || prof.DisplayName == "Substack" {
 		prof.DisplayName = username
 	}
 
 	return prof, nil
 }
 
+func extractFromJSONLD(ld, key string) string {
+	pattern := regexp.MustCompile(`(?i)"` + regexp.QuoteMeta(key) + `"\s*:\s*"([^"]+)"`)
+	if matches := pattern.FindStringSubmatch(ld); len(matches) > 1 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
+}
+
 func extractUsername(urlStr string) string {
+	lower := strings.ToLower(urlStr)
+
+	// Handle substack.com/@username
+	if idx := strings.Index(lower, "substack.com/@"); idx != -1 {
+		username := urlStr[idx+len("substack.com/@"):]
+		username = strings.Split(username, "/")[0]
+		username = strings.Split(username, "?")[0]
+		return username
+	}
+
 	// Remove protocol
 	urlStr = strings.TrimPrefix(urlStr, "https://")
 	urlStr = strings.TrimPrefix(urlStr, "http://")

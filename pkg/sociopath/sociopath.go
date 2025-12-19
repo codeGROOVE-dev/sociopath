@@ -31,8 +31,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/codeGROOVE-dev/sociopath/pkg/angellist"
+	"github.com/codeGROOVE-dev/sociopath/pkg/archbbs"
 	"github.com/codeGROOVE-dev/sociopath/pkg/arstechnica"
 	"github.com/codeGROOVE-dev/sociopath/pkg/avatar"
+	"github.com/codeGROOVE-dev/sociopath/pkg/awsbuilder"
+	"github.com/codeGROOVE-dev/sociopath/pkg/awwwards"
+	"github.com/codeGROOVE-dev/sociopath/pkg/backloggd"
+	"github.com/codeGROOVE-dev/sociopath/pkg/barnamenevis"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/barnamenevis"
+	"github.com/codeGROOVE-dev/sociopath/pkg/behance"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bilibili"
 	"github.com/codeGROOVE-dev/sociopath/pkg/blogger"
 	"github.com/codeGROOVE-dev/sociopath/pkg/bluesky"
@@ -40,81 +48,152 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/bugcrowd"
 	"github.com/codeGROOVE-dev/sociopath/pkg/calcom"
 	"github.com/codeGROOVE-dev/sociopath/pkg/calendly"
+	"github.com/codeGROOVE-dev/sociopath/pkg/cncfcommunity"
 	"github.com/codeGROOVE-dev/sociopath/pkg/codeberg"
+	"github.com/codeGROOVE-dev/sociopath/pkg/codesandbox"
 	"github.com/codeGROOVE-dev/sociopath/pkg/codewars"
+	"github.com/codeGROOVE-dev/sociopath/pkg/crackmes"
 	"github.com/codeGROOVE-dev/sociopath/pkg/crates"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/cristalab"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/cryptohack"
 	"github.com/codeGROOVE-dev/sociopath/pkg/csdn"
+	"github.com/codeGROOVE-dev/sociopath/pkg/cssdesignawards"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/ctf247"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/cyberdefenders"
+	"github.com/codeGROOVE-dev/sociopath/pkg/dailydev"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/desarrolloweb"
+	"github.com/codeGROOVE-dev/sociopath/pkg/detectify"
 	"github.com/codeGROOVE-dev/sociopath/pkg/devto"
+	"github.com/codeGROOVE-dev/sociopath/pkg/dicoding"
+	"github.com/codeGROOVE-dev/sociopath/pkg/discourse"
 	"github.com/codeGROOVE-dev/sociopath/pkg/disqus"
 	"github.com/codeGROOVE-dev/sociopath/pkg/dockerhub"
+	"github.com/codeGROOVE-dev/sociopath/pkg/dou"
 	"github.com/codeGROOVE-dev/sociopath/pkg/douban"
 	"github.com/codeGROOVE-dev/sociopath/pkg/duolingo"
+	"github.com/codeGROOVE-dev/sociopath/pkg/eksisozluk"
 	emailpkg "github.com/codeGROOVE-dev/sociopath/pkg/email"
 	"github.com/codeGROOVE-dev/sociopath/pkg/facebook"
+	"github.com/codeGROOVE-dev/sociopath/pkg/fdroid"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/flashback"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/forosdelweb"
+	"github.com/codeGROOVE-dev/sociopath/pkg/frontendmentor"
 	"github.com/codeGROOVE-dev/sociopath/pkg/generic"
+	"github.com/codeGROOVE-dev/sociopath/pkg/gentoo"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gitee"
 	"github.com/codeGROOVE-dev/sociopath/pkg/github"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gitlab"
 	"github.com/codeGROOVE-dev/sociopath/pkg/goodreads"
 	"github.com/codeGROOVE-dev/sociopath/pkg/google"
 	"github.com/codeGROOVE-dev/sociopath/pkg/googlecal"
+	"github.com/codeGROOVE-dev/sociopath/pkg/googlecloud"
+	"github.com/codeGROOVE-dev/sociopath/pkg/grafanacommunity"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gravatar"
 	"github.com/codeGROOVE-dev/sociopath/pkg/guess"
+	"github.com/codeGROOVE-dev/sociopath/pkg/guj"
 	"github.com/codeGROOVE-dev/sociopath/pkg/habr"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hackenproof"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hackernews"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hackerone"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hackerrank"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/hackthissite"
+	"github.com/codeGROOVE-dev/sociopath/pkg/hashicorpdiscuss"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hashnode"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hexpm"
 	"github.com/codeGROOVE-dev/sociopath/pkg/holopin"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/htbacademy"
 	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/huggingface"
+	"github.com/codeGROOVE-dev/sociopath/pkg/imasters"
+	"github.com/codeGROOVE-dev/sociopath/pkg/immunefi"
 	"github.com/codeGROOVE-dev/sociopath/pkg/instagram"
 	"github.com/codeGROOVE-dev/sociopath/pkg/intensedebate"
+	"github.com/codeGROOVE-dev/sociopath/pkg/ionicforum"
+	"github.com/codeGROOVE-dev/sociopath/pkg/itch"
 	"github.com/codeGROOVE-dev/sociopath/pkg/juejin"
+	"github.com/codeGROOVE-dev/sociopath/pkg/kaskus"
 	"github.com/codeGROOVE-dev/sociopath/pkg/keybase"
+	"github.com/codeGROOVE-dev/sociopath/pkg/kubernetesdiscuss"
 	"github.com/codeGROOVE-dev/sociopath/pkg/launchpad"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/lawebdelprogramador"
 	"github.com/codeGROOVE-dev/sociopath/pkg/leetcode"
+	"github.com/codeGROOVE-dev/sociopath/pkg/lichess"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linkedin"
 	"github.com/codeGROOVE-dev/sociopath/pkg/linktree"
+	"github.com/codeGROOVE-dev/sociopath/pkg/linuxmint"
+	"github.com/codeGROOVE-dev/sociopath/pkg/linuxorg"
+	"github.com/codeGROOVE-dev/sociopath/pkg/linuxquestions"
 	"github.com/codeGROOVE-dev/sociopath/pkg/lobsters"
 	"github.com/codeGROOVE-dev/sociopath/pkg/mailru"
 	"github.com/codeGROOVE-dev/sociopath/pkg/mastodon"
 	"github.com/codeGROOVE-dev/sociopath/pkg/medium"
 	"github.com/codeGROOVE-dev/sociopath/pkg/microblog"
+	"github.com/codeGROOVE-dev/sociopath/pkg/mstechcommunity"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/naverblog"
+	"github.com/codeGROOVE-dev/sociopath/pkg/nexusmods"
+	"github.com/codeGROOVE-dev/sociopath/pkg/notist"
+	"github.com/codeGROOVE-dev/sociopath/pkg/nuget"
 	"github.com/codeGROOVE-dev/sociopath/pkg/observablehq"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/okky"
+	"github.com/codeGROOVE-dev/sociopath/pkg/openbugbounty"
+	"github.com/codeGROOVE-dev/sociopath/pkg/openhub"
 	"github.com/codeGROOVE-dev/sociopath/pkg/orcid"
+	"github.com/codeGROOVE-dev/sociopath/pkg/packagist"
+	"github.com/codeGROOVE-dev/sociopath/pkg/peerlist"
+	"github.com/codeGROOVE-dev/sociopath/pkg/petanikode"
+	"github.com/codeGROOVE-dev/sociopath/pkg/phoronix"
+	"github.com/codeGROOVE-dev/sociopath/pkg/picoctf"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/portswigger"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/programmers"
+	"github.com/codeGROOVE-dev/sociopath/pkg/pulumi"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/pwncollege"
 	"github.com/codeGROOVE-dev/sociopath/pkg/pypi"
 	"github.com/codeGROOVE-dev/sociopath/pkg/qiita"
+	"github.com/codeGROOVE-dev/sociopath/pkg/quay"
+	"github.com/codeGROOVE-dev/sociopath/pkg/quera"
 	"github.com/codeGROOVE-dev/sociopath/pkg/reddit"
 	"github.com/codeGROOVE-dev/sociopath/pkg/replit"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/ringzer0"
 	"github.com/codeGROOVE-dev/sociopath/pkg/rubygems"
 	"github.com/codeGROOVE-dev/sociopath/pkg/scratch"
 	"github.com/codeGROOVE-dev/sociopath/pkg/sessionize"
 	"github.com/codeGROOVE-dev/sociopath/pkg/slashdot"
 	"github.com/codeGROOVE-dev/sociopath/pkg/slideshare"
+	"github.com/codeGROOVE-dev/sociopath/pkg/stackblitz"
 	"github.com/codeGROOVE-dev/sociopath/pkg/stackoverflow"
 	"github.com/codeGROOVE-dev/sociopath/pkg/steam"
 	"github.com/codeGROOVE-dev/sociopath/pkg/strava"
 	"github.com/codeGROOVE-dev/sociopath/pkg/substack"
+	"github.com/codeGROOVE-dev/sociopath/pkg/swiftforums"
+	"github.com/codeGROOVE-dev/sociopath/pkg/tabnews"
 	"github.com/codeGROOVE-dev/sociopath/pkg/telegram"
 	"github.com/codeGROOVE-dev/sociopath/pkg/threads"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tiktok"
+	"github.com/codeGROOVE-dev/sociopath/pkg/tipidpc"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/tistory"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tradingview"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tryhackme"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tumblr"
 	"github.com/codeGROOVE-dev/sociopath/pkg/twitch"
 	"github.com/codeGROOVE-dev/sociopath/pkg/twitter"
+	"github.com/codeGROOVE-dev/sociopath/pkg/unixcom"
 	"github.com/codeGROOVE-dev/sociopath/pkg/v2ex"
 	"github.com/codeGROOVE-dev/sociopath/pkg/velog"
+	"github.com/codeGROOVE-dev/sociopath/pkg/virgool"
+	"github.com/codeGROOVE-dev/sociopath/pkg/vivaolinux"
 	"github.com/codeGROOVE-dev/sociopath/pkg/vkontakte"
+	_ "github.com/codeGROOVE-dev/sociopath/pkg/w3challs"
 	"github.com/codeGROOVE-dev/sociopath/pkg/weibo"
 	"github.com/codeGROOVE-dev/sociopath/pkg/whatsapp"
+	"github.com/codeGROOVE-dev/sociopath/pkg/wykop"
+	"github.com/codeGROOVE-dev/sociopath/pkg/xdaforums"
 	"github.com/codeGROOVE-dev/sociopath/pkg/youtube"
 	"github.com/codeGROOVE-dev/sociopath/pkg/zenn"
+	"github.com/codeGROOVE-dev/sociopath/pkg/zerosec"
 
 	// New WMN-derived packages.
+
 	"github.com/codeGROOVE-dev/sociopath/pkg/asciinema"
 	"github.com/codeGROOVE-dev/sociopath/pkg/atcoder"
 	"github.com/codeGROOVE-dev/sociopath/pkg/cloudflare"
@@ -122,6 +201,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/codeforces"
 	"github.com/codeGROOVE-dev/sociopath/pkg/devrant"
 	"github.com/codeGROOVE-dev/sociopath/pkg/figma"
+	"github.com/codeGROOVE-dev/sociopath/pkg/fourprogrammers"
 	"github.com/codeGROOVE-dev/sociopath/pkg/geeksforgeeks"
 	"github.com/codeGROOVE-dev/sociopath/pkg/gitea"
 	"github.com/codeGROOVE-dev/sociopath/pkg/hackaday"
@@ -165,6 +245,7 @@ type config struct {
 	cookies                  map[string]string
 	logger                   *slog.Logger
 	githubToken              string
+	giteeAccessToken         string
 	browserCookies           bool
 	emailHints               []string // Email addresses to associate with profiles
 	maxCandidatesPerPlatform int      // Limit guess candidates per platform (default: 2)
@@ -193,6 +274,11 @@ func WithLogger(logger *slog.Logger) Option {
 // WithGitHubToken sets the GitHub API token for authenticated requests.
 func WithGitHubToken(token string) Option {
 	return func(c *config) { c.githubToken = token }
+}
+
+// WithGiteeAccessToken sets the Gitee API access token for authenticated requests.
+func WithGiteeAccessToken(token string) Option {
+	return func(c *config) { c.giteeAccessToken = token }
 }
 
 // WithEmailHints provides email addresses to associate with profiles.
@@ -240,6 +326,15 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case linktree.Match(url):
 		platform = "linktree"
 		p, err = fetchLinktree(ctx, url, cfg)
+	case linuxmint.Match(url):
+		platform = "linuxmint"
+		p, err = fetchLinuxMint(ctx, url, cfg)
+	case linuxorg.Match(url):
+		platform = "linuxorg"
+		p, err = fetchLinuxOrg(ctx, url, cfg)
+	case linuxquestions.Match(url):
+		platform = "linuxquestions"
+		p, err = fetchLinuxQuestions(ctx, url, cfg)
 	case github.Match(url):
 		platform = "github"
 		p, err = fetchGitHub(ctx, url, cfg)
@@ -276,21 +371,51 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case devto.Match(url):
 		platform = "devto"
 		p, err = fetchDevTo(ctx, url, cfg)
+	case discourse.Match(url):
+		platform = "discourse"
+		p, err = fetchDiscourse(ctx, url, cfg)
 	case facebook.Match(url):
 		platform = "facebook"
 		p, err = fetchFacebook(ctx, url, cfg)
+	case fdroid.Match(url):
+		platform = "fdroid"
+		p, err = fetchFDroid(ctx, url, cfg)
+	case ionicforum.Match(url):
+		platform = "ionicforum"
+		p, err = fetchIonicForum(ctx, url, cfg)
+	case swiftforums.Match(url):
+		platform = "swiftforums"
+		p, err = fetchSwiftForums(ctx, url, cfg)
+	case xdaforums.Match(url):
+		platform = "xdaforums"
+		p, err = fetchXDAForums(ctx, url, cfg)
 	case stackoverflow.Match(url):
 		platform = "stackoverflow"
 		p, err = fetchStackOverflow(ctx, url, cfg)
 	case habr.Match(url):
 		platform = "habr"
 		p, err = fetchHabr(ctx, url, cfg)
+	case virgool.Match(url):
+		platform = "virgool"
+		p, err = fetchVirgool(ctx, url, cfg)
+	case quera.Match(url):
+		platform = "quera"
+		p, err = fetchQuera(ctx, url, cfg)
+	case barnamenevis.Match(url):
+		platform = "barnamenevis"
+		p, err = fetchBarnamenevis(ctx, url, cfg)
 	case instagram.Match(url):
 		platform = "instagram"
 		p, err = fetchInstagram(ctx, url, cfg)
+	case itch.Match(url):
+		platform = "itch"
+		p, err = fetchItch(ctx, url, cfg)
 	case keybase.Match(url):
 		platform = "keybase"
 		p, err = fetchKeybase(ctx, url, cfg)
+	case lichess.Match(url):
+		platform = "lichess"
+		p, err = fetchLichess(ctx, url, cfg)
 	case launchpad.Match(url):
 		platform = "launchpad"
 		p, err = fetchLaunchpad(ctx, url, cfg)
@@ -306,9 +431,18 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case dockerhub.Match(url):
 		platform = "dockerhub"
 		p, err = fetchDockerHub(ctx, url, cfg)
+	case dou.Match(url):
+		platform = "dou"
+		p, err = fetchDou(ctx, url, cfg)
 	case emailpkg.Match(url):
 		platform = "email"
 		p, err = fetchEmail(ctx, url, cfg)
+	case eksisozluk.Match(url):
+		platform = "eksisozluk"
+		p, err = fetchEksisozluk(ctx, url, cfg)
+	case fourprogrammers.Match(url):
+		platform = "4programmers"
+		p, err = fetchFourProgrammers(ctx, url, cfg)
 	case gitlab.Match(url):
 		platform = "gitlab"
 		p, err = fetchGitLab(ctx, url, cfg)
@@ -375,6 +509,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case observablehq.Match(url):
 		platform = "observablehq"
 		p, err = fetchObservableHQ(ctx, url, cfg)
+	case openhub.Match(url):
+		platform = "openhub"
+		p, err = fetchOpenHub(ctx, url, cfg)
 	case blogger.Match(url):
 		platform = "blogger"
 		p, err = fetchBlogger(ctx, url, cfg)
@@ -399,6 +536,15 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case csdn.Match(url):
 		platform = "csdn"
 		p, err = fetchCSDN(ctx, url, cfg)
+	case dicoding.Match(url):
+		platform = "dicoding"
+		p, err = fetchDicoding(ctx, url, cfg)
+	case kaskus.Match(url):
+		platform = "kaskus"
+		p, err = fetchKaskus(ctx, url, cfg)
+	case petanikode.Match(url):
+		platform = "petanikode"
+		p, err = fetchPetaniKode(ctx, url, cfg)
 	case v2ex.Match(url):
 		platform = "v2ex"
 		p, err = fetchV2EX(ctx, url, cfg)
@@ -429,12 +575,18 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case whatsapp.Match(url):
 		platform = "whatsapp"
 		p, err = fetchWhatsApp(ctx, url, cfg)
+	case wykop.Match(url):
+		platform = "wykop"
+		p, err = fetchWykop(ctx, url, cfg)
 	case tryhackme.Match(url):
 		platform = "tryhackme"
 		p, err = fetchTryHackMe(ctx, url, cfg)
 	case twitch.Match(url):
 		platform = "twitch"
 		p, err = fetchTwitch(ctx, url, cfg)
+	case unixcom.Match(url):
+		platform = "unixcom"
+		p, err = fetchUnixCom(ctx, url, cfg)
 	case steam.Match(url):
 		platform = "steam"
 		p, err = fetchSteam(ctx, url, cfg)
@@ -502,6 +654,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case geeksforgeeks.Match(url):
 		platform = "geeksforgeeks"
 		p, err = fetchGeeksForGeeks(ctx, url, cfg)
+	case gentoo.Match(url):
+		platform = "gentoo"
+		p, err = fetchGentoo(ctx, url, cfg)
 	case hackerearth.Match(url):
 		platform = "hackerearth"
 		p, err = fetchHackerEarth(ctx, url, cfg)
@@ -535,6 +690,117 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case notabug.Match(url):
 		platform = "notabug"
 		p, err = fetchNotABug(ctx, url, cfg)
+	case tabnews.Match(url):
+		platform = "tabnews"
+		p, err = fetchTabNews(ctx, url, cfg)
+	case guj.Match(url):
+		platform = "guj"
+		p, err = fetchGUJ(ctx, url, cfg)
+	case imasters.Match(url):
+		platform = "imasters"
+		p, err = fetchIMasters(ctx, url, cfg)
+	case vivaolinux.Match(url):
+		platform = "vivaolinux"
+		p, err = fetchVivaOLinux(ctx, url, cfg)
+	case packagist.Match(url):
+		platform = "packagist"
+		p, err = fetchPackagist(ctx, url, cfg)
+	case phoronix.Match(url):
+		platform = "phoronix"
+		p, err = fetchPhoronix(ctx, url, cfg)
+	case nuget.Match(url):
+		platform = "nuget"
+		p, err = fetchNuGet(ctx, url, cfg)
+	case quay.Match(url):
+		platform = "quay"
+		p, err = fetchQuay(ctx, url, cfg)
+	case notist.Match(url):
+		platform = "notist"
+		p, err = fetchNotist(ctx, url, cfg)
+	case angellist.Match(url):
+		platform = "angellist"
+		p, err = fetchAngelList(ctx, url, cfg)
+	case archbbs.Match(url):
+		platform = "archbbs"
+		p, err = fetchArchBBS(ctx, url, cfg)
+	case hashicorpdiscuss.Match(url):
+		platform = "hashicorpdiscuss"
+		p, err = fetchHashicorpDiscuss(ctx, url, cfg)
+	case pulumi.Match(url):
+		platform = "pulumi"
+		p, err = fetchPulumi(ctx, url, cfg)
+	case grafanacommunity.Match(url):
+		platform = "grafanacommunity"
+		p, err = fetchGrafanaCommunity(ctx, url, cfg)
+	case kubernetesdiscuss.Match(url):
+		platform = "kubernetesdiscuss"
+		p, err = fetchKubernetesDiscuss(ctx, url, cfg)
+	case cncfcommunity.Match(url):
+		platform = "cncfcommunity"
+		p, err = fetchCNCFCommunity(ctx, url, cfg)
+	case awsbuilder.Match(url):
+		platform = "awsbuilder"
+		p, err = fetchAWSBuilder(ctx, url, cfg)
+	case mstechcommunity.Match(url):
+		platform = "mstechcommunity"
+		p, err = fetchMSTechCommunity(ctx, url, cfg)
+	case googlecloud.Match(url):
+		platform = "googlecloud"
+		p, err = fetchGoogleCloud(ctx, url, cfg)
+	case awwwards.Match(url):
+		platform = "awwwards"
+		p, err = fetchAwwwards(ctx, url, cfg)
+	case backloggd.Match(url):
+		platform = "backloggd"
+		p, err = fetchBackloggd(ctx, url, cfg)
+	case behance.Match(url):
+		platform = "behance"
+		p, err = fetchBehance(ctx, url, cfg)
+	case codesandbox.Match(url):
+		platform = "codesandbox"
+		p, err = fetchCodeSandbox(ctx, url, cfg)
+	case crackmes.Match(url):
+		platform = "crackmes"
+		p, err = fetchCrackmes(ctx, url, cfg)
+	case cssdesignawards.Match(url):
+		platform = "cssdesignawards"
+		p, err = fetchCSSDesignAwards(ctx, url, cfg)
+	case dailydev.Match(url):
+		platform = "dailydev"
+		p, err = fetchDailyDev(ctx, url, cfg)
+	case detectify.Match(url):
+		platform = "detectify"
+		p, err = fetchDetectify(ctx, url, cfg)
+	case frontendmentor.Match(url):
+		platform = "frontendmentor"
+		p, err = fetchFrontendMentor(ctx, url, cfg)
+	case hackenproof.Match(url):
+		platform = "hackenproof"
+		p, err = fetchHackenProof(ctx, url, cfg)
+	case immunefi.Match(url):
+		platform = "immunefi"
+		p, err = fetchImmunefi(ctx, url, cfg)
+	case nexusmods.Match(url):
+		platform = "nexusmods"
+		p, err = fetchNexusMods(ctx, url, cfg)
+	case openbugbounty.Match(url):
+		platform = "openbugbounty"
+		p, err = fetchOpenBugBounty(ctx, url, cfg)
+	case peerlist.Match(url):
+		platform = "peerlist"
+		p, err = fetchPeerlist(ctx, url, cfg)
+	case picoctf.Match(url):
+		platform = "picoctf"
+		p, err = fetchPicoCTF(ctx, url, cfg)
+	case stackblitz.Match(url):
+		platform = "stackblitz"
+		p, err = fetchStackBlitz(ctx, url, cfg)
+	case tipidpc.Match(url):
+		platform = "tipidpc"
+		p, err = fetchTipidPC(ctx, url, cfg)
+	case zerosec.Match(url):
+		platform = "zerosec"
+		p, err = fetchZeroSec(ctx, url, cfg)
 	default:
 		platform = "generic"
 		p, err = fetchGeneric(ctx, url, cfg)
@@ -697,6 +963,70 @@ func fetchFacebook(ctx context.Context, url string, cfg *config) (*profile.Profi
 	return client.Fetch(ctx, url)
 }
 
+func fetchFDroid(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []fdroid.Option
+	if cfg.cache != nil {
+		opts = append(opts, fdroid.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, fdroid.WithLogger(cfg.logger))
+	}
+
+	client, err := fdroid.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchIonicForum(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []ionicforum.Option
+	if cfg.cache != nil {
+		opts = append(opts, ionicforum.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, ionicforum.WithLogger(cfg.logger))
+	}
+
+	client, err := ionicforum.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchSwiftForums(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []swiftforums.Option
+	if cfg.cache != nil {
+		opts = append(opts, swiftforums.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, swiftforums.WithLogger(cfg.logger))
+	}
+
+	client, err := swiftforums.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchXDAForums(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []xdaforums.Option
+	if cfg.cache != nil {
+		opts = append(opts, xdaforums.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, xdaforums.WithLogger(cfg.logger))
+	}
+
+	client, err := xdaforums.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 func fetchStackOverflow(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []stackoverflow.Option
 	if cfg.cache != nil {
@@ -745,6 +1075,22 @@ func fetchInstagram(ctx context.Context, url string, cfg *config) (*profile.Prof
 	return client.Fetch(ctx, url)
 }
 
+func fetchItch(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []itch.Option
+	if cfg.cache != nil {
+		opts = append(opts, itch.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, itch.WithLogger(cfg.logger))
+	}
+
+	client, err := itch.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 func fetchKeybase(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []keybase.Option
 	if cfg.cache != nil {
@@ -755,6 +1101,22 @@ func fetchKeybase(ctx context.Context, url string, cfg *config) (*profile.Profil
 	}
 
 	client, err := keybase.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchLichess(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []lichess.Option
+	if cfg.cache != nil {
+		opts = append(opts, lichess.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, lichess.WithLogger(cfg.logger))
+	}
+
+	client, err := lichess.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -851,6 +1213,54 @@ func fetchEmail(ctx context.Context, url string, cfg *config) (*profile.Profile,
 	}
 
 	client, err := emailpkg.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchEksisozluk(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []eksisozluk.Option
+	if cfg.cache != nil {
+		opts = append(opts, eksisozluk.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, eksisozluk.WithLogger(cfg.logger))
+	}
+
+	client, err := eksisozluk.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchFourProgrammers(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []fourprogrammers.Option
+	if cfg.cache != nil {
+		opts = append(opts, fourprogrammers.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, fourprogrammers.WithLogger(cfg.logger))
+	}
+
+	client, err := fourprogrammers.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchWykop(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []wykop.Option
+	if cfg.cache != nil {
+		opts = append(opts, wykop.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, wykop.WithLogger(cfg.logger))
+	}
+
+	client, err := wykop.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1368,6 +1778,22 @@ func fetchDouban(ctx context.Context, url string, cfg *config) (*profile.Profile
 	return client.Fetch(ctx, url)
 }
 
+func fetchDou(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []dou.Option
+	if cfg.cache != nil {
+		opts = append(opts, dou.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, dou.WithLogger(cfg.logger))
+	}
+
+	client, err := dou.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
 func fetchJuejin(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
 	var opts []juejin.Option
 	if cfg.cache != nil {
@@ -1394,6 +1820,22 @@ func fetchCSDN(ctx context.Context, url string, cfg *config) (*profile.Profile, 
 	}
 
 	client, err := csdn.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchDicoding(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []dicoding.Option
+	if cfg.cache != nil {
+		opts = append(opts, dicoding.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, dicoding.WithLogger(cfg.logger))
+	}
+
+	client, err := dicoding.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2017,7 +2459,13 @@ func isOfficialPlatformAccount(urlStr string) bool {
 		"linkedin": true, "linkedin_official": true,
 		"instagram": true, "twitter": true, "tiktok": true,
 		"facebook": true, "youtube": true, "github": true,
-		"medium": true, "reddit": true,
+		"medium": true, "reddit": true, "codechef": true,
+		"hackthissite": true, "dailydev": true, "bluesky": true,
+		"hackerrank": true, "leetcode": true, "exercism": true,
+		"freecodecamp": true, "codewars": true, "topcoder": true,
+		"atcoder": true, "spoj": true, "codeforces": true,
+		        "behance": true, "codesandbox": true,		"stackblitz": true, "bitbucket": true, "huggingface": true,
+		"awwwards": true, "cssdesignawards": true,
 	}
 
 	return officialAccounts[username]
@@ -2029,6 +2477,8 @@ func extractSocialUsername(urlStr string) string {
 	patterns := []string{
 		"instagram.com/", "twitter.com/", "x.com/",
 		"tiktok.com/@", "facebook.com/", "youtube.com/@",
+		"codechef.com/users/", "hackthissite.org/user/view/",
+		"app.daily.dev/", "bsky.app/profile/",
 	}
 	for _, prefix := range patterns {
 		idx := strings.Index(lower, prefix)
@@ -2036,9 +2486,14 @@ func extractSocialUsername(urlStr string) string {
 			continue
 		}
 		rest := lower[idx+len(prefix):]
+		// Strip @ if it was part of the pattern but not in the pattern string
+		rest = strings.TrimPrefix(rest, "@")
 		// Extract until delimiter
 		for i, c := range rest {
-			if c == '/' || c == '?' || c == '#' {
+			if c == '/' || c == '?' || c == '#' || c == '.' {
+				// Special case for .bsky.social - we want to keep it or strip it?
+				// extractSocialUsername is used by isOfficialPlatformAccount which compares against map.
+				// If we have "codechef", we want "codechef".
 				return rest[:i]
 			}
 		}
@@ -2245,6 +2700,7 @@ func FetchRecursiveWithGuess(ctx context.Context, url string, opts ...Option) ([
 		Logger:                   cfg.logger,
 		Fetcher:                  fetcher,
 		PlatformDetector:         PlatformForURL,
+		URLValidator:             isValidProfileURL,
 		MaxCandidatesPerPlatform: cfg.maxCandidatesPerPlatform,
 	}
 
@@ -2645,6 +3101,7 @@ func GuessFromUsername(ctx context.Context, username string, opts ...Option) ([]
 		Logger:                   cfg.logger,
 		Fetcher:                  fetcher,
 		PlatformDetector:         PlatformForURL,
+		URLValidator:             isValidProfileURL,
 		MaxCandidatesPerPlatform: cfg.maxCandidatesPerPlatform,
 	}
 
@@ -3358,6 +3815,741 @@ func fetchNotABug(ctx context.Context, url string, cfg *config) (*profile.Profil
 		opts = append(opts, notabug.WithLogger(cfg.logger))
 	}
 	client, err := notabug.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchTabNews(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []tabnews.Option
+	if cfg.cache != nil {
+		opts = append(opts, tabnews.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, tabnews.WithLogger(cfg.logger))
+	}
+	client, err := tabnews.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGUJ(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []guj.Option
+	if cfg.cache != nil {
+		opts = append(opts, guj.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, guj.WithLogger(cfg.logger))
+	}
+	client, err := guj.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchIMasters(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []imasters.Option
+	if cfg.cache != nil {
+		opts = append(opts, imasters.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, imasters.WithLogger(cfg.logger))
+	}
+	client, err := imasters.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchVivaOLinux(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []vivaolinux.Option
+	if cfg.cache != nil {
+		opts = append(opts, vivaolinux.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, vivaolinux.WithLogger(cfg.logger))
+	}
+	client, err := vivaolinux.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchVirgool(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []virgool.Option
+	if cfg.cache != nil {
+		opts = append(opts, virgool.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, virgool.WithLogger(cfg.logger))
+	}
+	client, err := virgool.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchQuera(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []quera.Option
+	if cfg.cache != nil {
+		opts = append(opts, quera.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, quera.WithLogger(cfg.logger))
+	}
+	client, err := quera.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchBarnamenevis(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []barnamenevis.Option
+	if cfg.cache != nil {
+		opts = append(opts, barnamenevis.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, barnamenevis.WithLogger(cfg.logger))
+	}
+	client, err := barnamenevis.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchKaskus(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []kaskus.Option
+	if cfg.cache != nil {
+		opts = append(opts, kaskus.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, kaskus.WithLogger(cfg.logger))
+	}
+	client, err := kaskus.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchPackagist(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []packagist.Option
+	if cfg.cache != nil {
+		opts = append(opts, packagist.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, packagist.WithLogger(cfg.logger))
+	}
+	client, err := packagist.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchNuGet(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []nuget.Option
+	if cfg.cache != nil {
+		opts = append(opts, nuget.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, nuget.WithLogger(cfg.logger))
+	}
+	client, err := nuget.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchQuay(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []quay.Option
+	if cfg.cache != nil {
+		opts = append(opts, quay.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, quay.WithLogger(cfg.logger))
+	}
+	client, err := quay.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchNotist(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []notist.Option
+	if cfg.cache != nil {
+		opts = append(opts, notist.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, notist.WithLogger(cfg.logger))
+	}
+	client, err := notist.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchAngelList(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []angellist.Option
+	if cfg.cache != nil {
+		opts = append(opts, angellist.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, angellist.WithLogger(cfg.logger))
+	}
+	client, err := angellist.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHashicorpDiscuss(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hashicorpdiscuss.Option
+	if cfg.cache != nil {
+		opts = append(opts, hashicorpdiscuss.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hashicorpdiscuss.WithLogger(cfg.logger))
+	}
+	client, err := hashicorpdiscuss.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchPulumi(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []pulumi.Option
+	if cfg.cache != nil {
+		opts = append(opts, pulumi.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, pulumi.WithLogger(cfg.logger))
+	}
+	client, err := pulumi.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGrafanaCommunity(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []grafanacommunity.Option
+	if cfg.cache != nil {
+		opts = append(opts, grafanacommunity.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, grafanacommunity.WithLogger(cfg.logger))
+	}
+	client, err := grafanacommunity.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchPetaniKode(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []petanikode.Option
+	if cfg.cache != nil {
+		opts = append(opts, petanikode.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, petanikode.WithLogger(cfg.logger))
+	}
+	client, err := petanikode.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchArchBBS(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []archbbs.Option
+	if cfg.logger != nil {
+		opts = append(opts, archbbs.WithLogger(cfg.logger))
+	}
+	if cfg.cache != nil {
+		opts = append(opts, archbbs.WithHTTPCache(cfg.cache))
+	}
+	client, err := archbbs.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchDiscourse(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []discourse.Option
+	if cfg.logger != nil {
+		opts = append(opts, discourse.WithLogger(cfg.logger))
+	}
+	if cfg.cache != nil {
+		opts = append(opts, discourse.WithHTTPCache(cfg.cache))
+	}
+	client, err := discourse.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGentoo(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []gentoo.Option
+	if cfg.logger != nil {
+		opts = append(opts, gentoo.WithLogger(cfg.logger))
+	}
+	if cfg.cache != nil {
+		opts = append(opts, gentoo.WithHTTPCache(cfg.cache))
+	}
+	client, err := gentoo.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchLinuxMint(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []linuxmint.Option
+	if cfg.logger != nil {
+		opts = append(opts, linuxmint.WithLogger(cfg.logger))
+	}
+	if cfg.cache != nil {
+		opts = append(opts, linuxmint.WithHTTPCache(cfg.cache))
+	}
+	client, err := linuxmint.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchLinuxOrg(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []linuxorg.Option
+	if cfg.logger != nil {
+		opts = append(opts, linuxorg.WithLogger(cfg.logger))
+	}
+	if cfg.cache != nil {
+		opts = append(opts, linuxorg.WithHTTPCache(cfg.cache))
+	}
+	client, err := linuxorg.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchLinuxQuestions(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []linuxquestions.Option
+	if cfg.logger != nil {
+		opts = append(opts, linuxquestions.WithLogger(cfg.logger))
+	}
+	if cfg.cache != nil {
+		opts = append(opts, linuxquestions.WithHTTPCache(cfg.cache))
+	}
+	client, err := linuxquestions.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchOpenHub(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []openhub.Option
+	if cfg.logger != nil {
+		opts = append(opts, openhub.WithLogger(cfg.logger))
+	}
+	if cfg.cache != nil {
+		opts = append(opts, openhub.WithHTTPCache(cfg.cache))
+	}
+	client, err := openhub.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchPhoronix(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []phoronix.Option
+	if cfg.logger != nil {
+		opts = append(opts, phoronix.WithLogger(cfg.logger))
+	}
+	if cfg.cache != nil {
+		opts = append(opts, phoronix.WithHTTPCache(cfg.cache))
+	}
+	client, err := phoronix.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchUnixCom(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []unixcom.Option
+	if cfg.logger != nil {
+		opts = append(opts, unixcom.WithLogger(cfg.logger))
+	}
+	if cfg.cache != nil {
+		opts = append(opts, unixcom.WithHTTPCache(cfg.cache))
+	}
+	client, err := unixcom.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchKubernetesDiscuss(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []kubernetesdiscuss.Option
+	if cfg.cache != nil {
+		opts = append(opts, kubernetesdiscuss.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, kubernetesdiscuss.WithLogger(cfg.logger))
+	}
+	client, err := kubernetesdiscuss.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCNCFCommunity(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []cncfcommunity.Option
+	if cfg.cache != nil {
+		opts = append(opts, cncfcommunity.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, cncfcommunity.WithLogger(cfg.logger))
+	}
+	client, err := cncfcommunity.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchAWSBuilder(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []awsbuilder.Option
+	if cfg.cache != nil {
+		opts = append(opts, awsbuilder.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, awsbuilder.WithLogger(cfg.logger))
+	}
+	client, err := awsbuilder.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchMSTechCommunity(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []mstechcommunity.Option
+	if cfg.cache != nil {
+		opts = append(opts, mstechcommunity.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, mstechcommunity.WithLogger(cfg.logger))
+	}
+	client, err := mstechcommunity.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchGoogleCloud(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []googlecloud.Option
+	if cfg.cache != nil {
+		opts = append(opts, googlecloud.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, googlecloud.WithLogger(cfg.logger))
+	}
+	client, err := googlecloud.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchAwwwards(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []awwwards.Option
+	if cfg.cache != nil {
+		opts = append(opts, awwwards.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, awwwards.WithLogger(cfg.logger))
+	}
+	client, err := awwwards.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchBackloggd(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []backloggd.Option
+	if cfg.cache != nil {
+		opts = append(opts, backloggd.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, backloggd.WithLogger(cfg.logger))
+	}
+	client, err := backloggd.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchBehance(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []behance.Option
+	if cfg.cache != nil {
+		opts = append(opts, behance.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, behance.WithLogger(cfg.logger))
+	}
+	client, err := behance.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCodeSandbox(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []codesandbox.Option
+	if cfg.cache != nil {
+		opts = append(opts, codesandbox.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, codesandbox.WithLogger(cfg.logger))
+	}
+	client, err := codesandbox.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCrackmes(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []crackmes.Option
+	if cfg.cache != nil {
+		opts = append(opts, crackmes.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, crackmes.WithLogger(cfg.logger))
+	}
+	client, err := crackmes.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCSSDesignAwards(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []cssdesignawards.Option
+	if cfg.cache != nil {
+		opts = append(opts, cssdesignawards.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, cssdesignawards.WithLogger(cfg.logger))
+	}
+	client, err := cssdesignawards.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchDailyDev(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []dailydev.Option
+	if cfg.cache != nil {
+		opts = append(opts, dailydev.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, dailydev.WithLogger(cfg.logger))
+	}
+	client, err := dailydev.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchDetectify(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []detectify.Option
+	if cfg.cache != nil {
+		opts = append(opts, detectify.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, detectify.WithLogger(cfg.logger))
+	}
+	client, err := detectify.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchFrontendMentor(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []frontendmentor.Option
+	if cfg.cache != nil {
+		opts = append(opts, frontendmentor.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, frontendmentor.WithLogger(cfg.logger))
+	}
+	client, err := frontendmentor.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchHackenProof(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []hackenproof.Option
+	if cfg.cache != nil {
+		opts = append(opts, hackenproof.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, hackenproof.WithLogger(cfg.logger))
+	}
+	client, err := hackenproof.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchImmunefi(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []immunefi.Option
+	if cfg.cache != nil {
+		opts = append(opts, immunefi.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, immunefi.WithLogger(cfg.logger))
+	}
+	client, err := immunefi.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchNexusMods(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []nexusmods.Option
+	if cfg.cache != nil {
+		opts = append(opts, nexusmods.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, nexusmods.WithLogger(cfg.logger))
+	}
+	client, err := nexusmods.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchOpenBugBounty(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []openbugbounty.Option
+	if cfg.cache != nil {
+		opts = append(opts, openbugbounty.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, openbugbounty.WithLogger(cfg.logger))
+	}
+	client, err := openbugbounty.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchPeerlist(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []peerlist.Option
+	if cfg.cache != nil {
+		opts = append(opts, peerlist.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, peerlist.WithLogger(cfg.logger))
+	}
+	client, err := peerlist.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchPicoCTF(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []picoctf.Option
+	if cfg.cache != nil {
+		opts = append(opts, picoctf.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, picoctf.WithLogger(cfg.logger))
+	}
+	client, err := picoctf.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchStackBlitz(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []stackblitz.Option
+	if cfg.cache != nil {
+		opts = append(opts, stackblitz.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, stackblitz.WithLogger(cfg.logger))
+	}
+	client, err := stackblitz.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchTipidPC(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []tipidpc.Option
+	if cfg.cache != nil {
+		opts = append(opts, tipidpc.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, tipidpc.WithLogger(cfg.logger))
+	}
+	client, err := tipidpc.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchZeroSec(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []zerosec.Option
+	if cfg.cache != nil {
+		opts = append(opts, zerosec.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, zerosec.WithLogger(cfg.logger))
+	}
+	client, err := zerosec.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

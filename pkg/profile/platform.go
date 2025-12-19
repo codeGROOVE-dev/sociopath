@@ -26,11 +26,12 @@ type Platform interface {
 
 // FetcherConfig holds configuration for creating platform fetchers.
 type FetcherConfig struct {
-	Cache          any               // httpcache.Cacher - use any to avoid import cycles
-	Cookies        map[string]string // Platform-specific cookies
-	Logger         *slog.Logger
-	GitHubToken    string // GitHub API token
-	BrowserCookies bool   // Whether to read cookies from browser
+	Cache            any               // httpcache.Cacher - use any to avoid import cycles
+	Cookies          map[string]string // Platform-specific cookies
+	Logger           *slog.Logger
+	GitHubToken      string // GitHub API token
+	GiteeAccessToken string // Gitee API access token
+	BrowserCookies   bool   // Whether to read cookies from browser
 }
 
 // FetchFunc is a function that fetches a profile from a URL.

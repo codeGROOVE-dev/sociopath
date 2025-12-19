@@ -25,6 +25,7 @@ type Config struct {
 	Logger                   *slog.Logger
 	Fetcher                  Fetcher
 	PlatformDetector         PlatformDetector
+	URLValidator             func(url string) bool
 	MaxCandidatesPerPlatform int // Limit candidates per platform (default: 2)
 }
 
@@ -62,15 +63,34 @@ var platformPatterns = []struct {
 	{"youtube", "https://youtube.com/@%s"},
 	{"medium", "https://medium.com/@%s"},
 	{"habr", "https://habr.com/users/%s"},
+	{"dou", "https://dou.ua/users/%s"},
 	{"vkontakte", "https://vk.com/%s"},
+	{"vcru", "https://vc.ru/u/%s"},
+	{"gitverse", "https://gitverse.ru/%s"},
+	{"pikabu", "https://pikabu.ru/@%s"},
+	{"qnahabr", "https://qna.habr.com/user/%s"},
+	{"linuxfr", "https://linuxfr.org/users/%s"},
+	{"zestedesavoir", "https://zestedesavoir.com/@%s"},
+	{"codingame", "https://www.codingame.com/profile/%s"},
+	{"nairaland", "https://www.nairaland.com/%s"},
 	{"crates", "https://crates.io/users/%s"},
+	// cristalab excluded - requires numeric ID prefix in URL
+	{"desarrolloweb", "https://desarrolloweb.com/autor/%s"},
 	{"dockerhub", "https://hub.docker.com/u/%s"},
 	{"keybase", "https://keybase.io/%s"},
 	{"arstechnica", "https://arstechnica.com/civis/search/8784651/?c[users]=%s&o=date"},
 	{"codeberg", "https://codeberg.org/%s"},
+	// Discourse-based Linux forums
+	{"discourse", "https://discourse.nixos.org/u/%s"},
+	{"discourse", "https://discuss.kde.org/u/%s"},
+	{"discourse", "https://forums.opensuse.org/u/%s"},
+	{"discourse", "https://discourse.ubuntu.com/u/%s"},
 	{"disqus", "https://disqus.com/by/%s"},
+	{"flashback", "https://www.flashback.org/members/%s"},
 	{"hackernews", "https://news.ycombinator.com/user?id=%s"},
+	{"hugi", "https://www.hugi.is/notandi/%s"},
 	{"lobsters", "https://lobste.rs/~%s"},
+	{"ohjelmointiputka", "https://www.ohjelmointiputka.net/kayttajat/profiili/%s"},
 	{"twitch", "https://twitch.tv/%s"},
 	{"hashnode", "https://hashnode.com/@%s"},
 	{"hexpm", "https://hex.pm/users/%s"},
@@ -80,17 +100,36 @@ var platformPatterns = []struct {
 	{"v2ex", "https://v2ex.com/member/%s"},
 	{"gitee", "https://gitee.com/%s"},
 	{"csdn", "https://blog.csdn.net/%s"},
+	{"segmentfault", "https://segmentfault.com/u/%s"},
+	{"jianshu", "https://www.jianshu.com/u/%s"},
+	{"cnode", "https://cnodejs.org/user/%s"},
+	{"rubychina", "https://ruby-china.org/%s"},
+	{"oschina", "https://my.oschina.net/%s"},
+	{"okky", "https://okky.kr/users/%s"},
+	{"cnblogs", "https://www.cnblogs.com/%s"},
+	{"zhihu", "https://www.zhihu.com/people/%s"},
+	{"leetcodecn", "https://leetcode.cn/u/%s"},
+	{"infoqcn", "https://www.infoq.cn/u/%s"},
+	{"51cto", "https://blog.51cto.com/%s"},
+	{"codingnet", "https://coding.net/u/%s"},
 	{"rubygems", "https://rubygems.org/profiles/%s"},
 	{"leetcode", "https://leetcode.com/u/%s"},
 	{"linktree", "https://linktr.ee/%s"},
 	{"intensedebate", "https://intensedebate.com/people/%s"},
+	{"lawebdelprogramador", "https://www.lawebdelprogramador.com/programadores/%s"},
 	{"sessionize", "https://sessionize.com/%s"},
 	{"steam", "https://steamcommunity.com/id/%s"},
 	{"douban", "https://www.douban.com/people/%s"},
 	{"substack", "https://%s.substack.com"},
+	{"sweclockers", "https://www.sweclockers.com/medlem/%s"},
+	{"techbbs", "https://bbs.io-tech.fi/members/%s/"},
+	{"naverblog", "https://blog.naver.com/%s"},
 	{"npm", "https://www.npmjs.com/~%s"},
+	{"openhub", "https://www.openhub.net/accounts/%s"},
+	{"programmers", "https://programmers.co.kr/profile/%s"},
 	{"pypi", "https://pypi.org/user/%s/"},
 	{"dribbble", "https://dribbble.com/%s"},
+	{"tistory", "https://%s.tistory.com"},
 	{"tryhackme", "https://tryhackme.com/p/%s"},
 	{"bitbucket", "https://bitbucket.org/%s/"},
 	{"huggingface", "https://huggingface.co/%s"},
@@ -99,13 +138,63 @@ var platformPatterns = []struct {
 	{"speakerdeck", "https://speakerdeck.com/%s"},
 	{"hackerone", "https://hackerone.com/%s"},
 	{"bugcrowd", "https://bugcrowd.com/%s"},
+	{"hackenproof", "https://hackenproof.com/%s"},
+	{"immunefi", "https://immunefi.com/profile/%s"},
+	{"openbugbounty", "https://www.openbugbounty.org/researchers/%s/"},
+	{"picoctf", "https://play.picoctf.org/users/%s"},
 	{"codewars", "https://www.codewars.com/users/%s"},
+	{"crackmes", "https://crackmes.one/user/%s"},
+	{"247ctf", "https://247ctf.com/user/%s"},
+	{"w3challs", "https://w3challs.com/profile/%s"},
+	{"cryptohack", "https://cryptohack.org/user/%s/"},
+	{"cyberdefenders", "https://cyberdefenders.org/p/%s"},
+	{"hackthissite", "https://www.hackthissite.org/user/view/%s"},
+	{"portswigger", "https://portswigger.net/web-security/profile/%s"},
+	{"htbacademy", "https://academy.hackthebox.com/users/%s"},
+	{"pwncollege", "https://pwn.college/users/%s"},
+	{"zerosec", "https://archive.0x00sec.org/u/%s"},
 	{"aboutme", "https://about.me/%s"},
 	{"gumroad", "https://gumroad.com/%s"},
 	{"scratch", "https://scratch.mit.edu/users/%s"},
 	{"geeksforgeeks", "https://auth.geeksforgeeks.org/user/%s"},
 	{"observable", "https://observablehq.com/@%s"},
 	{"opencollective", "https://opencollective.com/%s"},
+	{"codechef", "https://www.codechef.com/users/%s"},
+	{"codeforces", "https://codeforces.com/profile/%s"},
+	{"atcoder", "https://atcoder.jp/users/%s"},
+	{"spoj", "https://www.spoj.com/users/%s"},
+	{"topcoder", "https://www.topcoder.com/members/%s"},
+	{"cakeresume", "https://www.cakeresume.com/%s"},
+	{"ithelp", "https://ithelp.ithome.com.tw/users/%s/profile"},
+	{"hahow", "https://hahow.in/@%s"},
+	{"tipidpc", "https://tipidpc.com/useritems.php?username=%s"},
+	{"eksisozluk", "https://eksisozluk.com/biri/%s"},
+	{"wykop", "https://wykop.pl/ludzie/%s"},
+	{"virgool", "https://virgool.io/@%s"},
+	{"slideshare", "https://www.slideshare.net/%s"},
+	{"packagist", "https://packagist.org/users/%s/"},
+	{"nuget", "https://www.nuget.org/profiles/%s"},
+	{"nexusmods", "https://www.nexusmods.com/users/%s"},
+	{"quay", "https://quay.io/user/%s"},
+	{"notist", "https://noti.st/%s"},
+	{"angellist", "https://wellfound.com/u/%s"},
+	{"hashicorpdiscuss", "https://discuss.hashicorp.com/u/%s"},
+	{"pulumi", "https://app.pulumi.com/%s"},
+	{"grafanacommunity", "https://community.grafana.com/u/%s"},
+	// Mobile development forums
+	{"fdroid", "https://forum.f-droid.org/u/%s"},
+	{"ionicforum", "https://forum.ionicframework.com/u/%s"},
+	{"swiftforums", "https://forums.swift.org/u/%s"},
+	// Note: XDA Forums not included - requires user ID (username.userid format)
+	// Frontend development platforms
+	{"frontendmentor", "https://www.frontendmentor.io/profile/%s"},
+	{"dailydev", "https://app.daily.dev/%s"},
+	{"peerlist", "https://peerlist.io/%s"},
+	{"behance", "https://www.behance.net/%s"},
+	{"codesandbox", "https://codesandbox.io/u/%s"},
+	{"stackblitz", "https://stackblitz.com/@%s"},
+	{"awwwards", "https://www.awwwards.com/%s/"},
+	{"cssdesignawards", "https://www.cssdesignawards.com/designers/%s/"},
 }
 
 // isValidUsernameForPlatform checks if a username meets the platform's requirements.
@@ -275,6 +364,96 @@ func isValidUsernameForPlatform(username, platform string) bool {
 		}
 		return true
 
+	case "vcru", "pikabu", "qnahabr":
+		// Russian platforms: 3-30 chars, alphanumeric, underscores, hyphens
+		if len(username) < 3 || len(username) > 30 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "gitverse":
+		// GitVerse: similar to GitHub (1-39 chars, alphanumeric and hyphens)
+		if len(username) < 1 || len(username) > 39 {
+			return false
+		}
+		if strings.HasPrefix(username, "-") {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "linuxfr", "zestedesavoir":
+		// French platforms: 2-30 chars, alphanumeric, underscores, hyphens
+		if len(username) < 2 || len(username) > 30 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "codingame":
+		// CodinGame uses 39-char hex public handles OR usernames (3-30 chars)
+		// Public handle: [0-9a-f]{32}[0-9]{7}
+		if len(username) == 39 {
+			// Check if it's a valid hex handle
+			for _, c := range username {
+				if !((c >= 'a' && c <= 'f') || (c >= '0' && c <= '9')) {
+					return false
+				}
+			}
+			return true
+		}
+		// Otherwise treat as username (3-30 chars)
+		if len(username) < 3 || len(username) > 30 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "nairaland":
+		// Nairaland: usernames (3-30 chars) or numeric IDs (for /hopto/home/ URLs)
+		// Allow alphanumeric, underscores, hyphens, or pure numeric IDs
+		if len(username) < 1 || len(username) > 30 {
+			return false
+		}
+		// Check if it's a numeric ID
+		allDigits := true
+		for _, c := range username {
+			if c < '0' || c > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			return true
+		}
+		// Otherwise check as username
+		if len(username) < 3 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
 	case "bilibili":
 		// Bilibili uses numeric user IDs, not usernames
 		for _, c := range username {
@@ -361,7 +540,7 @@ func isValidUsernameForPlatform(username, platform string) bool {
 		}
 		return true
 
-	case "codeberg", "gitee", "bitbucket", "huggingface", "speakerdeck", "aboutme", "gumroad", "opencollective":
+	case "codeberg", "gitee", "bitbucket", "huggingface", "aboutme", "gumroad", "opencollective":
 		// Similar to GitHub: 1-39 chars, alphanumeric and hyphens
 		if len(username) < 1 || len(username) > 39 {
 			return false
@@ -436,7 +615,7 @@ func isValidUsernameForPlatform(username, platform string) bool {
 		}
 		return true
 
-	case "hexpm", "rubygems", "npm":
+	case "hexpm", "rubygems", "npm", "packagist", "quay":
 		// Package registries: 2-40 chars, alphanumeric, underscores, hyphens
 		if len(username) < 2 || len(username) > 40 {
 			return false
@@ -460,8 +639,8 @@ func isValidUsernameForPlatform(username, platform string) bool {
 		}
 		return true
 
-	case "v2ex", "csdn":
-		// Chinese dev platforms: 3-30 chars, alphanumeric, underscores, hyphens
+	case "v2ex", "csdn", "segmentfault", "cnode", "rubychina", "oschina", "cnblogs", "leetcodecn", "infoqcn", "51cto", "codingnet", "naverblog", "programmers", "tistory", "eksisozluk", "wykop", "virgool", "hahow", "tipidpc", "lawebdelprogramador", "desarrolloweb", "forosdelweb", "cristalab":
+		// Chinese/Korean/Iranian/Turkish/Polish/Taiwanese/Filipino/Spanish dev platforms: 3-30 chars, alphanumeric, underscores, hyphens
 		if len(username) < 3 || len(username) > 30 {
 			return false
 		}
@@ -472,8 +651,32 @@ func isValidUsernameForPlatform(username, platform string) bool {
 		}
 		return true
 
-	case "leetcode", "hackerone", "bugcrowd", "codewars":
-		// Coding challenge/security platforms: 3-20 chars, alphanumeric, underscores, hyphens
+	case "jianshu":
+		// Jianshu uses hex user IDs (alphanumeric, 8-16 chars)
+		if len(username) < 8 || len(username) > 16 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+				return false
+			}
+		}
+		return true
+
+	case "okky", "ithelp":
+		// Okky and iT邦幫忙 use numeric user IDs (digits only, typically 4-10 digits)
+		if len(username) < 1 || len(username) > 10 {
+			return false
+		}
+		for _, c := range username {
+			if c < '0' || c > '9' {
+				return false
+			}
+		}
+		return true
+
+	case "leetcode", "hackerone", "bugcrowd", "codewars", "crackmes", "zerosec", "nexusmods":
+		// Coding challenge/security/modding platforms: 3-20 chars, alphanumeric, underscores, hyphens
 		if len(username) < 3 || len(username) > 20 {
 			return false
 		}
@@ -484,20 +687,20 @@ func isValidUsernameForPlatform(username, platform string) bool {
 		}
 		return true
 
-	case "linktree", "dribbble", "scratch", "geeksforgeeks":
-		// Platforms with underscores and periods: 3-30 chars, alphanumeric, underscores, periods
+	case "linktree", "dribbble", "scratch", "geeksforgeeks", "cakeresume":
+		// Platforms with underscores and periods: 3-30 chars, alphanumeric, underscores, periods, hyphens
 		if len(username) < 3 || len(username) > 30 {
 			return false
 		}
 		for _, c := range username {
-			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.') {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-') {
 				return false
 			}
 		}
 		return true
 
-	case "sessionize":
-		// Sessionize: 3-50 chars, alphanumeric, underscores, hyphens
+	case "sessionize", "slideshare", "speakerdeck", "notist":
+		// Conference/presentation platforms: 3-50 chars, alphanumeric, underscores, hyphens
 		if len(username) < 3 || len(username) > 50 {
 			return false
 		}
@@ -511,6 +714,30 @@ func isValidUsernameForPlatform(username, platform string) bool {
 	case "steam", "tryhackme", "asciinema":
 		// Gaming/security/dev platforms: 3-32 chars, alphanumeric, underscores
 		if len(username) < 3 || len(username) > 32 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+				return false
+			}
+		}
+		return true
+
+	case "codechef", "codeforces", "atcoder", "spoj":
+		// Competitive programming platforms: 3-30 chars, alphanumeric, underscores, hyphens
+		if len(username) < 3 || len(username) > 30 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "topcoder":
+		// Topcoder: 2-15 chars, alphanumeric, underscores
+		if len(username) < 2 || len(username) > 15 {
 			return false
 		}
 		for _, c := range username {
@@ -546,6 +773,94 @@ func isValidUsernameForPlatform(username, platform string) bool {
 			}
 		}
 		return true
+
+	case "nuget", "angellist", "hashicorpdiscuss", "grafanacommunity", "pulumi":
+		// DevOps platforms: 2-50 chars, alphanumeric, underscores, hyphens, periods
+		if len(username) < 2 || len(username) > 50 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.') {
+				return false
+			}
+		}
+		return true
+
+	case "fdroid", "ionicforum", "swiftforums", "discourse":
+		// Discourse forums: 3-20 chars, alphanumeric, underscores, hyphens
+		if len(username) < 3 || len(username) > 20 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "frontendmentor":
+		// GitHub-style: 1-39 chars, alphanumeric and hyphens, no consecutive hyphens
+		if len(username) < 1 || len(username) > 39 {
+			return false
+		}
+		if strings.HasPrefix(username, "-") {
+			return false
+		}
+		if strings.Contains(username, "--") {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "dailydev", "peerlist", "behance", "codesandbox", "stackblitz":
+		// 3-30 chars, alphanumeric, underscores, hyphens
+		if len(username) < 3 || len(username) > 30 {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "awwwards", "cssdesignawards":
+		// Designer slugs: 3-50 chars, alphanumeric and hyphens
+		if len(username) < 3 || len(username) > 50 {
+			return false
+		}
+		if strings.HasPrefix(username, "-") || strings.HasSuffix(username, "-") {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "openhub":
+		// OpenHub: similar to GitHub (alphanumeric and hyphens)
+		if len(username) < 1 || len(username) > 39 {
+			return false
+		}
+		if strings.HasPrefix(username, "-") {
+			return false
+		}
+		for _, c := range username {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+				return false
+			}
+		}
+		return true
+
+	case "xdaforums":
+		// XDA Forums: username.userid format, cannot be guessed by username alone
+		return false
 
 	default:
 		// Unknown platform, be permissive
@@ -674,7 +989,12 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 					cfg.Logger.Debug("skipping system page", "url", link)
 					continue
 				}
-				// For high-confidence profiles (>=0.6), always fetch their social links
+				// Skip official platform accounts (e.g. twitter.com/codechef)
+				if cfg.URLValidator != nil && !cfg.URLValidator(link) {
+					cfg.Logger.Debug("skipping official or invalid profile URL", "url", link)
+					continue
+				}
+				// For moderate confidence profiles (0.5-0.6), skip if we already have this platform				// For high-confidence profiles (>=0.6), always fetch their social links
 				// even if we already have that platform - the linked profile may be
 				// the correct one while our guess may be wrong
 				if p.Confidence >= 0.6 {
@@ -695,7 +1015,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 			// Also check website field (websites are generic, always fetch)
 			if p.Website != "" {
 				normalized := normalizeURL(p.Website)
-				if !knownURLs[normalized] && !isSystemPage(p.Website) {
+				if !knownURLs[normalized] && !isSystemPage(p.Website) && (cfg.URLValidator == nil || cfg.URLValidator(p.Website)) {
 					socialLinksToFetch = append(socialLinksToFetch, p.Website)
 					knownURLs[normalized] = true
 				}
@@ -734,7 +1054,7 @@ func Related(ctx context.Context, known []*profile.Profile, cfg Config) []*profi
 					allKnown = append(allKnown, guessed...)
 					confidence, matches := scoreMatch(p, allKnown, candidateURL{
 						url:       url,
-						username:  p.Username,
+						username:  "", // Don't match against itself! Verified in Round 3 rescore.
 						platform:  p.Platform,
 						matchType: "linked", // This is a verified link
 					}, cfg.Logger)
@@ -1208,7 +1528,20 @@ func isValidUsername(u string) bool {
 		"civis":     true, // e.g., arstechnica.com/civis is a forum, not a profile
 		"slideshow": true, // e.g., slideshare.net/slideshow is a content path, not a profile
 	}
-	return !invalid[u]
+
+	if invalid[u] {
+		return false
+	}
+
+	// Add all platform names to invalid list to prevent them being guessed as usernames
+	// e.g. preventing "codechef" from being guessed because it appears in URLs
+	for _, pp := range platformPatterns {
+		if u == pp.name {
+			return false
+		}
+	}
+
+	return true
 }
 
 // DefaultMaxCandidatesPerPlatform limits how many URLs we try per platform to avoid excessive requests.
@@ -1367,7 +1700,7 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 		guessedUser := strings.ToLower(guessed.Username)
 
 		// Username match scoring - penalize only very short/common usernames
-		if guessedUser == targetUsername {
+		if targetUsername != "" && guessedUser == targetUsername {
 			// Very short usernames (3-4 chars) without digits are likely common names
 			if len(targetUsername) <= 4 && !containsDigit(targetUsername) {
 				score += 0.1
@@ -1375,7 +1708,7 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 				score += 0.3
 			}
 			matches = append(matches, "username:exact")
-		} else if strings.Contains(guessedUser, targetUsername) || strings.Contains(targetUsername, guessedUser) {
+		} else if targetUsername != "" && (strings.Contains(guessedUser, targetUsername) || strings.Contains(targetUsername, guessedUser)) {
 			score += 0.1
 			matches = append(matches, "username:substring")
 		}
@@ -1648,6 +1981,28 @@ func scoreMatch(guessed *profile.Profile, known []*profile.Profile, candidate ca
 	if (hasOrgMatch || hasEmployerMatch) && bestNameScore > 0.5 && hasTechTitleMatch {
 		score += 0.15
 		matches = append(matches, "combo:name+org+tech")
+	}
+
+	// Check if the guessed profile has ANY unique data.
+	// If it's just a username match and everything else is empty, it's likely a false positive
+	// (a generic site landing page or a 404 page that returns 200).
+	hasUniqueData := guessed.DisplayName != "" ||
+		guessed.Bio != "" ||
+		guessed.Location != "" ||
+		guessed.AvatarURL != "" ||
+		guessed.AvatarHash != 0 ||
+		guessed.Website != "" ||
+		len(guessed.Posts) > 0 ||
+		len(guessed.SocialLinks) > 0 ||
+		len(guessed.Fields) > 0
+
+	// Special case: if we have NO unique data, and it's a guess (not a direct link),
+	// require at least ONE strong corroborating signal to return any confidence.
+	if !hasUniqueData && matchType != "linked" {
+		// If it's just a username match and nothing else, return 0 confidence
+		if score <= 0.3 {
+			return 0, nil
+		}
 	}
 
 	// Cap at 1.0

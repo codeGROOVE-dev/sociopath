@@ -110,10 +110,18 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 
 	// Detect empty SPA shell pages (site returns 200 but page/user doesn't exist)
 	if isEmptySPAPage(string(body)) {
-		return nil, errors.New("profile not found")
+		return nil, profile.ErrProfileNotFound
+	}
+
+	// Detect common 404/Not Found patterns
+	if htmlutil.IsNotFound(string(body)) {
+		return nil, profile.ErrProfileNotFound
 	}
 
 	p := parseHTML(body, urlStr)
+	if htmlutil.IsNotFound(p.PageTitle) || htmlutil.IsGenericTitle(p.PageTitle) {
+		return nil, profile.ErrProfileNotFound
+	}
 
 	// Run identity discovery for the domain
 	disc := discovery.New(c.cache, c.logger)

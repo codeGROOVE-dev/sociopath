@@ -4,12 +4,14 @@ package spoj
 import (
 	"context"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/codeGROOVE-dev/sociopath/pkg/htmlutil"
 	"github.com/codeGROOVE-dev/sociopath/pkg/httpcache"
 	"github.com/codeGROOVE-dev/sociopath/pkg/profile"
 )
@@ -86,6 +88,8 @@ var (
 	solvedPattern      = regexp.MustCompile(`(?i)<dt>Problems solved:</dt>\s*<dd>(\d+)</dd>`)
 	avatarPattern      = regexp.MustCompile(`(?i)<img[^>]+src="([^"]+)"[^>]+class="[^"]*user-avatar[^"]*"`)
 	institutionPattern = regexp.MustCompile(`(?i)<dt>Institution:</dt>\s*<dd>([^<]+)</dd>`)
+	bioPattern         = regexp.MustCompile(`(?i)<dt>About:</dt>\s*<dd>([^<]+)</dd>`)
+	websitePattern     = regexp.MustCompile(`(?i)<dt>(?:Website|Homepage):</dt>\s*<dd><a[^>]+href="([^"]+)"`)
 )
 
 // Fetch retrieves a SPOJ profile.
@@ -103,7 +107,10 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	req.Header.Set("DNT", "1")
 
 	body, err := httpcache.FetchURL(ctx, c.cache, c.httpClient, req, c.logger)
 	if err != nil {
@@ -120,7 +127,7 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 	return parseProfile(content, username, urlStr), nil
 }
 
-func parseProfile(html, username, url string) *profile.Profile {
+func parseProfile(htmlContent, username, url string) *profile.Profile {
 	p := &profile.Profile{
 		Platform:    platform,
 		URL:         url,
@@ -130,7 +137,7 @@ func parseProfile(html, username, url string) *profile.Profile {
 	}
 
 	// Extract display name
-	if m := displayNamePattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := displayNamePattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		name := strings.TrimSpace(m[1])
 		if name != "" && name != username {
 			p.DisplayName = name
@@ -138,7 +145,7 @@ func parseProfile(html, username, url string) *profile.Profile {
 	}
 
 	// Extract avatar
-	if m := avatarPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := avatarPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		avatarURL := m[1]
 		if !strings.HasPrefix(avatarURL, "http") {
 			avatarURL = "https://www.spoj.com" + avatarURL
@@ -149,7 +156,7 @@ func parseProfile(html, username, url string) *profile.Profile {
 	}
 
 	// Extract location
-	if m := locationPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := locationPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		loc := strings.TrimSpace(m[1])
 		if loc != "" {
 			p.Location = loc
@@ -157,7 +164,7 @@ func parseProfile(html, username, url string) *profile.Profile {
 	}
 
 	// Extract institution
-	if m := institutionPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := institutionPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		inst := strings.TrimSpace(m[1])
 		if inst != "" {
 			p.Groups = append(p.Groups, inst)
@@ -166,18 +173,40 @@ func parseProfile(html, username, url string) *profile.Profile {
 	}
 
 	// Extract joined date
-	if m := joinedPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := joinedPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		p.CreatedAt = strings.TrimSpace(m[1])
 	}
 
 	// Extract world rank
-	if m := worldRankPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := worldRankPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		p.Fields["world_rank"] = strings.TrimSpace(m[1])
 	}
 
 	// Extract problems solved
-	if m := solvedPattern.FindStringSubmatch(html); len(m) > 1 {
+	if m := solvedPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
 		p.Fields["problems_solved"] = m[1]
+	}
+
+	// Extract bio
+	if m := bioPattern.FindStringSubmatch(htmlContent); len(m) > 1 {
+		bioText := strings.TrimSpace(html.UnescapeString(m[1]))
+		if bioText != "" {
+			p.Bio = bioText
+		}
+	}
+
+	// Extract website
+	if m := websitePattern.FindStringSubmatch(htmlContent); len(m) > 1 {
+		website := strings.TrimSpace(m[1])
+		if website != "" {
+			p.Website = website
+		}
+	}
+
+	// Extract social media links
+	socialLinks := htmlutil.SocialLinks(htmlContent)
+	if len(socialLinks) > 0 {
+		p.SocialLinks = socialLinks
 	}
 
 	return p
