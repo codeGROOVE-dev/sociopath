@@ -55,7 +55,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/crackmes"
 	"github.com/codeGROOVE-dev/sociopath/pkg/crates"
 	_ "github.com/codeGROOVE-dev/sociopath/pkg/cristalab"
-	_ "github.com/codeGROOVE-dev/sociopath/pkg/cryptohack"
+	"github.com/codeGROOVE-dev/sociopath/pkg/cryptohack"
 	"github.com/codeGROOVE-dev/sociopath/pkg/csdn"
 	"github.com/codeGROOVE-dev/sociopath/pkg/cssdesignawards"
 	_ "github.com/codeGROOVE-dev/sociopath/pkg/ctf247"
@@ -762,6 +762,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case crackmes.Match(url):
 		platform = "crackmes"
 		p, err = fetchCrackmes(ctx, url, cfg)
+	case cryptohack.Match(url):
+		platform = "cryptohack"
+		p, err = fetchCryptoHack(ctx, url, cfg)
 	case cssdesignawards.Match(url):
 		platform = "cssdesignawards"
 		p, err = fetchCSSDesignAwards(ctx, url, cfg)
@@ -4355,6 +4358,21 @@ func fetchCrackmes(ctx context.Context, url string, cfg *config) (*profile.Profi
 		opts = append(opts, crackmes.WithLogger(cfg.logger))
 	}
 	client, err := crackmes.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchCryptoHack(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []cryptohack.Option
+	if cfg.cache != nil {
+		opts = append(opts, cryptohack.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, cryptohack.WithLogger(cfg.logger))
+	}
+	client, err := cryptohack.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

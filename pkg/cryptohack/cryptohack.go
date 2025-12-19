@@ -104,6 +104,13 @@ func (c *Client) Fetch(ctx context.Context, urlStr string) (*profile.Profile, er
 		return nil, profile.ErrProfileNotFound
 	}
 
+	// Check if we got the homepage instead of a user profile
+	// When a user doesn't exist, CryptoHack returns the homepage with HTTP 200
+	if strings.Contains(htmlContent, "CryptoHack &ndash; Home") ||
+		(strings.Contains(htmlContent, "Weekly Top Users") && strings.Contains(htmlContent, "Learn By Doing")) {
+		return nil, profile.ErrProfileNotFound
+	}
+
 	return parseProfile(htmlContent, profileURL, username), nil
 }
 
