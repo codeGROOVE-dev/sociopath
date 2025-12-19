@@ -42,12 +42,18 @@ var knownInstances = map[string]bool{
 
 // Sites that use /@username pattern but are NOT Mastodon instances.
 var nonMastodonSites = map[string]bool{
-	"holopin.io":       true,
-	"www.holopin.io":   true,
-	"replit.com":       true,
-	"www.replit.com":   true,
-	"observablehq.com": true,
-	"www.observablehq": true,
+	"holopin.io":        true,
+	"www.holopin.io":    true,
+	"replit.com":        true,
+	"www.replit.com":    true,
+	"observablehq.com":  true,
+	"www.observablehq":  true,
+	"threads.net":       true,
+	"www.threads.net":   true,
+	"threads.com":       true,
+	"www.threads.com":   true,
+	"instagram.com":     true,
+	"www.instagram.com": true,
 }
 
 // Match returns true if the URL is a Mastodon profile URL.

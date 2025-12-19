@@ -99,6 +99,7 @@ import (
 	"github.com/codeGROOVE-dev/sociopath/pkg/strava"
 	"github.com/codeGROOVE-dev/sociopath/pkg/substack"
 	"github.com/codeGROOVE-dev/sociopath/pkg/telegram"
+	"github.com/codeGROOVE-dev/sociopath/pkg/threads"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tiktok"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tradingview"
 	"github.com/codeGROOVE-dev/sociopath/pkg/tryhackme"
@@ -311,6 +312,9 @@ func Fetch(ctx context.Context, url string, opts ...Option) (*profile.Profile, e
 	case gitlab.Match(url):
 		platform = "gitlab"
 		p, err = fetchGitLab(ctx, url, cfg)
+	case threads.Match(url):
+		platform = "threads"
+		p, err = fetchThreads(ctx, url, cfg)
 	case tiktok.Match(url):
 		platform = "tiktok"
 		p, err = fetchTikTok(ctx, url, cfg)
@@ -863,6 +867,22 @@ func fetchGitLab(ctx context.Context, url string, cfg *config) (*profile.Profile
 	}
 
 	client, err := gitlab.New(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Fetch(ctx, url)
+}
+
+func fetchThreads(ctx context.Context, url string, cfg *config) (*profile.Profile, error) {
+	var opts []threads.Option
+	if cfg.cache != nil {
+		opts = append(opts, threads.WithHTTPCache(cfg.cache))
+	}
+	if cfg.logger != nil {
+		opts = append(opts, threads.WithLogger(cfg.logger))
+	}
+
+	client, err := threads.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
